@@ -1,6 +1,8 @@
 {
   "version": 2,
   "name": "isma-sports-complex-backend",
+  "buildCommand": "npm install --include=dev && npm run vercel-build",
+  "installCommand": "npm install --include=dev",
   "builds": [
     { "src": "index.js", "use": "@vercel/node" }
   ],
