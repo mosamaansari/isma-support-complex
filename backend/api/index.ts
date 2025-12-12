@@ -79,6 +79,28 @@ app.get("/health", async (req, res) => {
   }
 });
 
+// Root route
+app.get("/", (req, res) => {
+  res.json({
+    message: "Isma Sports Complex API",
+    version: "1.0.0",
+    status: "running",
+    endpoints: {
+      health: "/health",
+      auth: "/api/auth",
+      products: "/api/products",
+      sales: "/api/sales",
+      expenses: "/api/expenses",
+      purchases: "/api/purchases",
+      reports: "/api/reports",
+      users: "/api/users",
+      settings: "/api/settings",
+      categories: "/api/categories",
+      roles: "/api/roles",
+    },
+  });
+});
+
 // API Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/products", productsRoutes);
