@@ -128,6 +128,9 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 });
 
 // Vercel serverless function handler
-export default (req: Request, res: Response) => {
+// For Vercel, we need to export a handler function
+const handler = (req: Request, res: Response) => {
   return app(req, res);
 };
+
+export default handler;
