@@ -27,7 +27,7 @@ export default function ExpenseForm() {
       const expense = expenses.find((e) => e.id === id);
       if (expense) {
         setFormData({
-          amount: expense.amount,
+          amount: expense.amount.toString(),
           category: expense.category,
           description: expense.description,
           date: expense.date,
@@ -84,11 +84,11 @@ export default function ExpenseForm() {
             </Label>
             <Input
               type="number"
-              step="0.01"
+              step={0.01}
               min="0"
-              value={formData.amount}
+              value={String(formData.amount)}
               onChange={(e) =>
-                setFormData({ ...formData, amount: parseFloat(e.target.value) || 0 })
+                setFormData({ ...formData, amount: e.target.value })
               }
               placeholder="0.00"
               required

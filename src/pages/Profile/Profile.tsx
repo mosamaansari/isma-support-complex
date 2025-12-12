@@ -218,6 +218,40 @@ export default function Profile() {
                 />
               </div>
 
+              {/* Profile Picture */}
+              <div>
+                <Label>Profile Picture</Label>
+                <div className="mt-2">
+                  {imagePreview || formData.profilePicture ? (
+                    <div className="relative inline-block">
+                      <img
+                        src={imagePreview || formData.profilePicture}
+                        alt="Profile"
+                        className="w-24 h-24 rounded-full object-cover border-2 border-gray-200 dark:border-gray-700"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setImagePreview("");
+                          setFormData({ ...formData, profilePicture: "" });
+                        }}
+                        className="absolute top-0 right-0 p-1 bg-red-500 text-white rounded-full hover:bg-red-600 text-xs w-6 h-6 flex items-center justify-center"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ) : (
+                    <div
+                      {...getRootProps()}
+                      className="w-24 h-24 border-2 border-dashed border-gray-300 rounded-full flex items-center justify-center cursor-pointer hover:border-brand-500 dark:border-gray-700"
+                    >
+                      <input {...getInputProps()} />
+                      <span className="text-xs text-gray-500">Upload</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               {/* Role (Read-only) */}
               <div>
                 <Label>Role</Label>

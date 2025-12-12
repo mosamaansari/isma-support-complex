@@ -26,7 +26,6 @@ export default function ProductForm() {
     image: "",
   });
   const [imagePreview, setImagePreview] = useState<string>("");
-  const [imageFile, setImageFile] = useState<File | null>(null);
 
   useEffect(() => {
     if (isEdit && id) {
@@ -52,11 +51,11 @@ export default function ProductForm() {
   const onDrop = (acceptedFiles: File[]) => {
     if (acceptedFiles.length > 0) {
       const file = acceptedFiles[0];
-      setImageFile(file);
       const reader = new FileReader();
       reader.onload = () => {
-        setImagePreview(reader.result as string);
-        setFormData({ ...formData, image: reader.result as string });
+        const result = reader.result as string;
+        setImagePreview(result);
+        setFormData({ ...formData, image: result });
       };
       reader.readAsDataURL(file);
     }
@@ -73,7 +72,6 @@ export default function ProductForm() {
   });
 
   const removeImage = () => {
-    setImageFile(null);
     setImagePreview("");
     setFormData({ ...formData, image: "" });
   };
@@ -156,9 +154,9 @@ export default function ProductForm() {
               </Label>
               <Input
                 type="number"
-                step="0.01"
+                step={0.01}
                 min="0"
-                value={formData.cost}
+                value={String(formData.cost)}
                 onChange={(e) =>
                   setFormData({ ...formData, cost: parseFloat(e.target.value) || 0 })
                 }
@@ -173,9 +171,9 @@ export default function ProductForm() {
               </Label>
               <Input
                 type="number"
-                step="0.01"
+                step={0.01}
                 min="0"
-                value={formData.salePrice}
+                value={String(formData.salePrice)}
                 onChange={(e) =>
                   setFormData({ ...formData, salePrice: parseFloat(e.target.value) || 0 })
                 }

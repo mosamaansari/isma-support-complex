@@ -220,9 +220,9 @@ export default function PurchaseEntry() {
                         <td className="p-2">
                           <Input
                             type="number"
-                            step="0.01"
+                            step={0.01}
                             min="0"
-                            value={item.cost}
+                            value={String(item.cost)}
                             onChange={(e) =>
                               updateItemCost(
                                 item.productId,
