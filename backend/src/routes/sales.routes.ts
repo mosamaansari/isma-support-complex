@@ -1,4 +1,4 @@
-import { Router } from "express";
+import express, { Router } from "express";
 import { body, validationResult, query } from "express-validator";
 import { PrismaClient } from "@prisma/client";
 import logger from "../utils/logger";
@@ -136,7 +136,7 @@ router.post(
     body("items.*.productId").notEmpty().withMessage("Product ID is required"),
     body("items.*.quantity").isInt({ min: 1 }).withMessage("Quantity must be at least 1"),
   ],
-  async (req: AuthRequest, res) => {
+  async (req: AuthRequest, res: express.Response) => {
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
@@ -176,7 +176,7 @@ router.post(
           });
         }
 
-        const itemSubtotal = product.salePrice * item.quantity;
+        const itemSubtotal = Number(product.salePrice) * item.quantity;
         const itemDiscount = (itemSubtotal * (item.discount || 0)) / 100;
         const itemTax = (itemSubtotal * (tax || 0)) / 100;
         const itemTotal = itemSubtotal - itemDiscount + itemTax;
@@ -281,7 +281,7 @@ router.patch(
   "/:id/cancel",
   authenticate,
   authorize("superadmin", "admin"),
-  async (req: AuthRequest, res) => {
+  async (req: AuthRequest, res: express.Response) => {
     try {
       const sale = await prisma.sale.findUnique({
         where: { id: req.params.id },

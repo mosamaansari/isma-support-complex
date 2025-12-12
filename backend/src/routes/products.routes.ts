@@ -1,4 +1,4 @@
-import { Router } from "express";
+import express, { Router } from "express";
 import { body, validationResult, query } from "express-validator";
 import { PrismaClient } from "@prisma/client";
 import logger from "../utils/logger";
@@ -75,7 +75,7 @@ router.post(
     body("quantity").isInt().withMessage("Quantity must be an integer"),
     body("minStockLevel").isInt().withMessage("Min stock level must be an integer"),
   ],
-  async (req: AuthRequest, res) => {
+  async (req: AuthRequest, res: express.Response) => {
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
@@ -123,7 +123,7 @@ router.put(
   "/:id",
   authenticate,
   authorize("superadmin", "admin", "warehouse_manager"),
-  async (req: AuthRequest, res) => {
+  async (req: AuthRequest, res: express.Response) => {
     try {
       // Try to find category by name, or use categoryId if provided
       let categoryId = undefined;
@@ -172,7 +172,7 @@ router.delete(
   "/:id",
   authenticate,
   authorize("superadmin", "admin", "warehouse_manager"),
-  async (req: AuthRequest, res) => {
+  async (req: AuthRequest, res: express.Response) => {
     try {
       await prisma.product.delete({
         where: { id: req.params.id },

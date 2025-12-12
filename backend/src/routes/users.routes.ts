@@ -1,4 +1,4 @@
-import { Router } from "express";
+import express, { Router } from "express";
 import { body, validationResult } from "express-validator";
 import bcrypt from "bcryptjs";
 import { PrismaClient } from "@prisma/client";
@@ -71,7 +71,7 @@ router.post(
     body("name").notEmpty().withMessage("Name is required"),
     body("role").isIn(["superadmin", "admin", "cashier", "warehouse_manager"]).withMessage("Invalid role"),
   ],
-  async (req: AuthRequest, res) => {
+  async (req: AuthRequest, res: express.Response) => {
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
@@ -128,7 +128,7 @@ router.post(
 router.put(
   "/profile",
   authenticate,
-  async (req: AuthRequest, res) => {
+  async (req: AuthRequest, res: express.Response) => {
     try {
       if (!req.user) {
         return res.status(401).json({ error: "Authentication required" });
@@ -193,7 +193,7 @@ router.put(
   "/:id",
   authenticate,
   authorize("superadmin", "admin"),
-  async (req: AuthRequest, res) => {
+  async (req: AuthRequest, res: express.Response) => {
     try {
       const user = await prisma.user.findUnique({
         where: { id: req.params.id },
@@ -249,7 +249,7 @@ router.delete(
   "/:id",
   authenticate,
   authorize("superadmin", "admin"),
-  async (req: AuthRequest, res) => {
+  async (req: AuthRequest, res: express.Response) => {
     try {
       const user = await prisma.user.findUnique({
         where: { id: req.params.id },

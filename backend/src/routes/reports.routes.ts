@@ -1,4 +1,4 @@
-import { Router } from "express";
+import express, { Router } from "express";
 import { query } from "express-validator";
 import { PrismaClient } from "@prisma/client";
 import logger from "../utils/logger";
@@ -12,7 +12,7 @@ router.get(
   "/sales",
   authenticate,
   [query("startDate").optional().isISO8601(), query("endDate").optional().isISO8601()],
-  async (req: AuthRequest, res) => {
+  async (req: AuthRequest, res: express.Response) => {
     try {
       const { startDate, endDate } = req.query;
 
@@ -55,7 +55,7 @@ router.get(
   "/expenses",
   authenticate,
   [query("startDate").optional().isISO8601(), query("endDate").optional().isISO8601()],
-  async (req: AuthRequest, res) => {
+  async (req: AuthRequest, res: express.Response) => {
     try {
       const { startDate, endDate } = req.query;
 
@@ -99,7 +99,7 @@ router.get(
   "/profit-loss",
   authenticate,
   [query("startDate").optional().isISO8601(), query("endDate").optional().isISO8601()],
-  async (req: AuthRequest, res) => {
+  async (req: AuthRequest, res: express.Response) => {
     try {
       const { startDate, endDate } = req.query;
 

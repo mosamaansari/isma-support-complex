@@ -1,4 +1,4 @@
-import { Router } from "express";
+import express, { Router } from "express";
 import { body, validationResult, query } from "express-validator";
 import { PrismaClient } from "@prisma/client";
 import logger from "../utils/logger";
@@ -87,7 +87,7 @@ router.post(
     body("description").notEmpty().withMessage("Description is required"),
     body("date").optional().isISO8601().withMessage("Date must be valid"),
   ],
-  async (req: AuthRequest, res) => {
+  async (req: AuthRequest, res: express.Response) => {
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
@@ -126,7 +126,7 @@ router.post(
 router.put(
   "/:id",
   authenticate,
-  async (req: AuthRequest, res) => {
+  async (req: AuthRequest, res: express.Response) => {
     try {
       const expense = await prisma.expense.findUnique({
         where: { id: req.params.id },
@@ -164,7 +164,7 @@ router.put(
 router.delete(
   "/:id",
   authenticate,
-  async (req: AuthRequest, res) => {
+  async (req: AuthRequest, res: express.Response) => {
     try {
       const expense = await prisma.expense.findUnique({
         where: { id: req.params.id },

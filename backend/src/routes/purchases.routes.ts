@@ -1,4 +1,4 @@
-import { Router } from "express";
+import express, { Router } from "express";
 import { body, validationResult } from "express-validator";
 import { PrismaClient } from "@prisma/client";
 import logger from "../utils/logger";
@@ -64,7 +64,7 @@ router.post(
     body("items.*.quantity").isInt({ min: 1 }).withMessage("Quantity must be at least 1"),
     body("items.*.cost").isNumeric().withMessage("Cost must be a number"),
   ],
-  async (req: AuthRequest, res) => {
+  async (req: AuthRequest, res: express.Response) => {
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
@@ -80,7 +80,10 @@ router.post(
 
       if (!supplier) {
         supplier = await prisma.supplier.create({
-          data: { name: supplierName },
+          data: { 
+            name: supplierName,
+            phone: "",
+          },
         });
       }
 

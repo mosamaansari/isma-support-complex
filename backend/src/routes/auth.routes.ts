@@ -1,7 +1,7 @@
-import { Router } from "express";
+import express, { Router } from "express";
 import { body, validationResult } from "express-validator";
 import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
+import jwt, { SignOptions } from "jsonwebtoken";
 import { PrismaClient } from "@prisma/client";
 import logger from "../utils/logger";
 import redis from "../config/redis";
@@ -16,7 +16,7 @@ router.post(
     body("username").notEmpty().withMessage("Username is required"),
     body("password").notEmpty().withMessage("Password is required"),
   ],
-  async (req, res) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
@@ -27,6 +27,16 @@ router.post(
 
       const user = await prisma.user.findUnique({
         where: { username },
+        select: {
+          id: true,
+          username: true,
+          password: true,
+          role: true,
+          name: true,
+          email: true,
+          profilePicture: true,
+          permissions: true,
+        },
       });
 
       if (!user) {
@@ -41,10 +51,11 @@ router.post(
         return res.status(401).json({ error: "Invalid credentials" });
       }
 
+      const jwtSecret = process.env.JWT_SECRET || "your-secret-key";
       const token = jwt.sign(
         { userId: user.id },
-        process.env.JWT_SECRET || "your-secret-key",
-        { expiresIn: process.env.JWT_EXPIRE || "7d" }
+        jwtSecret,
+        { expiresIn: process.env.JWT_EXPIRE || "7d" } as any
       );
 
       // Store token in Redis
@@ -78,7 +89,7 @@ router.post(
     body("username").notEmpty().withMessage("Username is required"),
     body("password").notEmpty().withMessage("Password is required"),
   ],
-  async (req, res) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
@@ -103,10 +114,11 @@ router.post(
         return res.status(401).json({ error: "Invalid superadmin credentials" });
       }
 
+      const jwtSecret = process.env.JWT_SECRET || "your-secret-key";
       const token = jwt.sign(
         { userId: user.id },
-        process.env.JWT_SECRET || "your-secret-key",
-        { expiresIn: process.env.JWT_EXPIRE || "7d" }
+        jwtSecret,
+        { expiresIn: process.env.JWT_EXPIRE || "7d" } as any
       );
 
       await redis.setex(`token:${user.id}`, 7 * 24 * 60 * 60, token);

@@ -1,4 +1,4 @@
-import { Router } from "express";
+import express, { Router } from "express";
 import { body, validationResult } from "express-validator";
 import { PrismaClient } from "@prisma/client";
 import logger from "../utils/logger";
@@ -49,7 +49,7 @@ router.put(
     body("bankAccountNumber").notEmpty().withMessage("Bank account number is required"),
     body("ifscCode").notEmpty().withMessage("IFSC code is required"),
   ],
-  async (req: AuthRequest, res) => {
+  async (req: AuthRequest, res: express.Response) => {
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
