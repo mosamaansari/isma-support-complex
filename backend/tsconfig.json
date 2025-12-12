@@ -15,11 +15,7 @@
     "allowSyntheticDefaultImports": true,
     "declaration": true,
     "declarationMap": true,
-    "sourceMap": true,
-    "types": [
-      "node",
-      "express"
-    ]
+    "sourceMap": true
   },
   "include": [
     "src/**/*",
