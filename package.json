@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:backend": "cd backend && npm install --include=dev && npm run vercel-build",
+    "vercel-build": "npm run build && npm run build:backend",
     "lint": "eslint .",
     "preview": "vite preview"
   },

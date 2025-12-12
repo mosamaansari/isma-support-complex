@@ -4,21 +4,21 @@ import helmet from "helmet";
 import morgan from "morgan";
 import dotenv from "dotenv";
 import rateLimit from "express-rate-limit";
-import logger from "../src/utils/logger";
-import redis from "../src/config/redis";
-import prisma from "../src/config/database";
+import logger from "../backend/src/utils/logger";
+import redis from "../backend/src/config/redis";
+import prisma from "../backend/src/config/database";
 
 // Import routes
-import authRoutes from "../src/routes/auth.routes";
-import productsRoutes from "../src/routes/products.routes";
-import salesRoutes from "../src/routes/sales.routes";
-import expensesRoutes from "../src/routes/expenses.routes";
-import purchasesRoutes from "../src/routes/purchases.routes";
-import reportsRoutes from "../src/routes/reports.routes";
-import usersRoutes from "../src/routes/users.routes";
-import settingsRoutes from "../src/routes/settings.routes";
-import categoriesRoutes from "../src/routes/categories.routes";
-import rolesRoutes from "../src/routes/roles.routes";
+import authRoutes from "../backend/src/routes/auth.routes";
+import productsRoutes from "../backend/src/routes/products.routes";
+import salesRoutes from "../backend/src/routes/sales.routes";
+import expensesRoutes from "../backend/src/routes/expenses.routes";
+import purchasesRoutes from "../backend/src/routes/purchases.routes";
+import reportsRoutes from "../backend/src/routes/reports.routes";
+import usersRoutes from "../backend/src/routes/users.routes";
+import settingsRoutes from "../backend/src/routes/settings.routes";
+import categoriesRoutes from "../backend/src/routes/categories.routes";
+import rolesRoutes from "../backend/src/routes/roles.routes";
 
 // Load environment variables
 dotenv.config();
@@ -130,3 +130,4 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 // Vercel serverless function handler
 // Export Express app directly - Vercel automatically handles Express apps
 export default app;
+

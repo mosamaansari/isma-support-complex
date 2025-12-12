@@ -1,47 +1,44 @@
-import express, { Request, Response } from "express";
+import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 import dotenv from "dotenv";
 import rateLimit from "express-rate-limit";
-import logger from "../src/utils/logger";
-import redis from "../src/config/redis";
-import prisma from "../src/config/database";
+import logger from "./src/utils/logger";
+import redis from "./src/config/redis";
+import prisma from "./src/config/database";
 
 // Import routes
-import authRoutes from "../src/routes/auth.routes";
-import productsRoutes from "../src/routes/products.routes";
-import salesRoutes from "../src/routes/sales.routes";
-import expensesRoutes from "../src/routes/expenses.routes";
-import purchasesRoutes from "../src/routes/purchases.routes";
-import reportsRoutes from "../src/routes/reports.routes";
-import usersRoutes from "../src/routes/users.routes";
-import settingsRoutes from "../src/routes/settings.routes";
-import categoriesRoutes from "../src/routes/categories.routes";
-import rolesRoutes from "../src/routes/roles.routes";
+import authRoutes from "./src/routes/auth.routes";
+import productsRoutes from "./src/routes/products.routes";
+import salesRoutes from "./src/routes/sales.routes";
+import expensesRoutes from "./src/routes/expenses.routes";
+import purchasesRoutes from "./src/routes/purchases.routes";
+import reportsRoutes from "./src/routes/reports.routes";
+import usersRoutes from "./src/routes/users.routes";
+import settingsRoutes from "./src/routes/settings.routes";
+import categoriesRoutes from "./src/routes/categories.routes";
+import rolesRoutes from "./src/routes/roles.routes";
 
 // Load environment variables
 dotenv.config();
 
 const app = express();
+const PORT = process.env.PORT || 5000;
 
 // Middleware
 app.use(helmet());
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || "*",
+  origin: process.env.CORS_ORIGIN || "http://localhost:5173",
   credentials: true,
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-// Logging middleware (skip in production for Vercel)
-if (process.env.NODE_ENV !== "production") {
-  app.use(morgan("combined", {
-    stream: {
-      write: (message: string) => logger.info(message.trim()),
-    },
-  }));
-}
+app.use(morgan("combined", {
+  stream: {
+    write: (message: string) => logger.info(message.trim()),
+  },
+}));
 
 // Rate limiting
 const limiter = rateLimit({
@@ -57,17 +54,13 @@ app.get("/health", async (req, res) => {
     // Check database connection
     await prisma.$queryRaw`SELECT 1`;
     
-    // Check Redis connection (optional, might fail in serverless)
-    try {
-      await redis.ping();
-    } catch (redisError) {
-      // Redis might not be available in serverless
-      logger.warn("Redis ping failed (optional):", redisError);
-    }
+    // Check Redis connection
+    await redis.ping();
 
     res.json({
       status: "ok",
       database: "connected",
+      redis: "connected",
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
@@ -127,6 +120,24 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   });
 });
 
-// Vercel serverless function handler
-// Export Express app directly - Vercel automatically handles Express apps
-export default app;
+// Start server
+app.listen(PORT, () => {
+  logger.info(`Server running on port ${PORT}`);
+  logger.info(`Environment: ${process.env.NODE_ENV || "development"}`);
+});
+
+// Graceful shutdown
+process.on("SIGTERM", async () => {
+  logger.info("SIGTERM signal received: closing HTTP server");
+  await prisma.$disconnect();
+  redis.disconnect();
+  process.exit(0);
+});
+
+process.on("SIGINT", async () => {
+  logger.info("SIGINT signal received: closing HTTP server");
+  await prisma.$disconnect();
+  redis.disconnect();
+  process.exit(0);
+});
+
