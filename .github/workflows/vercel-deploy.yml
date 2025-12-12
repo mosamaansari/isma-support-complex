@@ -1,0 +1,41 @@
+name: Vercel Deployment
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      
+      - name: Install Frontend Dependencies
+        run: npm install
+        working-directory: ./
+      
+      - name: Install Backend Dependencies
+        run: npm install
+        working-directory: ./backend
+      
+      - name: Build Frontend
+        run: npm run build
+        working-directory: ./
+        env:
+          VITE_API_URL: ${{ secrets.VITE_API_URL }}
+      
+      - name: Build Backend
+        run: npm run build
+        working-directory: ./backend
+

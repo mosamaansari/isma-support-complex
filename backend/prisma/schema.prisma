@@ -1,0 +1,232 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  superadmin
+  admin
+  cashier
+  warehouse_manager
+}
+
+enum PaymentType {
+  cash
+  credit
+}
+
+enum SaleStatus {
+  completed
+  cancelled
+}
+
+enum ExpenseCategory {
+  rent
+  bills
+  transport
+  salaries
+  maintenance
+  marketing
+  other
+}
+
+model User {
+  id            String   @id @default(cuid())
+  username      String   @unique
+  password      String
+  role          UserRole @default(cashier)
+  name          String
+  email         String?
+  profilePicture String?
+  permissions   String[] @default([])
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  sales     Sale[]
+  expenses  Expense[]
+  purchases Purchase[]
+
+  @@map("users")
+}
+
+model Product {
+  id            String   @id @default(cuid())
+  name          String
+  category      String
+  categoryId    String?
+  cost          Decimal  @db.Decimal(10, 2)
+  salePrice     Decimal  @db.Decimal(10, 2)
+  quantity      Int      @default(0)
+  minStockLevel Int      @default(0)
+  barcode       String?
+  image         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  categoryRef   Category? @relation(fields: [categoryId], references: [id])
+  saleItems    SaleItem[]
+  purchaseItems PurchaseItem[]
+
+  @@map("products")
+}
+
+model Customer {
+  id            String   @id @default(cuid())
+  name          String
+  phone         String
+  email         String?
+  address       String?
+  totalPurchases Decimal  @default(0) @db.Decimal(10, 2)
+  dueAmount     Decimal  @default(0) @db.Decimal(10, 2)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  sales        Sale[]
+
+  @@map("customers")
+}
+
+model Supplier {
+  id            String   @id @default(cuid())
+  name          String
+  phone         String
+  email         String?
+  address       String?
+  totalPurchases Decimal  @default(0) @db.Decimal(10, 2)
+  dueAmount     Decimal  @default(0) @db.Decimal(10, 2)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  purchases    Purchase[]
+
+  @@map("suppliers")
+}
+
+model Sale {
+  id           String      @id @default(cuid())
+  billNumber   String      @unique
+  subtotal     Decimal     @db.Decimal(10, 2)
+  discount     Decimal     @default(0) @db.Decimal(10, 2)
+  tax          Decimal     @default(0) @db.Decimal(10, 2)
+  total        Decimal     @db.Decimal(10, 2)
+  paymentType  PaymentType @default(cash)
+  status       SaleStatus  @default(completed)
+  customerId   String?
+  customerName String?
+  customerPhone String?
+  userId       String
+  userName     String
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  user         User        @relation(fields: [userId], references: [id])
+  customer     Customer?   @relation(fields: [customerId], references: [id])
+  items        SaleItem[]
+
+  @@map("sales")
+}
+
+model SaleItem {
+  id          String   @id @default(cuid())
+  saleId      String
+  productId   String
+  productName String
+  quantity    Int
+  unitPrice   Decimal  @db.Decimal(10, 2)
+  discount    Decimal  @default(0) @db.Decimal(10, 2)
+  tax         Decimal  @default(0) @db.Decimal(10, 2)
+  total       Decimal  @db.Decimal(10, 2)
+  createdAt   DateTime @default(now())
+
+  sale        Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product     Product  @relation(fields: [productId], references: [id])
+
+  @@map("sale_items")
+}
+
+model Expense {
+  id          String          @id @default(cuid())
+  amount      Decimal         @db.Decimal(10, 2)
+  category    ExpenseCategory
+  description String
+  date        DateTime        @default(now())
+  userId      String
+  userName    String
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  user        User            @relation(fields: [userId], references: [id])
+
+  @@map("expenses")
+}
+
+model Purchase {
+  id          String   @id @default(cuid())
+  supplierId  String?
+  supplierName String
+  total       Decimal  @db.Decimal(10, 2)
+  date        DateTime @default(now())
+  userId      String
+  userName    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  supplier    Supplier?       @relation(fields: [supplierId], references: [id])
+  user        User            @relation(fields: [userId], references: [id])
+  items       PurchaseItem[]
+
+  @@map("purchases")
+}
+
+model PurchaseItem {
+  id          String   @id @default(cuid())
+  purchaseId  String
+  productId   String
+  productName String
+  quantity    Int
+  cost        Decimal  @db.Decimal(10, 2)
+  total       Decimal  @db.Decimal(10, 2)
+  createdAt   DateTime @default(now())
+
+  purchase    Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  product     Product  @relation(fields: [productId], references: [id])
+
+  @@map("purchase_items")
+}
+
+model ShopSettings {
+  id                String   @id @default(cuid())
+  shopName          String
+  logo              String
+  contactNumber     String
+  email             String
+  address           String
+  bankAccountNumber String
+  bankName          String
+  ifscCode          String
+  gstNumber         String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("shop_settings")
+}
+
+model Category {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  products    Product[]
+
+  @@map("categories")
+}
+
