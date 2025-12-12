@@ -1,4 +1,4 @@
-import express from "express";
+import express, { Request, Response } from "express";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
@@ -105,6 +105,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   });
 });
 
-// Export for Vercel serverless
-export default app;
-
+// Vercel serverless function handler
+export default (req: Request, res: Response) => {
+  return app(req, res);
+};

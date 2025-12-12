@@ -15,7 +15,7 @@
     "declarationMap": true,
     "sourceMap": true
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "api"]
+  "include": ["src/**/*", "api/**/*"],
+  "exclude": ["node_modules", "dist"]
 }
 
