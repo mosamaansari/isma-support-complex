@@ -6,9 +6,9 @@
   "type": "commonjs",
   "scripts": {
     "dev": "tsx watch server.ts",
-    "build": "prisma generate && npx tsc",
+    "build": "prisma generate && node node_modules/typescript/bin/tsc",
     "start": "node index.js",
-    "vercel-build": "prisma generate && npx tsc",
+    "vercel-build": "prisma generate && node node_modules/typescript/bin/tsc",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
@@ -37,17 +37,17 @@
     "jsonwebtoken": "^9.0.3",
     "morgan": "^1.10.1",
     "winston": "^3.19.0",
-    "winston-daily-rotate-file": "^5.0.0"
-  },
-  "devDependencies": {
+    "winston-daily-rotate-file": "^5.0.0",
+    "typescript": "^5.9.3",
     "@types/bcryptjs": "^2.4.6",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/morgan": "^1.9.10",
-    "@types/node": "^22.19.2",
+    "@types/node": "^22.19.2"
+  },
+  "devDependencies": {
     "prisma": "^5.22.0",
-    "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "tsx": "^4.21.0"
   }
 }
