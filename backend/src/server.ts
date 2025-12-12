@@ -1,4 +1,4 @@
-import express from "express";
+import express, { Request, Response } from "express";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
@@ -49,11 +49,11 @@ const limiter = rateLimit({
 app.use("/api/", limiter);
 
 // Health check
-app.get("/health", async (req, res) => {
+app.get("/health", async (req: Request, res: Response) => {
   try {
     // Check database connection
     await prisma.$queryRaw`SELECT 1`;
-    
+
     // Check Redis connection
     await redis.ping();
 
@@ -73,7 +73,7 @@ app.get("/health", async (req, res) => {
 });
 
 // Root route
-app.get("/", (req, res) => {
+app.get("/", (req: Request, res: Response) => {
   res.json({
     message: "Isma Sports Complex API",
     version: "1.0.0",
@@ -107,7 +107,7 @@ app.use("/api/categories", categoriesRoutes);
 app.use("/api/roles", rolesRoutes);
 
 // 404 handler
-app.use((req, res) => {
+app.use((req: Request, res: Response) => {
   res.status(404).json({ error: "Route not found" });
 });
 
