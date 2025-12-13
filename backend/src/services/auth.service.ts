@@ -108,7 +108,7 @@ class AuthService {
         email: adminUser.email,
         role: adminUser.role,
         profilePicture: adminUser.profilePicture,
-        permissions: [],
+        permissions: [] as string[],
         userType: "admin",
       },
     };
