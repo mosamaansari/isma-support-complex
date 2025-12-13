@@ -7,7 +7,10 @@
   "scripts": {
     "dev": "tsx watch server.ts",
     "build": "prisma generate && node node_modules/typescript/bin/tsc",
-    "start": "node index.js",
+  
+  "start": "nodemon src/index.ts",
+  "ts.check": "tsc --project tsconfig.json",
+  "add-build": "git add dist",
     "vercel-build": "prisma generate && node node_modules/typescript/bin/tsc",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
@@ -26,6 +29,12 @@
   "license": "ISC",
   "dependencies": {
     "@prisma/client": "^5.22.0",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/morgan": "^1.9.10",
+    "@types/node": "^22.19.2",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
@@ -36,15 +45,10 @@
     "ioredis": "^5.8.2",
     "jsonwebtoken": "^9.0.3",
     "morgan": "^1.10.1",
-    "winston": "^3.19.0",
-    "winston-daily-rotate-file": "^5.0.0",
+    "ts-node": "^10.9.2",
     "typescript": "^5.9.3",
-    "@types/bcryptjs": "^2.4.6",
-    "@types/cors": "^2.8.19",
-    "@types/express": "^5.0.6",
-    "@types/jsonwebtoken": "^9.0.10",
-    "@types/morgan": "^1.9.10",
-    "@types/node": "^22.19.2"
+    "winston": "^3.19.0",
+    "winston-daily-rotate-file": "^5.0.0"
   },
   "devDependencies": {
     "prisma": "^5.22.0",

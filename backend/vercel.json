@@ -1,19 +1,16 @@
 {
-  "version": 2,
-  "name": "isma-sports-complex-backend",
-  "buildCommand": "npm install --include=dev && npm run vercel-build",
-  "installCommand": "npm install --include=dev",
-  "builds": [
-    {
-      "src": "index.js",
-      "use": "@vercel/node"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "/index.js"
-    }
-  ],
-  "outputDirectory": "."
+    "version": 2,
+    "builds": [
+        {
+            "src": "dist/index.js",
+            "use": "@vercel/node",
+            "config": { "includeFiles": ["dist/**"] }
+        }
+    ],
+    "routes": [
+        {
+            "src": "/(.*)",
+            "dest": "dist/index.js"
+        }
+    ]
 }
