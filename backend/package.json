@@ -7,10 +7,9 @@
   "scripts": {
     "dev": "tsx watch server.ts",
     "build": "prisma generate && node node_modules/typescript/bin/tsc",
-  
-  "start": "nodemon src/index.ts",
-  "ts.check": "tsc --project tsconfig.json",
-  "add-build": "git add dist",
+    "start": "node index.js",
+    "ts.check": "tsc --project tsconfig.json",
+    "add-build": "git add dist",
     "vercel-build": "prisma generate && node node_modules/typescript/bin/tsc",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
