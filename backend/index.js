@@ -7,16 +7,16 @@ require("dotenv").config();
 
 // Import routes (handle ES6 default exports compiled to CommonJS)
 const getRoute = (module) => module.default || module;
-const authRoutes = getRoute(require("./dist/src/routes/auth.routes"));
-const productsRoutes = getRoute(require("./dist/src/routes/products.routes"));
-const salesRoutes = getRoute(require("./dist/src/routes/sales.routes"));
-const expensesRoutes = getRoute(require("./dist/src/routes/expenses.routes"));
-const purchasesRoutes = getRoute(require("./dist/src/routes/purchases.routes"));
-const reportsRoutes = getRoute(require("./dist/src/routes/reports.routes"));
-const usersRoutes = getRoute(require("./dist/src/routes/users.routes"));
-const settingsRoutes = getRoute(require("./dist/src/routes/settings.routes"));
-const categoriesRoutes = getRoute(require("./dist/src/routes/categories.routes"));
-const rolesRoutes = getRoute(require("./dist/src/routes/roles.routes"));
+const authRoutes = getRoute(require("./dist/routes/auth.routes"));
+const productsRoutes = getRoute(require("./dist/routes/products.routes"));
+const salesRoutes = getRoute(require("./dist/routes/sales.routes"));
+const expensesRoutes = getRoute(require("./dist/routes/expenses.routes"));
+const purchasesRoutes = getRoute(require("./dist/routes/purchases.routes"));
+const reportsRoutes = getRoute(require("./dist/routes/reports.routes"));
+const usersRoutes = getRoute(require("./dist/routes/users.routes"));
+const settingsRoutes = getRoute(require("./dist/routes/settings.routes"));
+const categoriesRoutes = getRoute(require("./dist/routes/categories.routes"));
+const rolesRoutes = getRoute(require("./dist/routes/roles.routes"));
 
 const app = express();
 
@@ -53,14 +53,14 @@ app.use("/api/", limiter);
 // Health check
 app.get("/health", async (req, res) => {
   try {
-    const prisma = getRoute(require("./dist/src/config/database"));
+    const prisma = getRoute(require("./dist/config/database"));
     
     // Check database connection
     await prisma.$queryRaw`SELECT 1`;
     
     // Check Redis connection (optional, might fail in serverless)
     try {
-      const redis = getRoute(require("./dist/src/config/redis"));
+      const redis = getRoute(require("./dist/config/redis"));
       await redis.ping();
     } catch (redisError) {
       // Redis might not be available in serverless
