@@ -5,6 +5,7 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api"
 
 class ApiClient {
   private client: AxiosInstance;
+  private pendingRequests: Map<string, Promise<any>> = new Map();
 
   constructor() {
     this.client = axios.create({
@@ -43,6 +44,23 @@ class ApiClient {
     );
   }
 
+  // Request deduplication helper
+  private async deduplicateRequest<T>(key: string, requestFn: () => Promise<T>): Promise<T> {
+    // If request is already pending, return the existing promise
+    if (this.pendingRequests.has(key)) {
+      return this.pendingRequests.get(key)!;
+    }
+
+    // Create new request
+    const promise = requestFn().finally(() => {
+      // Remove from pending requests when done
+      this.pendingRequests.delete(key);
+    });
+
+    this.pendingRequests.set(key, promise);
+    return promise;
+  }
+
   // Auth endpoints
   async login(username: string, password: string) {
     const response = await this.client.post("/auth/login", { username, password });
@@ -73,11 +91,14 @@ class ApiClient {
 
   // Products endpoints
   async getProducts(params?: { search?: string; category?: string; lowStock?: boolean }) {
-    const response = await this.client.get("/products", { params });
-    // Convert backend Decimal types to numbers
-    return Array.isArray(response.data) 
-      ? response.data.map(normalizeProduct)
-      : [];
+    const key = `getProducts-${JSON.stringify(params)}`;
+    return this.deduplicateRequest(key, async () => {
+      const response = await this.client.get("/products", { params });
+      // Convert backend Decimal types to numbers
+      return Array.isArray(response.data) 
+        ? response.data.map(normalizeProduct)
+        : [];
+    });
   }
 
   async getProduct(id: string) {
@@ -111,10 +132,13 @@ class ApiClient {
     status?: string;
     search?: string;
   }) {
-    const response = await this.client.get("/sales", { params });
-    return Array.isArray(response.data)
-      ? response.data.map(normalizeSale)
-      : [];
+    const key = `getSales-${JSON.stringify(params)}`;
+    return this.deduplicateRequest(key, async () => {
+      const response = await this.client.get("/sales", { params });
+      return Array.isArray(response.data)
+        ? response.data.map(normalizeSale)
+        : [];
+    });
   }
 
   async getSale(id: string) {
@@ -137,6 +161,11 @@ class ApiClient {
     return normalizeSale(response.data);
   }
 
+  async addPaymentToSale(saleId: string, payment: { type: string; amount: number; cardId?: string; bankAccountId?: string }) {
+    const response = await this.client.post(`/sales/${saleId}/payments`, payment);
+    return normalizeSale(response.data);
+  }
+
   // Expenses endpoints
   async getExpenses(params?: {
     startDate?: string;
@@ -144,10 +173,13 @@ class ApiClient {
     category?: string;
     search?: string;
   }) {
-    const response = await this.client.get("/expenses", { params });
-    return Array.isArray(response.data)
-      ? response.data.map(normalizeExpense)
-      : [];
+    const key = `getExpenses-${JSON.stringify(params)}`;
+    return this.deduplicateRequest(key, async () => {
+      const response = await this.client.get("/expenses", { params });
+      return Array.isArray(response.data)
+        ? response.data.map(normalizeExpense)
+        : [];
+    });
   }
 
   async getExpense(id: string) {
@@ -184,7 +216,57 @@ class ApiClient {
     return response.data;
   }
 
+  async getPurchase(id: string) {
+    const response = await this.client.get(`/purchases/${id}`);
+    return response.data;
+  }
+
+  async updatePurchase(id: string, data: any) {
+    const response = await this.client.put(`/purchases/${id}`, data);
+    return response.data;
+  }
+
+  async addPaymentToPurchase(id: string, payment: any) {
+    const response = await this.client.post(`/purchases/${id}/payments`, payment);
+    return response.data;
+  }
+
+  // Opening Balance endpoints
+  async getOpeningBalance(date: string) {
+    const response = await this.client.get("/opening-balances/date", { params: { date } });
+    return response.data;
+  }
+
+  async getOpeningBalances(params?: { startDate?: string; endDate?: string }) {
+    const response = await this.client.get("/opening-balances", { params });
+    return response.data;
+  }
+
+  async createOpeningBalance(data: any) {
+    const response = await this.client.post("/opening-balances", data);
+    return response.data;
+  }
+
+  async updateOpeningBalance(id: string, data: any) {
+    const response = await this.client.put(`/opening-balances/${id}`, data);
+    return response.data;
+  }
+
+  async deleteOpeningBalance(id: string) {
+    await this.client.delete(`/opening-balances/${id}`);
+  }
+
   // Reports endpoints
+  async getDailyReport(date: string) {
+    const response = await this.client.get("/reports/daily", { params: { date } });
+    return response.data;
+  }
+
+  async getDateRangeReport(startDate: string, endDate: string) {
+    const response = await this.client.get("/reports/range", { params: { startDate, endDate } });
+    return response.data;
+  }
+
   async getSalesReport(params?: { startDate?: string; endDate?: string }) {
     const response = await this.client.get("/reports/sales", { params });
     return response.data;
@@ -269,12 +351,103 @@ class ApiClient {
 
   // Settings endpoints
   async getSettings() {
-    const response = await this.client.get("/settings");
-    return response.data;
+    return this.deduplicateRequest("getSettings", async () => {
+      const response = await this.client.get("/settings");
+      return response.data;
+    });
   }
 
   async updateSettings(data: any) {
     const response = await this.client.put("/settings", data);
+    return response.data;
+  }
+
+  // Bank Accounts endpoints
+  async getBankAccounts() {
+    return this.deduplicateRequest("getBankAccounts", async () => {
+      const response = await this.client.get("/bank-accounts");
+      return response.data;
+    });
+  }
+
+  async getBankAccount(id: string) {
+    const response = await this.client.get(`/bank-accounts/${id}`);
+    return response.data;
+  }
+
+  async getDefaultBankAccount() {
+    const response = await this.client.get("/bank-accounts/default");
+    return response.data;
+  }
+
+  async createBankAccount(data: any) {
+    const response = await this.client.post("/bank-accounts", data);
+    return response.data;
+  }
+
+  async updateBankAccount(id: string, data: any) {
+    const response = await this.client.put(`/bank-accounts/${id}`, data);
+    return response.data;
+  }
+
+  async deleteBankAccount(id: string) {
+    await this.client.delete(`/bank-accounts/${id}`);
+  }
+
+  // Cards endpoints
+  async getCards() {
+    return this.deduplicateRequest("getCards", async () => {
+      const response = await this.client.get("/cards");
+      return response.data;
+    });
+  }
+
+  async getCard(id: string) {
+    const response = await this.client.get(`/cards/${id}`);
+    return response.data;
+  }
+
+  async getDefaultCard() {
+    const response = await this.client.get("/cards/default");
+    return response.data;
+  }
+
+  async createCard(data: any) {
+    const response = await this.client.post("/cards", data);
+    return response.data;
+  }
+
+  async updateCard(id: string, data: any) {
+    const response = await this.client.put(`/cards/${id}`, data);
+    return response.data;
+  }
+
+  async deleteCard(id: string) {
+    await this.client.delete(`/cards/${id}`);
+  }
+
+  // Reports PDF export
+  async exportSalesReportPDF(params?: { startDate?: string; endDate?: string }) {
+    const response = await this.client.get("/reports/sales/export-pdf", {
+      params,
+      responseType: "blob",
+    });
+    return response.data;
+  }
+
+  async exportExpensesReportPDF(params?: { startDate?: string; endDate?: string }) {
+    const response = await this.client.get("/reports/expenses/export-pdf", {
+      params,
+      responseType: "blob",
+    });
+    return response.data;
+  }
+
+  async exportProfitLossReportPDF(params?: { startDate?: string; endDate?: string }) {
+    const response = await this.client.get("/reports/profit-loss/export-pdf", {
+      params,
+      responseType: "blob",
+    });
     return response.data;
   }
 }

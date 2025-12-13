@@ -142,3 +142,4 @@ export const getDefaultPermissionsForRole = (role: string): string[] => {
   return rolePermissions[role] || [];
 };
 
+

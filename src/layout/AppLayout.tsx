@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { SidebarProvider, useSidebar } from "../context/SidebarContext";
 import { Outlet, Navigate, useLocation } from "react-router";
 import AppHeader from "./AppHeader";
@@ -8,10 +9,58 @@ import { hasPermission } from "../utils/permissions";
 
 const LayoutContent: React.FC = () => {
   const { isExpanded, isHovered, isMobileOpen } = useSidebar();
-  const { currentUser } = useData();
+  const { currentUser, loading } = useData();
   const location = useLocation();
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
-  if (!currentUser) {
+  // Check authentication on mount - synchronous check
+  useEffect(() => {
+    const token = localStorage.getItem("authToken");
+    const storedUser = localStorage.getItem("currentUser");
+    
+    if (!token || !storedUser) {
+      // No token/user, clear everything immediately
+      localStorage.removeItem("authToken");
+      localStorage.removeItem("currentUser");
+      setIsCheckingAuth(false);
+    } else {
+      // We have token, wait for currentUser to load from context
+      setIsCheckingAuth(false);
+    }
+  }, []);
+
+  // Show loading while checking auth OR while loading user data (but only if we have a token)
+  const token = localStorage.getItem("authToken");
+  const hasToken = !!token;
+  
+  if (isCheckingAuth) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="inline-block w-8 h-8 border-4 border-gray-300 border-t-brand-600 rounded-full animate-spin"></div>
+          <p className="mt-4 text-gray-600 dark:text-gray-400">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // If we have a token but user is still loading, show loading (prevent flash)
+  if (hasToken && loading && !currentUser) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="inline-block w-8 h-8 border-4 border-gray-300 border-t-brand-600 rounded-full animate-spin"></div>
+          <p className="mt-4 text-gray-600 dark:text-gray-400">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // If no token or no currentUser after loading, redirect
+  if (!hasToken || !currentUser) {
+    // Clear invalid data
+    localStorage.removeItem("authToken");
+    localStorage.removeItem("currentUser");
     return <Navigate to="/signin" replace />;
   }
 

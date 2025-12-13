@@ -5,7 +5,7 @@
   "main": "index.js",
   "type": "commonjs",
   "scripts": {
-    "dev": "tsx watch server.ts",
+    "dev": "nodemon --exec tsx server.ts",
     "build": "prisma generate && node node_modules/typescript/bin/tsc",
     "start": "node index.js",
     "ts.check": "tsc --project tsconfig.json",
@@ -31,9 +31,11 @@
     "@types/bcryptjs": "^2.4.6",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
+    "@types/joi": "^17.2.2",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/morgan": "^1.9.10",
     "@types/node": "^22.19.2",
+    "@types/pdfkit": "^0.17.4",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
@@ -42,15 +44,21 @@
     "express-validator": "^7.3.1",
     "helmet": "^8.1.0",
     "ioredis": "^5.8.2",
+    "joi": "^17.13.3",
     "jsonwebtoken": "^9.0.3",
     "morgan": "^1.10.1",
+    "pdfkit": "^0.15.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3",
     "winston": "^3.19.0",
     "winston-daily-rotate-file": "^5.0.0"
   },
   "devDependencies": {
+    "nodemon": "^3.1.11",
     "prisma": "^5.22.0",
     "tsx": "^4.21.0"
+  },
+  "prisma": {
+    "seed": "tsx src/prisma/seed.ts"
   }
 }

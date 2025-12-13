@@ -17,11 +17,13 @@ export interface User {
 export interface Product {
   id: string;
   name: string;
-  category: string;
-  cost: number;
-  salePrice: number;
-  quantity: number;
+  category?: string;
+  salePrice?: number;
+  shopQuantity: number;
+  warehouseQuantity: number;
   minStockLevel: number;
+  model?: string;
+  manufacturer?: string;
   barcode?: string;
   image?: string; // Product image URL
   createdAt: string;
@@ -29,7 +31,7 @@ export interface Product {
 }
 
 // Sales Types
-export type PaymentType = "cash" | "credit";
+export type PaymentType = "cash" | "credit" | "card" | "bank_transfer";
 
 export interface SaleItem {
   productId: string;
@@ -41,6 +43,13 @@ export interface SaleItem {
   total: number;
 }
 
+export interface SalePayment {
+  type: "cash" | "card" | "credit" | "bank_transfer";
+  amount: number;
+  cardId?: string;
+  bankAccountId?: string;
+}
+
 export interface Sale {
   id: string;
   billNumber: string;
@@ -50,8 +59,14 @@ export interface Sale {
   tax: number;
   total: number;
   paymentType: PaymentType;
+  payments?: SalePayment[];
+  remainingBalance?: number;
+  cardId?: string;
+  bankAccountId?: string;
+  customerId?: string;
   customerName?: string;
   customerPhone?: string;
+  date?: string;
   userId: string;
   userName: string;
   createdAt: string;
@@ -73,6 +88,9 @@ export interface Expense {
   amount: number;
   category: ExpenseCategory;
   description: string;
+  paymentType?: PaymentType;
+  cardId?: string;
+  bankAccountId?: string;
   date: string;
   userId: string;
   userName: string;
@@ -85,18 +103,127 @@ export interface PurchaseItem {
   productName: string;
   quantity: number;
   cost: number;
+  discount?: number;
   total: number;
+  toWarehouse?: boolean;
+}
+
+export interface PurchasePayment {
+  type: "cash" | "card";
+  amount: number;
+  cardId?: string;
+  bankAccountId?: string;
 }
 
 export interface Purchase {
   id: string;
   supplierName: string;
+  supplierPhone?: string;
   items: PurchaseItem[];
+  subtotal: number;
+  tax: number;
   total: number;
+  payments: PurchasePayment[];
+  remainingBalance: number;
   date: string;
   userId: string;
   userName: string;
   createdAt: string;
+}
+
+// Opening Balance Types
+export interface CardBalance {
+  cardId: string;
+  balance: number;
+}
+
+export interface DailyOpeningBalance {
+  id: string;
+  date: string;
+  cashBalance: number;
+  cardBalances: CardBalance[];
+  notes?: string;
+  userId: string;
+  userName: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Report Types
+export interface DailyReport {
+  date: string;
+  openingBalance: {
+    cash: number;
+    cards: Array<{ cardId: string; cardName: string; balance: number }>;
+    total: number;
+  };
+  sales: {
+    total: number;
+    cash: number;
+    card: number;
+    credit: number;
+    count: number;
+    items: Sale[];
+  };
+  purchases: {
+    total: number;
+    cash: number;
+    card: number;
+    count: number;
+    items: Purchase[];
+  };
+  expenses: {
+    total: number;
+    cash: number;
+    card: number;
+    count: number;
+    items: Expense[];
+  };
+  closingBalance: {
+    cash: number;
+    cards: Array<{ cardId: string; cardName: string; balance: number }>;
+    total: number;
+  };
+}
+
+export interface DateRangeReport {
+  startDate: string;
+  endDate: string;
+  summary: {
+    openingBalance: {
+      cash: number;
+      cards: number;
+      total: number;
+    };
+    sales: {
+      total: number;
+      cash: number;
+      card: number;
+      credit: number;
+      count: number;
+    };
+    purchases: {
+      total: number;
+      cash: number;
+      card: number;
+      count: number;
+    };
+    expenses: {
+      total: number;
+      cash: number;
+      card: number;
+      count: number;
+    };
+    closingBalance: {
+      cash: number;
+      cards: number;
+      total: number;
+    };
+  };
+  dailyReports: DailyReport[];
+  sales: Sale[];
+  purchases: Purchase[];
+  expenses: Expense[];
 }
 
 // Customer Types

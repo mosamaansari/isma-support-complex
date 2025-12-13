@@ -19,12 +19,15 @@ import usersRoutes from "./routes/users.routes";
 import settingsRoutes from "./routes/settings.routes";
 import categoriesRoutes from "./routes/categories.routes";
 import rolesRoutes from "./routes/roles.routes";
+import cardsRoutes from "./routes/cards.routes";
+import bankAccountsRoutes from "./routes/bankAccounts.routes";
+import openingBalanceRoutes from "./routes/openingBalance.routes";
 
 // Load environment variables
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 6000;
 
 // Middleware
 app.use(helmet());
@@ -105,6 +108,9 @@ app.use("/api/users", usersRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/categories", categoriesRoutes);
 app.use("/api/roles", rolesRoutes);
+app.use("/api/cards", cardsRoutes);
+app.use("/api/bank-accounts", bankAccountsRoutes);
+app.use("/api/opening-balances", openingBalanceRoutes);
 
 // 404 handler
 app.use((req: Request, res: Response) => {

@@ -19,6 +19,8 @@ import usersRoutes from "./src/routes/users.routes";
 import settingsRoutes from "./src/routes/settings.routes";
 import categoriesRoutes from "./src/routes/categories.routes";
 import rolesRoutes from "./src/routes/roles.routes";
+import cardsRoutes from "./src/routes/cards.routes";
+import bankAccountsRoutes from "./src/routes/bankAccounts.routes";
 
 // Load environment variables
 dotenv.config();
@@ -41,12 +43,12 @@ app.use(morgan("combined", {
 }));
 
 // Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
-  message: "Too many requests from this IP, please try again later.",
-});
-app.use("/api/", limiter);
+// const limiter = rateLimit({
+//   windowMs: 15 * 60 * 1000, // 15 minutes
+//   max: 100, // limit each IP to 100 requests per windowMs
+//   message: "Too many requests from this IP, please try again later.",
+// });
+// app.use("/api/", limiter);
 
 // Health check
 app.get("/health", async (req, res) => {
@@ -90,6 +92,8 @@ app.get("/", (req, res) => {
       settings: "/api/settings",
       categories: "/api/categories",
       roles: "/api/roles",
+      cards: "/api/cards",
+      bankAccounts: "/api/bank-accounts",
     },
   });
 });
@@ -105,6 +109,8 @@ app.use("/api/users", usersRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/categories", categoriesRoutes);
 app.use("/api/roles", rolesRoutes);
+app.use("/api/cards", cardsRoutes);
+app.use("/api/bank-accounts", bankAccountsRoutes);
 
 // 404 handler
 app.use((req, res) => {
@@ -140,4 +146,5 @@ process.on("SIGINT", async () => {
   redis.disconnect();
   process.exit(0);
 });
+
 

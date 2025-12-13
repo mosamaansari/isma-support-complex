@@ -4,17 +4,45 @@ import { useData } from "../../context/DataContext";
 import Input from "../../components/form/input/InputField";
 import Label from "../../components/form/Label";
 import Button from "../../components/ui/button/Button";
-import { DownloadIcon } from "../../icons";
+import { DownloadIcon, PlusIcon, TrashBinIcon, PencilIcon } from "../../icons";
 
 export default function Settings() {
-  const { settings, updateSettings, exportData, importData, currentUser } =
-    useData();
+  const {
+    settings,
+    updateSettings,
+    exportData,
+    importData,
+    currentUser,
+    bankAccounts,
+    refreshBankAccounts,
+    addBankAccount,
+    updateBankAccount,
+    deleteBankAccount,
+  } = useData();
   const [formData, setFormData] = useState(settings);
   const [importFile, setImportFile] = useState<File | null>(null);
+  const [showBankAccountForm, setShowBankAccountForm] = useState(false);
+  const [editingAccount, setEditingAccount] = useState<any>(null);
+  const [bankAccountForm, setBankAccountForm] = useState({
+    accountName: "",
+    accountNumber: "",
+    bankName: "",
+    ifscCode: "",
+    accountHolder: "",
+    branchName: "",
+    isDefault: false,
+  });
 
   useEffect(() => {
     setFormData(settings);
   }, [settings]);
+
+  useEffect(() => {
+    if (bankAccounts.length === 0) {
+      refreshBankAccounts();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,6 +82,59 @@ export default function Settings() {
       }
     };
     reader.readAsText(importFile);
+  };
+
+  const handleBankAccountSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      if (editingAccount) {
+        await updateBankAccount(editingAccount.id, bankAccountForm);
+        alert("Bank account updated successfully!");
+      } else {
+        await addBankAccount(bankAccountForm);
+        alert("Bank account added successfully!");
+      }
+      setShowBankAccountForm(false);
+      setEditingAccount(null);
+      setBankAccountForm({
+        accountName: "",
+        accountNumber: "",
+        bankName: "",
+        ifscCode: "",
+        accountHolder: "",
+        branchName: "",
+        isDefault: false,
+      });
+      refreshBankAccounts();
+    } catch (err: any) {
+      alert(err.response?.data?.error || "Failed to save bank account");
+    }
+  };
+
+  const handleEditBankAccount = (account: any) => {
+    setEditingAccount(account);
+    setBankAccountForm({
+      accountName: account.accountName || "",
+      accountNumber: account.accountNumber || "",
+      bankName: account.bankName || "",
+      ifscCode: account.ifscCode || "",
+      accountHolder: account.accountHolder || "",
+      branchName: account.branchName || "",
+      isDefault: account.isDefault || false,
+    });
+    setShowBankAccountForm(true);
+  };
+
+  const handleDeleteBankAccount = async (id: string) => {
+    if (confirm("Are you sure you want to delete this bank account?")) {
+      try {
+        await deleteBankAccount(id);
+        alert("Bank account deleted successfully!");
+        refreshBankAccounts();
+      } catch (err: any) {
+        alert(err.response?.data?.error || "Failed to delete bank account");
+      }
+    }
   };
 
   if (currentUser?.role !== "admin" && currentUser?.role !== "superadmin") {
@@ -158,56 +239,225 @@ export default function Settings() {
           </div>
 
           <div className="p-6 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-            <h2 className="mb-4 text-xl font-semibold text-gray-800 dark:text-white">
-              Bank Account Details
-            </h2>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <Label>
-                  Bank Name <span className="text-error-500">*</span>
-                </Label>
-                <Input
-                  value={formData.bankName}
-                  onChange={(e) =>
-                    setFormData({ ...formData, bankName: e.target.value })
-                  }
-                  required
-                />
-              </div>
-
-              <div>
-                <Label>
-                  Account Number <span className="text-error-500">*</span>
-                </Label>
-                <Input
-                  value={formData.bankAccountNumber}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      bankAccountNumber: e.target.value,
-                    })
-                  }
-                  required
-                />
-              </div>
-
-              <div>
-                <Label>
-                  IFSC Code <span className="text-error-500">*</span>
-                </Label>
-                <Input
-                  value={formData.ifscCode}
-                  onChange={(e) =>
-                    setFormData({ ...formData, ifscCode: e.target.value })
-                  }
-                  required
-                />
-              </div>
-
-              <Button type="submit" size="sm">
-                Save Bank Details
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold text-gray-800 dark:text-white">
+                Bank Accounts
+              </h2>
+              <Button
+                onClick={() => {
+                  setEditingAccount(null);
+                  setBankAccountForm({
+                    accountName: "",
+                    accountNumber: "",
+                    bankName: "",
+                    ifscCode: "",
+                    accountHolder: "",
+                    branchName: "",
+                    isDefault: false,
+                  });
+                  setShowBankAccountForm(true);
+                }}
+                size="sm"
+                variant="outline"
+              >
+                <PlusIcon className="w-4 h-4 mr-2" />
+                Add Bank Account
               </Button>
-            </form>
+            </div>
+
+            {showBankAccountForm && (
+              <div className="p-4 mb-4 bg-gray-50 rounded-lg dark:bg-gray-900">
+                <h3 className="mb-3 text-lg font-semibold text-gray-800 dark:text-white">
+                  {editingAccount ? "Edit Bank Account" : "Add New Bank Account"}
+                </h3>
+                <form onSubmit={handleBankAccountSubmit} className="space-y-3">
+                  <div>
+                    <Label>
+                      Account Name <span className="text-error-500">*</span>
+                    </Label>
+                    <Input
+                      value={bankAccountForm.accountName}
+                      onChange={(e) =>
+                        setBankAccountForm({
+                          ...bankAccountForm,
+                          accountName: e.target.value,
+                        })
+                      }
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <Label>
+                      Account Number <span className="text-error-500">*</span>
+                    </Label>
+                    <Input
+                      value={bankAccountForm.accountNumber}
+                      onChange={(e) =>
+                        setBankAccountForm({
+                          ...bankAccountForm,
+                          accountNumber: e.target.value,
+                        })
+                      }
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <Label>
+                      Bank Name <span className="text-error-500">*</span>
+                    </Label>
+                    <Input
+                      value={bankAccountForm.bankName}
+                      onChange={(e) =>
+                        setBankAccountForm({
+                          ...bankAccountForm,
+                          bankName: e.target.value,
+                        })
+                      }
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <Label>
+                      IFSC Code <span className="text-error-500">*</span>
+                    </Label>
+                    <Input
+                      value={bankAccountForm.ifscCode}
+                      onChange={(e) =>
+                        setBankAccountForm({
+                          ...bankAccountForm,
+                          ifscCode: e.target.value,
+                        })
+                      }
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <Label>Account Holder</Label>
+                    <Input
+                      value={bankAccountForm.accountHolder}
+                      onChange={(e) =>
+                        setBankAccountForm({
+                          ...bankAccountForm,
+                          accountHolder: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+
+                  <div>
+                    <Label>Branch Name</Label>
+                    <Input
+                      value={bankAccountForm.branchName}
+                      onChange={(e) =>
+                        setBankAccountForm({
+                          ...bankAccountForm,
+                          branchName: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="isDefault"
+                      checked={bankAccountForm.isDefault}
+                      onChange={(e) =>
+                        setBankAccountForm({
+                          ...bankAccountForm,
+                          isDefault: e.target.checked,
+                        })
+                      }
+                      className="w-4 h-4 text-brand-600 border-gray-300 rounded focus:ring-brand-500"
+                    />
+                    <Label htmlFor="isDefault" className="ml-2">
+                      Set as Default Account
+                    </Label>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <Button type="submit" size="sm">
+                      {editingAccount ? "Update" : "Add"} Account
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setShowBankAccountForm(false);
+                        setEditingAccount(null);
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            <div className="space-y-3">
+              {bankAccounts.length === 0 ? (
+                <p className="text-gray-500 dark:text-gray-400">
+                  No bank accounts added yet. Click "Add Bank Account" to add one.
+                </p>
+              ) : (
+                bankAccounts.map((account) => (
+                  <div
+                    key={account.id}
+                    className="p-4 border border-gray-200 rounded-lg dark:border-gray-700"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-semibold text-gray-800 dark:text-white">
+                            {account.accountName}
+                          </h3>
+                          {account.isDefault && (
+                            <span className="px-2 py-1 text-xs font-medium text-green-700 bg-green-100 rounded dark:bg-green-900 dark:text-green-300">
+                              Default
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                          {account.bankName} - {account.accountNumber}
+                        </p>
+                        <p className="text-sm text-gray-500 dark:text-gray-500">
+                          IFSC: {account.ifscCode}
+                        </p>
+                        {account.accountHolder && (
+                          <p className="text-sm text-gray-500 dark:text-gray-500">
+                            Holder: {account.accountHolder}
+                          </p>
+                        )}
+                        {account.branchName && (
+                          <p className="text-sm text-gray-500 dark:text-gray-500">
+                            Branch: {account.branchName}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleEditBankAccount(account)}
+                          className="p-2 text-gray-600 transition-colors rounded hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+                        >
+                          <PencilIcon className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteBankAccount(account.id)}
+                          className="p-2 text-red-600 transition-colors rounded hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                        >
+                          <TrashBinIcon className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
 
           <div className="p-6 bg-white rounded-lg shadow-sm dark:bg-gray-800">
@@ -227,14 +477,14 @@ export default function Settings() {
 
               <div>
                 <Label>Import Data Backup</Label>
-              <input
-                type="file"
-                accept=".json"
-                onChange={(e) =>
-                  setImportFile(e.target.files?.[0] || null)
-                }
-                className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm shadow-theme-xs focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:focus:border-brand-800"
-              />
+                <input
+                  type="file"
+                  accept=".json"
+                  onChange={(e) =>
+                    setImportFile(e.target.files?.[0] || null)
+                  }
+                  className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm shadow-theme-xs focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:focus:border-brand-800"
+                />
                 <Button
                   onClick={handleImport}
                   size="sm"
@@ -255,4 +505,3 @@ export default function Settings() {
     </>
   );
 }
-

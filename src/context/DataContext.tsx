@@ -54,6 +54,8 @@ interface DataContextType {
   // Purchases
   purchases: Purchase[];
   addPurchase: (purchase: Omit<Purchase, "id" | "createdAt">) => Promise<void>;
+  updatePurchase: (id: string, purchase: Partial<Purchase>) => Promise<void>;
+  addPaymentToPurchase: (id: string, payment: PurchasePayment & { date?: string }) => Promise<void>;
   getPurchasesByDateRange: (startDate: string, endDate: string) => Purchase[];
   refreshPurchases: () => Promise<void>;
 
@@ -80,6 +82,22 @@ interface DataContextType {
   settings: ShopSettings;
   updateSettings: (settings: Partial<ShopSettings>) => Promise<void>;
   refreshSettings: () => Promise<void>;
+
+  // Bank Accounts
+  bankAccounts: any[];
+  refreshBankAccounts: () => Promise<void>;
+  addBankAccount: (account: any) => Promise<void>;
+  updateBankAccount: (id: string, account: Partial<any>) => Promise<void>;
+  deleteBankAccount: (id: string) => Promise<void>;
+  getDefaultBankAccount: () => Promise<any | null>;
+
+  // Cards
+  cards: any[];
+  refreshCards: () => Promise<void>;
+  addCard: (card: any) => Promise<void>;
+  updateCard: (id: string, card: Partial<any>) => Promise<void>;
+  deleteCard: (id: string) => Promise<void>;
+  getDefaultCard: () => Promise<any | null>;
 
   // Backup & Restore
   exportData: () => string;
@@ -111,27 +129,44 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [settings, setSettings] = useState<ShopSettings>(defaultSettings);
+  const [bankAccounts, setBankAccounts] = useState<any[]>([]);
+  const [cards, setCards] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadingBankAccounts, setLoadingBankAccounts] = useState(false);
+  const [loadingCards, setLoadingCards] = useState(false);
+  const [loadingProducts, setLoadingProducts] = useState(false);
+  const [initialDataLoaded, setInitialDataLoaded] = useState(false);
 
   // Load current user from localStorage on mount
   useEffect(() => {
+    const token = localStorage.getItem("authToken");
     const storedUser = localStorage.getItem("currentUser");
-    if (storedUser) {
+    
+    if (token && storedUser) {
       try {
-        setCurrentUser(JSON.parse(storedUser));
+        const user = JSON.parse(storedUser);
+        setCurrentUser(user);
       } catch (e) {
         console.error("Error parsing stored user:", e);
+        // Clear invalid data
+        localStorage.removeItem("authToken");
+        localStorage.removeItem("currentUser");
       }
+    } else {
+      // No token or user, clear everything
+      localStorage.removeItem("authToken");
+      localStorage.removeItem("currentUser");
     }
   }, []);
 
-  // Load initial data when user is logged in
+  // Load initial data when user is logged in (only once)
   useEffect(() => {
-    if (currentUser) {
+    if (currentUser && !initialDataLoaded) {
       loadInitialData();
+      setInitialDataLoaded(true);
     }
-  }, [currentUser]);
+  }, [currentUser, initialDataLoaded]);
 
   const loadInitialData = async () => {
     if (!currentUser) return;
@@ -139,13 +174,12 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setLoading(true);
     setError(null);
     try {
-      await Promise.all([
-        refreshProducts(),
-        refreshSales(),
-        refreshExpenses(),
-        refreshPurchases(),
-        refreshSettings(),
-      ]);
+      // Load data sequentially to avoid multiple simultaneous requests
+      await refreshProducts();
+      await refreshSales();
+      await refreshExpenses();
+      await refreshPurchases();
+      await refreshSettings();
     } catch (err: any) {
       setError(err.message || "Failed to load data");
       console.error("Error loading initial data:", err);
@@ -202,6 +236,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setCustomers([]);
       setSuppliers([]);
       setSettings(defaultSettings);
+      setInitialDataLoaded(false); // Reset so data can be loaded on next login
     }
   };
 
@@ -255,12 +290,16 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   // Product functions
   const refreshProducts = async () => {
+    if (loadingProducts) return; // Prevent duplicate requests
     try {
+      setLoadingProducts(true);
       const data = await api.getProducts();
       setProducts(data);
     } catch (err: any) {
       setError(err.response?.data?.error || "Failed to load products");
       throw err;
+    } finally {
+      setLoadingProducts(false);
     }
   };
 
@@ -302,7 +341,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const getLowStockProducts = () => {
-    return products.filter((p) => p.quantity <= p.minStockLevel);
+    return products.filter((p) => 
+      (p.shopQuantity || 0) + (p.warehouseQuantity || 0) <= p.minStockLevel
+    );
   };
 
   // Sale functions
@@ -320,7 +361,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       setError(null);
       // Transform sale data for API
-      const apiData = {
+      const apiData: any = {
         items: saleData.items.map((item) => ({
           productId: item.productId,
           quantity: item.quantity,
@@ -328,10 +369,27 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         })),
         customerName: saleData.customerName,
         customerPhone: saleData.customerPhone,
-        paymentType: saleData.paymentType,
         discount: saleData.discount || 0,
         tax: saleData.tax || 0,
       };
+      
+      // Use new payments array if available, otherwise fall back to old paymentType
+      if (saleData.payments && saleData.payments.length > 0) {
+        apiData.payments = saleData.payments;
+      } else {
+        // Backward compatibility
+        apiData.paymentType = saleData.paymentType;
+        if (saleData.cardId) {
+          apiData.cardId = saleData.cardId;
+        }
+        if (saleData.bankAccountId) {
+          apiData.bankAccountId = saleData.bankAccountId;
+        }
+      }
+      
+      if (saleData.date) {
+        apiData.date = saleData.date;
+      }
 
       const newSale = await api.createSale(apiData);
       setSales([...sales, newSale]);
@@ -378,7 +436,22 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const addExpense = async (expenseData: Omit<Expense, "id" | "createdAt">) => {
     try {
       setError(null);
-      const newExpense = await api.createExpense(expenseData);
+      const apiData: any = {
+        amount: expenseData.amount,
+        category: expenseData.category,
+        description: expenseData.description,
+        date: expenseData.date,
+      };
+      if (expenseData.paymentType) {
+        apiData.paymentType = expenseData.paymentType;
+      }
+      if (expenseData.cardId) {
+        apiData.cardId = expenseData.cardId;
+      }
+      if (expenseData.bankAccountId) {
+        apiData.bankAccountId = expenseData.bankAccountId;
+      }
+      const newExpense = await api.createExpense(apiData);
       setExpenses([...expenses, newExpense]);
     } catch (err: any) {
       setError(err.response?.data?.error || "Failed to create expense");
@@ -389,7 +462,15 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const updateExpense = async (id: string, expenseData: Partial<Expense>) => {
     try {
       setError(null);
-      const updatedExpense = await api.updateExpense(id, expenseData);
+      const apiData: any = {};
+      if (expenseData.amount !== undefined) apiData.amount = expenseData.amount;
+      if (expenseData.category !== undefined) apiData.category = expenseData.category;
+      if (expenseData.description !== undefined) apiData.description = expenseData.description;
+      if (expenseData.paymentType !== undefined) apiData.paymentType = expenseData.paymentType;
+      if (expenseData.cardId !== undefined) apiData.cardId = expenseData.cardId;
+      if (expenseData.bankAccountId !== undefined) apiData.bankAccountId = expenseData.bankAccountId;
+      if (expenseData.date !== undefined) apiData.date = expenseData.date;
+      const updatedExpense = await api.updateExpense(id, apiData);
       setExpenses(expenses.map((e) => (e.id === id ? updatedExpense : e)));
     } catch (err: any) {
       setError(err.response?.data?.error || "Failed to update expense");
@@ -429,11 +510,17 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // Transform purchase data for API
       const apiData = {
         supplierName: purchaseData.supplierName,
+        supplierPhone: purchaseData.supplierPhone,
         items: purchaseData.items.map((item) => ({
           productId: item.productId,
           quantity: item.quantity,
           cost: item.cost,
+          discount: item.discount || 0,
         })),
+        subtotal: purchaseData.subtotal,
+        tax: purchaseData.tax || 0,
+        total: purchaseData.total,
+        payments: purchaseData.payments,
         date: purchaseData.date,
       };
 
@@ -442,6 +529,46 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       await refreshProducts(); // Refresh products to update stock
     } catch (err: any) {
       setError(err.response?.data?.error || "Failed to create purchase");
+      throw err;
+    }
+  };
+
+  const updatePurchase = async (id: string, purchaseData: Partial<Purchase>) => {
+    try {
+      setError(null);
+      const apiData: any = {};
+      if (purchaseData.supplierName !== undefined) apiData.supplierName = purchaseData.supplierName;
+      if (purchaseData.supplierPhone !== undefined) apiData.supplierPhone = purchaseData.supplierPhone;
+      if (purchaseData.items !== undefined) {
+        apiData.items = purchaseData.items.map((item) => ({
+          productId: item.productId,
+          quantity: item.quantity,
+          cost: item.cost,
+          discount: item.discount || 0,
+        }));
+      }
+      if (purchaseData.subtotal !== undefined) apiData.subtotal = purchaseData.subtotal;
+      if (purchaseData.tax !== undefined) apiData.tax = purchaseData.tax;
+      if (purchaseData.total !== undefined) apiData.total = purchaseData.total;
+      if (purchaseData.payments !== undefined) apiData.payments = purchaseData.payments;
+      if (purchaseData.date !== undefined) apiData.date = purchaseData.date;
+
+      const updatedPurchase = await api.updatePurchase(id, apiData);
+      setPurchases(purchases.map((p) => (p.id === id ? updatedPurchase : p)));
+      await refreshProducts(); // Refresh products to update stock
+    } catch (err: any) {
+      setError(err.response?.data?.error || "Failed to update purchase");
+      throw err;
+    }
+  };
+
+  const addPaymentToPurchase = async (id: string, payment: PurchasePayment & { date?: string }) => {
+    try {
+      setError(null);
+      const updatedPurchase = await api.addPaymentToPurchase(id, payment);
+      setPurchases(purchases.map((p) => (p.id === id ? updatedPurchase : p)));
+    } catch (err: any) {
+      setError(err.response?.data?.error || "Failed to add payment");
       throw err;
     }
   };
@@ -596,6 +723,120 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
+  // Bank Accounts functions
+  const refreshBankAccounts = async () => {
+    if (loadingBankAccounts) return; // Prevent duplicate requests
+    try {
+      setLoadingBankAccounts(true);
+      const data = await api.getBankAccounts();
+      setBankAccounts(data);
+    } catch (err: any) {
+      setError(err.response?.data?.error || "Failed to load bank accounts");
+      throw err;
+    } finally {
+      setLoadingBankAccounts(false);
+    }
+  };
+
+  const addBankAccount = async (accountData: any) => {
+    try {
+      setError(null);
+      const newAccount = await api.createBankAccount(accountData);
+      setBankAccounts([...bankAccounts, newAccount]);
+    } catch (err: any) {
+      setError(err.response?.data?.error || "Failed to create bank account");
+      throw err;
+    }
+  };
+
+  const updateBankAccount = async (id: string, accountData: Partial<any>) => {
+    try {
+      setError(null);
+      const updatedAccount = await api.updateBankAccount(id, accountData);
+      setBankAccounts(bankAccounts.map((a) => (a.id === id ? updatedAccount : a)));
+    } catch (err: any) {
+      setError(err.response?.data?.error || "Failed to update bank account");
+      throw err;
+    }
+  };
+
+  const deleteBankAccount = async (id: string) => {
+    try {
+      setError(null);
+      await api.deleteBankAccount(id);
+      setBankAccounts(bankAccounts.filter((a) => a.id !== id));
+    } catch (err: any) {
+      setError(err.response?.data?.error || "Failed to delete bank account");
+      throw err;
+    }
+  };
+
+  const getDefaultBankAccount = async () => {
+    try {
+      const account = await api.getDefaultBankAccount();
+      return account;
+    } catch (err: any) {
+      return null;
+    }
+  };
+
+  // Cards functions
+  const refreshCards = async () => {
+    if (loadingCards) return; // Prevent duplicate requests
+    try {
+      setLoadingCards(true);
+      const data = await api.getCards();
+      setCards(data);
+    } catch (err: any) {
+      setError(err.response?.data?.error || "Failed to load cards");
+      throw err;
+    } finally {
+      setLoadingCards(false);
+    }
+  };
+
+  const addCard = async (cardData: any) => {
+    try {
+      setError(null);
+      const newCard = await api.createCard(cardData);
+      setCards([...cards, newCard]);
+    } catch (err: any) {
+      setError(err.response?.data?.error || "Failed to create card");
+      throw err;
+    }
+  };
+
+  const updateCard = async (id: string, cardData: any) => {
+    try {
+      setError(null);
+      const updatedCard = await api.updateCard(id, cardData);
+      setCards(cards.map((c) => (c.id === id ? updatedCard : c)));
+    } catch (err: any) {
+      setError(err.response?.data?.error || "Failed to update card");
+      throw err;
+    }
+  };
+
+  const deleteCard = async (id: string) => {
+    try {
+      setError(null);
+      await api.deleteCard(id);
+      setCards(cards.filter((c) => c.id !== id));
+    } catch (err: any) {
+      setError(err.response?.data?.error || "Failed to delete card");
+      throw err;
+    }
+  };
+
+  const getDefaultCard = async () => {
+    try {
+      const card = await api.getDefaultCard();
+      return card;
+    } catch (err: any) {
+      return null;
+    }
+  };
+
   const value: DataContextType = {
     users,
     currentUser,
@@ -629,6 +870,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     refreshExpenses,
     purchases,
     addPurchase,
+    updatePurchase,
+    addPaymentToPurchase,
     getPurchasesByDateRange,
     refreshPurchases,
     customers,
@@ -647,6 +890,18 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     settings,
     updateSettings,
     refreshSettings,
+    bankAccounts,
+    refreshBankAccounts,
+    addBankAccount,
+    updateBankAccount,
+    deleteBankAccount,
+    getDefaultBankAccount,
+    cards,
+    refreshCards,
+    addCard,
+    updateCard,
+    deleteCard,
+    getDefaultCard,
     exportData,
     importData,
   };

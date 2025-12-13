@@ -18,10 +18,12 @@ export default function ProductForm() {
   const [formData, setFormData] = useState({
     name: "",
     category: "",
-    cost: 0,
     salePrice: 0,
-    quantity: "",
-    minStockLevel: "",
+    shopQuantity: 0,
+    warehouseQuantity: 0,
+    minStockLevel: 0,
+    model: "",
+    manufacturer: "",
     barcode: "",
     image: "",
   });
@@ -33,11 +35,13 @@ export default function ProductForm() {
       if (product) {
         setFormData({
           name: product.name,
-          category: product.category,
-          cost: product.cost,
-          salePrice: product.salePrice,
-          quantity: product.quantity.toString(),
-          minStockLevel: product.minStockLevel.toString(),
+          category: product.category || "",
+          salePrice: product.salePrice || 0,
+          shopQuantity: product.shopQuantity || 0,
+          warehouseQuantity: product.warehouseQuantity || 0,
+          minStockLevel: product.minStockLevel,
+          model: product.model || "",
+          manufacturer: product.manufacturer || "",
           barcode: product.barcode || "",
           image: product.image || "",
         });
@@ -76,27 +80,33 @@ export default function ProductForm() {
     setFormData({ ...formData, image: "" });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     const productData = {
       name: formData.name,
-      category: formData.category,
-      cost: formData.cost,
-      salePrice: formData.salePrice,
-      quantity: parseInt(formData.quantity),
-      minStockLevel: parseInt(formData.minStockLevel),
+      category: formData.category || undefined,
+      salePrice: formData.salePrice || undefined,
+      shopQuantity: formData.shopQuantity,
+      warehouseQuantity: formData.warehouseQuantity,
+      minStockLevel: formData.minStockLevel,
+      model: formData.model || undefined,
+      manufacturer: formData.manufacturer || undefined,
       barcode: formData.barcode || undefined,
       image: formData.image || undefined,
     };
 
-    if (isEdit && id) {
-      updateProduct(id, productData);
-    } else {
-      addProduct(productData);
+    try {
+      if (isEdit && id) {
+        await updateProduct(id, productData);
+      } else {
+        await addProduct(productData);
+      }
+      navigate("/inventory/products");
+    } catch (err: any) {
+      alert(err.response?.data?.error || "Failed to save product. Please try again.");
+      console.error("Error saving product:", err);
     }
-
-    navigate("/inventory/products");
   };
 
   return (
@@ -135,49 +145,57 @@ export default function ProductForm() {
           </div>
 
           <div>
-            <Label>
-              Category <span className="text-error-500">*</span>
-            </Label>
+            <Label>Category</Label>
             <CategorySelect
               value={formData.category}
               onChange={(value) =>
                 setFormData({ ...formData, category: value })
               }
-              required
+            />
+          </div>
+
+          <div>
+            <Label>Sale Price</Label>
+            <Input
+              type="number"
+              step={0.01}
+              min="0"
+              value={String(formData.salePrice)}
+              onChange={(e) =>
+                setFormData({ ...formData, salePrice: parseFloat(e.target.value) || 0 })
+              }
+              placeholder="0.00"
             />
           </div>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
               <Label>
-                Cost Price <span className="text-error-500">*</span>
+                Shop Quantity <span className="text-error-500">*</span>
               </Label>
               <Input
                 type="number"
-                step={0.01}
                 min="0"
-                value={String(formData.cost)}
+                value={String(formData.shopQuantity)}
                 onChange={(e) =>
-                  setFormData({ ...formData, cost: parseFloat(e.target.value) || 0 })
+                  setFormData({ ...formData, shopQuantity: parseInt(e.target.value) || 0 })
                 }
-                placeholder="0.00"
+                placeholder="0"
                 required
               />
             </div>
-
             <div>
               <Label>
-                Sale Price <span className="text-error-500">*</span>
+                Warehouse Quantity <span className="text-error-500">*</span>
               </Label>
               <Input
                 type="number"
-                step={0.01}
                 min="0"
-                value={String(formData.salePrice)}
+                value={String(formData.warehouseQuantity)}
                 onChange={(e) =>
-                  setFormData({ ...formData, salePrice: parseFloat(e.target.value) || 0 })
+                  setFormData({ ...formData, warehouseQuantity: parseInt(e.target.value) || 0 })
                 }
-                placeholder="0.00"
+                placeholder="0"
                 required
               />
             </div>
@@ -185,36 +203,41 @@ export default function ProductForm() {
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
-              <Label>
-                Quantity <span className="text-error-500">*</span>
-              </Label>
+              <Label>Model</Label>
               <Input
-                type="number"
-                min="0"
-                value={formData.quantity}
+                value={formData.model}
                 onChange={(e) =>
-                  setFormData({ ...formData, quantity: e.target.value })
+                  setFormData({ ...formData, model: e.target.value })
                 }
-                placeholder="0"
-                required
+                placeholder="Enter model (optional)"
               />
             </div>
-
             <div>
-              <Label>
-                Minimum Stock Level <span className="text-error-500">*</span>
-              </Label>
+              <Label>Manufacturer</Label>
               <Input
-                type="number"
-                min="0"
-                value={formData.minStockLevel}
+                value={formData.manufacturer}
                 onChange={(e) =>
-                  setFormData({ ...formData, minStockLevel: e.target.value })
+                  setFormData({ ...formData, manufacturer: e.target.value })
                 }
-                placeholder="0"
-                required
+                placeholder="Enter manufacturer (optional)"
               />
             </div>
+          </div>
+
+          <div>
+            <Label>
+              Minimum Stock Level <span className="text-error-500">*</span>
+            </Label>
+            <Input
+              type="number"
+              min="0"
+              value={String(formData.minStockLevel)}
+              onChange={(e) =>
+                setFormData({ ...formData, minStockLevel: parseInt(e.target.value) || 0 })
+              }
+              placeholder="0"
+              required
+            />
           </div>
 
           <div>

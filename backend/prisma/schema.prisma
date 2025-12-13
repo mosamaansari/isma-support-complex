@@ -20,6 +20,8 @@ enum UserRole {
 enum PaymentType {
   cash
   credit
+  card
+  bank_transfer
 }
 
 enum SaleStatus {
@@ -38,149 +40,171 @@ enum ExpenseCategory {
 }
 
 model User {
-  id            String   @id @default(cuid())
-  username      String   @unique
-  password      String
-  role          UserRole @default(cashier)
-  name          String
-  email         String?
+  id             String   @id @default(cuid())
+  username       String   @unique
+  password       String
+  role           UserRole @default(cashier)
+  name           String
+  email          String?
   profilePicture String?
-  permissions   String[] @default([])
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  permissions    String[] @default([])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  sales     Sale[]
-  expenses  Expense[]
-  purchases Purchase[]
+  sales              Sale[]
+  expenses           Expense[]
+  purchases          Purchase[]
+  openingBalances    DailyOpeningBalance[]
 
   @@map("users")
 }
 
 model Product {
-  id            String   @id @default(cuid())
-  name          String
-  category      String
-  categoryId    String?
-  cost          Decimal  @db.Decimal(10, 2)
-  salePrice     Decimal  @db.Decimal(10, 2)
-  quantity      Int      @default(0)
-  minStockLevel Int      @default(0)
-  barcode       String?
-  image         String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id                String   @id @default(cuid())
+  name              String
+  category          String?
+  categoryId        String?
+  salePrice         Decimal? @db.Decimal(10, 2)
+  shopQuantity      Int      @default(0)
+  warehouseQuantity Int      @default(0)
+  minStockLevel     Int      @default(0)
+  model             String?
+  manufacturer      String?
+  barcode           String?
+  image             String?
+  description       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
-  categoryRef   Category? @relation(fields: [categoryId], references: [id])
-  saleItems    SaleItem[]
+  categoryRef   Category?      @relation(fields: [categoryId], references: [id])
+  saleItems     SaleItem[]
   purchaseItems PurchaseItem[]
 
   @@map("products")
 }
 
 model Customer {
-  id            String   @id @default(cuid())
-  name          String
-  phone         String
-  email         String?
-  address       String?
+  id             String   @id @default(cuid())
+  name           String
+  phone          String
+  email          String?
+  address        String?
   totalPurchases Decimal  @default(0) @db.Decimal(10, 2)
-  dueAmount     Decimal  @default(0) @db.Decimal(10, 2)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  dueAmount      Decimal  @default(0) @db.Decimal(10, 2)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  sales        Sale[]
+  sales Sale[]
 
   @@map("customers")
 }
 
 model Supplier {
-  id            String   @id @default(cuid())
-  name          String
-  phone         String
-  email         String?
-  address       String?
+  id             String   @id @default(cuid())
+  name           String
+  phone          String
+  email          String?
+  address        String?
   totalPurchases Decimal  @default(0) @db.Decimal(10, 2)
-  dueAmount     Decimal  @default(0) @db.Decimal(10, 2)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  dueAmount      Decimal  @default(0) @db.Decimal(10, 2)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  purchases    Purchase[]
+  purchases Purchase[]
 
   @@map("suppliers")
 }
 
 model Sale {
-  id           String      @id @default(cuid())
-  billNumber   String      @unique
-  subtotal     Decimal     @db.Decimal(10, 2)
-  discount     Decimal     @default(0) @db.Decimal(10, 2)
-  tax          Decimal     @default(0) @db.Decimal(10, 2)
-  total        Decimal     @db.Decimal(10, 2)
-  paymentType  PaymentType @default(cash)
-  status       SaleStatus  @default(completed)
-  customerId   String?
-  customerName String?
-  customerPhone String?
-  userId       String
-  userName     String
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
+  id              String      @id @default(cuid())
+  billNumber      String      @unique
+  subtotal        Decimal     @db.Decimal(10, 2)
+  discount        Decimal     @default(0) @db.Decimal(10, 2)
+  tax             Decimal     @default(0) @db.Decimal(10, 2)
+  total           Decimal     @db.Decimal(10, 2)
+  paymentType     PaymentType @default(cash)
+  payments        Json?       // Array of { type: "cash"|"card"|"credit"|"bank_transfer", amount: number, cardId?: string, bankAccountId?: string }
+  remainingBalance Decimal    @default(0) @db.Decimal(10, 2)
+  cardId          String?
+  bankAccountId   String?
+  status          SaleStatus  @default(completed)
+  customerId      String?
+  customerName    String?
+  customerPhone   String?
+  date            DateTime    @default(now())
+  userId          String
+  userName        String
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
 
-  user         User        @relation(fields: [userId], references: [id])
-  customer     Customer?   @relation(fields: [customerId], references: [id])
-  items        SaleItem[]
+  user        User         @relation(fields: [userId], references: [id])
+  customer    Customer?    @relation(fields: [customerId], references: [id])
+  card        Card?        @relation(fields: [cardId], references: [id])
+  bankAccount BankAccount? @relation(fields: [bankAccountId], references: [id])
+  items       SaleItem[]
 
   @@map("sales")
 }
 
 model SaleItem {
-  id          String   @id @default(cuid())
-  saleId      String
-  productId   String
-  productName String
-  quantity    Int
-  unitPrice   Decimal  @db.Decimal(10, 2)
-  discount    Decimal  @default(0) @db.Decimal(10, 2)
-  tax         Decimal  @default(0) @db.Decimal(10, 2)
-  total       Decimal  @db.Decimal(10, 2)
-  createdAt   DateTime @default(now())
+  id            String   @id @default(cuid())
+  saleId        String
+  productId     String
+  productName   String
+  quantity      Int
+  unitPrice     Decimal  @db.Decimal(10, 2)
+  discount      Decimal  @default(0) @db.Decimal(10, 2)
+  tax           Decimal  @default(0) @db.Decimal(10, 2)
+  total         Decimal  @db.Decimal(10, 2)
+  fromWarehouse Boolean  @default(false)
+  createdAt     DateTime @default(now())
 
-  sale        Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
-  product     Product  @relation(fields: [productId], references: [id])
+  sale    Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
 
   @@map("sale_items")
 }
 
 model Expense {
-  id          String          @id @default(cuid())
-  amount      Decimal         @db.Decimal(10, 2)
-  category    ExpenseCategory
-  description String
-  date        DateTime        @default(now())
-  userId      String
-  userName    String
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  id            String          @id @default(cuid())
+  amount        Decimal         @db.Decimal(10, 2)
+  category      ExpenseCategory
+  description   String
+  paymentType   PaymentType     @default(cash)
+  cardId        String?
+  bankAccountId String?
+  date          DateTime        @default(now())
+  userId        String
+  userName      String
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
 
-  user        User            @relation(fields: [userId], references: [id])
+  user        User         @relation(fields: [userId], references: [id])
+  card        Card?        @relation(fields: [cardId], references: [id])
+  bankAccount BankAccount? @relation(fields: [bankAccountId], references: [id])
 
   @@map("expenses")
 }
 
 model Purchase {
-  id          String   @id @default(cuid())
-  supplierId  String?
-  supplierName String
-  total       Decimal  @db.Decimal(10, 2)
-  date        DateTime @default(now())
-  userId      String
-  userName    String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id               String   @id @default(cuid())
+  supplierId       String?
+  supplierName     String
+  supplierPhone    String?
+  subtotal         Decimal  @db.Decimal(10, 2)
+  tax              Decimal  @default(0) @db.Decimal(10, 2)
+  total            Decimal  @db.Decimal(10, 2)
+  payments         Json? // Array of { type: "cash"|"card", amount: number, cardId?: string, bankAccountId?: string }
+  remainingBalance Decimal  @default(0) @db.Decimal(10, 2)
+  date             DateTime @default(now())
+  userId           String
+  userName         String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-  supplier    Supplier?       @relation(fields: [supplierId], references: [id])
-  user        User            @relation(fields: [userId], references: [id])
-  items       PurchaseItem[]
+  supplier Supplier?      @relation(fields: [supplierId], references: [id])
+  user     User           @relation(fields: [userId], references: [id])
+  items    PurchaseItem[]
 
   @@map("purchases")
 }
@@ -192,11 +216,13 @@ model PurchaseItem {
   productName String
   quantity    Int
   cost        Decimal  @db.Decimal(10, 2)
+  discount    Decimal  @default(0) @db.Decimal(10, 2)
   total       Decimal  @db.Decimal(10, 2)
+  toWarehouse Boolean  @default(true)
   createdAt   DateTime @default(now())
 
-  purchase    Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
-  product     Product  @relation(fields: [productId], references: [id])
+  purchase Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id])
 
   @@map("purchase_items")
 }
@@ -225,8 +251,59 @@ model Category {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  products    Product[]
+  products Product[]
 
   @@map("categories")
 }
 
+model Card {
+  id            String   @id @default(cuid())
+  name          String
+  cardNumber    String?
+  bankName      String?
+  accountHolder String?
+  isDefault     Boolean  @default(false)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  sales    Sale[]
+  expenses Expense[]
+
+  @@map("cards")
+}
+
+model BankAccount {
+  id            String   @id @default(cuid())
+  accountName   String
+  accountNumber String
+  bankName      String
+  ifscCode      String
+  accountHolder String?
+  branchName    String?
+  isDefault     Boolean  @default(false)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  sales    Sale[]
+  expenses Expense[]
+
+  @@map("bank_accounts")
+}
+
+model DailyOpeningBalance {
+  id            String   @id @default(cuid())
+  date          DateTime @unique @db.Date
+  cashBalance   Decimal  @default(0) @db.Decimal(10, 2)
+  cardBalances  Json?    // Array of { cardId: string, balance: number }
+  notes         String?
+  userId        String
+  userName      String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("daily_opening_balances")
+}

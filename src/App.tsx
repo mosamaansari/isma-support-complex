@@ -16,6 +16,7 @@ import BillPrint from "./pages/Sales/BillPrint";
 import ProductList from "./pages/Inventory/ProductList";
 import ProductForm from "./pages/Inventory/ProductForm";
 import PurchaseEntry from "./pages/Inventory/PurchaseEntry";
+import PurchaseList from "./pages/Inventory/PurchaseList";
 
 // Expenses Pages
 import ExpenseList from "./pages/Expenses/ExpenseList";
@@ -23,6 +24,7 @@ import ExpenseForm from "./pages/Expenses/ExpenseForm";
 
 // Reports
 import Reports from "./pages/Reports/Reports";
+import OpeningBalance from "./pages/Reports/OpeningBalance";
 
 // Users
 import UserList from "./pages/Users/UserList";
@@ -59,7 +61,8 @@ export default function App() {
             <Route path="/inventory/product/add" element={<ProductForm />} />
             <Route path="/inventory/product/edit/:id" element={<ProductForm />} />
             <Route path="/inventory/purchase" element={<PurchaseEntry />} />
-            <Route path="/inventory/purchases" element={<PurchaseEntry />} />
+            <Route path="/inventory/purchases" element={<PurchaseList />} />
+            <Route path="/inventory/purchase/edit/:id" element={<PurchaseEntry />} />
 
             {/* Expenses */}
             <Route path="/expenses" element={<ExpenseList />} />
@@ -68,6 +71,7 @@ export default function App() {
 
             {/* Reports */}
             <Route path="/reports" element={<Reports />} />
+            <Route path="/reports/opening-balance" element={<OpeningBalance />} />
 
             {/* Users (Admin Only) */}
             <Route path="/users" element={<UserList />} />

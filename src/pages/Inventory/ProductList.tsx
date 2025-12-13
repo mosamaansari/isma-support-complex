@@ -19,20 +19,24 @@ export default function ProductList() {
   const [searchTerm, setSearchTerm] = useState("");
   const [showLowStock, setShowLowStock] = useState(false);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const [hasTriedRefresh, setHasTriedRefresh] = useState(false);
 
-  // Refresh products on mount if empty
+  // Refresh products on mount if empty (only once)
   useEffect(() => {
-    if (products.length === 0 && !loading && currentUser) {
+    if (products.length === 0 && !loading && currentUser && !hasTriedRefresh) {
+      setHasTriedRefresh(true);
       refreshProducts().catch(console.error);
     }
-  }, [products.length, loading, currentUser, refreshProducts]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [products.length, loading, currentUser]);
 
   const lowStockProducts = getLowStockProducts();
   const filteredProducts = products.filter((product) => {
     const matchesSearch =
       product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.category.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesLowStock = !showLowStock || product.quantity <= product.minStockLevel;
+      (product.category && product.category.toLowerCase().includes(searchTerm.toLowerCase()));
+    const totalQuantity = (product.shopQuantity || 0) + (product.warehouseQuantity || 0);
+    const matchesLowStock = !showLowStock || totalQuantity <= product.minStockLevel;
     return matchesSearch && matchesLowStock;
   });
 
@@ -128,7 +132,11 @@ export default function ProductList() {
             <p className="text-2xl font-bold text-gray-800 dark:text-white">
               Rs.{" "}
               {products
-                .reduce((sum, p) => sum + (p.quantity || 0) * (p.cost || 0), 0)
+                .reduce((sum, p) => {
+                  const totalQuantity = (p.shopQuantity || 0) + (p.warehouseQuantity || 0);
+                  const price = p.salePrice || 0;
+                  return sum + totalQuantity * price;
+                }, 0)
                 .toFixed(2)}
             </p>
           </div>
@@ -198,7 +206,8 @@ export default function ProductList() {
               </tr>
             ) : (
               filteredProducts.map((product) => {
-                const isLowStock = product.quantity <= product.minStockLevel;
+                const totalQuantity = (product.shopQuantity || 0) + (product.warehouseQuantity || 0);
+                const isLowStock = totalQuantity <= product.minStockLevel;
                 return (
                   <tr
                     key={product.id}
@@ -224,7 +233,7 @@ export default function ProductList() {
                       {product.category}
                     </td>
                     <td className="p-4 text-gray-700 dark:text-gray-300">
-                      Rs. {Number(product.cost || 0).toFixed(2)}
+                      Rs. {product.salePrice ? Number(product.salePrice).toFixed(2) : "N/A"}
                     </td>
                     <td className="p-4 text-gray-700 dark:text-gray-300">
                       Rs. {Number(product.salePrice || 0).toFixed(2)}
@@ -237,7 +246,7 @@ export default function ProductList() {
                             : "text-gray-800 dark:text-white"
                         }`}
                       >
-                        {product.quantity}
+                        {(product.shopQuantity || 0) + (product.warehouseQuantity || 0)}
                       </span>
                     </td>
                     <td className="p-4 text-gray-700 dark:text-gray-300">

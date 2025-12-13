@@ -17,6 +17,8 @@ const usersRoutes = getRoute(require("./dist/routes/users.routes"));
 const settingsRoutes = getRoute(require("./dist/routes/settings.routes"));
 const categoriesRoutes = getRoute(require("./dist/routes/categories.routes"));
 const rolesRoutes = getRoute(require("./dist/routes/roles.routes"));
+const cardsRoutes = getRoute(require("./dist/routes/cards.routes"));
+const bankAccountsRoutes = getRoute(require("./dist/routes/bankAccounts.routes"));
 
 const app = express();
 
@@ -43,12 +45,12 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 // Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
-  message: "Too many requests from this IP, please try again later.",
-});
-app.use("/api/", limiter);
+// const limiter = rateLimit({
+//   windowMs: 1 * 60 * 1000, // 1 minutes
+//   max: 500, // limit each IP to 500 requests per windowMs
+//   message: "Too many requests from this IP, please try again later.",
+// });
+// app.use("/api/", limiter);
 
 // Health check
 app.get("/health", async (req, res) => {
@@ -99,6 +101,8 @@ app.get("/", (req, res) => {
       settings: "/api/settings",
       categories: "/api/categories",
       roles: "/api/roles",
+      cards: "/api/cards",
+      bankAccounts: "/api/bank-accounts",
     },
   });
 });
@@ -114,6 +118,8 @@ app.use("/api/users", usersRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/categories", categoriesRoutes);
 app.use("/api/roles", rolesRoutes);
+app.use("/api/cards", cardsRoutes);
+app.use("/api/bank-accounts", bankAccountsRoutes);
 
 // 404 handler
 app.use((req, res) => {
