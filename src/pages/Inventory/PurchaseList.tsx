@@ -10,7 +10,7 @@ import Select from "../../components/form/Select";
 import Label from "../../components/form/Label";
 
 export default function PurchaseList() {
-  const { purchases, refreshPurchases, currentUser, cards, refreshCards, bankAccounts, refreshBankAccounts, addPaymentToPurchase } = useData();
+  const { purchases, refreshPurchases, cards, refreshCards, bankAccounts, refreshBankAccounts, addPaymentToPurchase } = useData();
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedPurchase, setSelectedPurchase] = useState<Purchase | null>(null);
   const [showAddPaymentModal, setShowAddPaymentModal] = useState(false);
@@ -344,7 +344,7 @@ export default function PurchaseList() {
                   type="number"
                   step={0.01}
                   min="0"
-                  max={selectedPurchase.remainingBalance}
+                  max={String(selectedPurchase.remainingBalance)}
                   value={paymentData.amount}
                   onChange={(e) => setPaymentData({ ...paymentData, amount: parseFloat(e.target.value) || 0 })}
                   placeholder="Enter amount"

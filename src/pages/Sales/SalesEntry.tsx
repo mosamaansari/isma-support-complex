@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import PageMeta from "../../components/common/PageMeta";
 import { useData } from "../../context/DataContext";
-import { Product, SaleItem, PaymentType, SalePayment } from "../../types";
+import { Product, SaleItem, SalePayment } from "../../types";
 import Input from "../../components/form/input/InputField";
 import Label from "../../components/form/Label";
 import Select from "../../components/form/Select";
@@ -275,6 +275,7 @@ export default function SalesEntry() {
         discount: discountAmount,
         tax: taxAmount,
         total,
+        paymentType: payments[0]?.type || "cash", // Required for backward compatibility
         payments: payments.map(p => ({
           type: p.type,
           amount: p.amount,
@@ -299,7 +300,7 @@ export default function SalesEntry() {
     }
   };
 
-  const { subtotal, discountAmount, taxAmount, total } = calculateTotals();
+  const { subtotal, total } = calculateTotals();
   const totalPaid = payments.reduce((sum, payment) => sum + payment.amount, 0);
   const remainingBalance = total - totalPaid;
 
@@ -517,7 +518,7 @@ export default function SalesEntry() {
                       <Input
                         type="number"
                         min="0"
-                        max={remainingBalance + payment.amount}
+                        max={String(remainingBalance + payment.amount)}
                         value={payment.amount}
                         onChange={(e) =>
                           updatePayment(index, "amount", parseFloat(e.target.value) || 0)

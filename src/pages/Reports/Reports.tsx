@@ -98,7 +98,6 @@ export default function Reports() {
     }
 
     const dateRange = getDateRange();
-    const isDaily = "openingBalance" in report && !("summary" in report);
 
     // Get the report content HTML
     const reportContent = printRef.current.innerHTML;

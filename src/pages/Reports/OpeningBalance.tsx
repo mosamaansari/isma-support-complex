@@ -10,7 +10,7 @@ import { ChevronLeftIcon, PlusIcon, TrashBinIcon } from "../../icons";
 import api from "../../services/api";
 
 export default function OpeningBalance() {
-  const { cards, refreshCards, currentUser } = useData();
+  const { cards, refreshCards } = useData();
   const navigate = useNavigate();
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [cashBalance, setCashBalance] = useState(0);

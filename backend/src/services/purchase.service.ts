@@ -343,7 +343,8 @@ class PurchaseService {
       updateData.payments = data.payments as any;
       // Recalculate remaining balance
       const totalPaid = data.payments.reduce((sum, payment) => sum + payment.amount, 0);
-      updateData.remainingBalance = (data.total || purchase.total) - totalPaid;
+      const purchaseTotal = data.total !== undefined ? Number(data.total) : Number(purchase.total);
+      updateData.remainingBalance = purchaseTotal - totalPaid;
     }
     if (data.date) updateData.date = new Date(data.date);
 
@@ -385,7 +386,7 @@ class PurchaseService {
     const currentPayments = (purchase.payments as any) || [];
     const newPayments = [...currentPayments, payment];
     const totalPaid = newPayments.reduce((sum, p: any) => sum + p.amount, 0);
-    const remainingBalance = purchase.total - totalPaid;
+    const remainingBalance = Number(purchase.total) - totalPaid;
 
     if (remainingBalance < 0) {
       throw new Error("Payment amount exceeds remaining balance");
@@ -413,7 +414,7 @@ class PurchaseService {
         where: { id: purchase.supplierId },
       });
       if (supplier) {
-        const oldDue = supplier.dueAmount;
+        const oldDue = Number(supplier.dueAmount);
         const newDue = oldDue - payment.amount;
         await prisma.supplier.update({
           where: { id: purchase.supplierId },

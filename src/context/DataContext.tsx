@@ -5,6 +5,7 @@ import {
   Sale,
   Expense,
   Purchase,
+  PurchasePayment,
   Customer,
   Supplier,
   ShopSettings,
