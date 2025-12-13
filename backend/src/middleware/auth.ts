@@ -1,8 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import prisma from "../config/database";
 
 export interface AuthRequest extends Request {
   user?: {
@@ -10,6 +8,7 @@ export interface AuthRequest extends Request {
     username: string;
     role: string;
     permissions?: string[];
+    userType?: "user" | "admin";
   };
 }
 
@@ -28,12 +27,49 @@ export const authenticate = async (
     const decoded = jwt.verify(
       token,
       process.env.JWT_SECRET || "your-secret-key"
-    ) as { userId: string };
+    ) as { userId: string; userType?: "user" | "admin" };
 
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.userId },
-      select: { id: true, username: true, role: true, permissions: true },
-    });
+    let user: any = null;
+
+    // Check based on userType
+    if (decoded.userType === "admin") {
+      user = await prisma.adminUser.findUnique({
+        where: { id: decoded.userId },
+        select: { id: true, username: true, role: true },
+      });
+      if (user) {
+        user.permissions = [];
+        user.userType = "admin";
+      }
+    } else {
+      // Default to regular user
+      user = await prisma.user.findUnique({
+        where: { id: decoded.userId },
+        select: { id: true, username: true, role: true, permissions: true },
+      });
+      if (user) {
+        user.userType = "user";
+      }
+    }
+
+    // If not found, try the other table (for backward compatibility)
+    if (!user) {
+      user = await prisma.user.findUnique({
+        where: { id: decoded.userId },
+        select: { id: true, username: true, role: true, permissions: true },
+      });
+      if (user) {
+        user.userType = "user";
+      } else {
+        const adminUser = await prisma.adminUser.findUnique({
+          where: { id: decoded.userId },
+          select: { id: true, username: true, role: true },
+        });
+        if (adminUser) {
+          user = { ...adminUser, permissions: [], userType: "admin" };
+        }
+      }
+    }
 
     if (!user) {
       return res.status(401).json({ error: "User not found" });

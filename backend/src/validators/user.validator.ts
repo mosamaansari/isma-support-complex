@@ -40,9 +40,9 @@ export const createUserSchema = Joi.object({
     }),
   role: Joi.string()
     .required()
-    .valid("superadmin", "admin", "cashier", "warehouse_manager")
+    .valid("cashier", "warehouse_manager")
     .messages({
-      "any.only": "Role must be one of: superadmin, admin, cashier, warehouse_manager",
+      "any.only": "Role must be one of: cashier, warehouse_manager",
       "any.required": "Role is required",
     }),
   permissions: Joi.array()
@@ -78,9 +78,9 @@ export const updateUserSchema = Joi.object({
     }),
   role: Joi.string()
     .optional()
-    .valid("superadmin", "admin", "cashier", "warehouse_manager")
+    .valid("cashier", "warehouse_manager")
     .messages({
-      "any.only": "Role must be one of: superadmin, admin, cashier, warehouse_manager",
+      "any.only": "Role must be one of: cashier, warehouse_manager",
     }),
   permissions: Joi.array()
     .items(Joi.string())

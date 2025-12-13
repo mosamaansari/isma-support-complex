@@ -19,9 +19,9 @@ export default function AuthLayout({
             <div className="flex flex-col items-center max-w-xs">
               <Link to="/" className="block mb-4">
                 <img
-                  width={231}
-                  height={48}
-                  src="/images/logo/logo.png"
+                  width={400}
+                  height={60}
+                  src="/images/logo/logo-transparent.png"
                   alt="Isma Sports Complex"
                 />
               </Link>

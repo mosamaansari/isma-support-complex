@@ -6,9 +6,9 @@ const prisma = new PrismaClient();
 async function main() {
   console.log("Seeding database...");
 
-  // Create SuperAdmin
+  // Create SuperAdmin in AdminUser table
   const superAdminPassword = await bcrypt.hash("superadmin123", 10);
-  const superAdmin = await prisma.user.upsert({
+  const superAdmin = await prisma.adminUser.upsert({
     where: { username: "superadmin" },
     update: {},
     create: {
@@ -20,9 +20,9 @@ async function main() {
     },
   });
 
-  // Create Admin
+  // Create Admin in AdminUser table
   const adminPassword = await bcrypt.hash("admin123", 10);
-  const admin = await prisma.user.upsert({
+  const admin = await prisma.adminUser.upsert({
     where: { username: "admin" },
     update: {},
     create: {

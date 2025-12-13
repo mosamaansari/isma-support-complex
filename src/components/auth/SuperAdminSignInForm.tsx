@@ -17,9 +17,9 @@ export default function SuperAdminSignInForm() {
   const { superAdminLogin, currentUser, error: contextError } = useData();
   const navigate = useNavigate();
 
-  // Check if already logged in
+  // Check if already logged in (superadmin or admin)
   useEffect(() => {
-    if (currentUser && currentUser.role === "superadmin") {
+    if (currentUser && (currentUser.role === "superadmin" || currentUser.role === "admin")) {
       navigate("/", { replace: true });
     }
   }, [currentUser, navigate]);
@@ -46,11 +46,19 @@ export default function SuperAdminSignInForm() {
         <div>
           <div className="mb-5 sm:mb-8">
             <h1 className="mb-2 font-semibold text-gray-800 text-title-sm dark:text-white/90 sm:text-title-md">
-              Super Admin Sign In
+              Admin Sign In
             </h1>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              Enter your super admin credentials to sign in!
+              Enter your admin credentials to sign in!
             </p>
+            <div className="mt-3">
+              <Link
+                to="/signin"
+                className="text-sm text-brand-500 hover:text-brand-600 dark:text-brand-400"
+              >
+                Regular User? Sign in here
+              </Link>
+            </div>
           </div>
           <div>
             <form
@@ -85,7 +93,7 @@ export default function SuperAdminSignInForm() {
                   <Input
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
-                    placeholder="Enter super admin username"
+                    placeholder="Enter admin username"
                     required
                   />
                 </div>
@@ -121,7 +129,7 @@ export default function SuperAdminSignInForm() {
                 </div>
                 <div>
                   <Button type="submit" className="w-full" size="sm" disabled={isLoading}>
-                    {isLoading ? "Signing in..." : "Sign in as Super Admin"}
+                    {isLoading ? "Signing in..." : "Sign in as Admin"}
                   </Button>
                 </div>
               </div>

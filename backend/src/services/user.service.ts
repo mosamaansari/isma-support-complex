@@ -52,12 +52,26 @@ class UserService {
     permissions?: string[];
     profilePicture?: string;
   }) {
-    // Check if username exists
+    // Only allow cashier and warehouse_manager roles
+    if (data.role !== "cashier" && data.role !== "warehouse_manager") {
+      throw new Error("Invalid role. Only cashier and warehouse_manager are allowed");
+    }
+
+    // Check if username exists in regular users
     const existingUser = await prisma.user.findUnique({
       where: { username: data.username },
     });
 
     if (existingUser) {
+      throw new Error("Username already exists");
+    }
+
+    // Check if username exists in admin users
+    const existingAdminUser = await prisma.adminUser.findUnique({
+      where: { username: data.username },
+    });
+
+    if (existingAdminUser) {
       throw new Error("Username already exists");
     }
 
@@ -105,6 +119,11 @@ class UserService {
 
     if (!user) {
       throw new Error("User not found");
+    }
+
+    // Only allow cashier and warehouse_manager roles
+    if (data.role && data.role !== "cashier" && data.role !== "warehouse_manager") {
+      throw new Error("Invalid role. Only cashier and warehouse_manager are allowed");
     }
 
     const updateData: any = {};
@@ -218,12 +237,12 @@ class UserService {
       throw new Error("User not found");
     }
 
-    // Only superadmin can modify superadmin
-    if (targetUser.role === "superadmin" && currentUserRole !== "superadmin") {
-      return false;
+    // Admin and superadmin can modify regular users
+    if (currentUserRole === "admin" || currentUserRole === "superadmin") {
+      return true;
     }
 
-    return true;
+    return false;
   }
 }
 

@@ -10,6 +10,7 @@ export interface User {
   email?: string;
   profilePicture?: string; // Profile picture URL or base64
   permissions?: string[]; // Array of allowed page paths
+  userType?: "user" | "admin"; // Type to distinguish regular users from admin users
   createdAt: string;
 }
 

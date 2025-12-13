@@ -30,9 +30,14 @@ class UserController {
 
   async createUser(req: AuthRequest, res: Response) {
     try {
-      // Only superadmin can create superadmin
-      if (req.body.role === "superadmin" && req.user?.role !== "superadmin") {
-        return res.status(403).json({ error: "Only superadmin can create superadmin users" });
+      // Only admin and superadmin can create users
+      if (req.user?.role !== "admin" && req.user?.role !== "superadmin") {
+        return res.status(403).json({ error: "Only admin and superadmin can create users" });
+      }
+
+      // Prevent creating admin/superadmin in user table
+      if (req.body.role === "superadmin" || req.body.role === "admin") {
+        return res.status(400).json({ error: "Cannot create admin or superadmin in users table" });
       }
 
       const user = await userService.createUser(req.body);
@@ -40,7 +45,7 @@ class UserController {
       res.status(201).json(user);
     } catch (error: any) {
       logger.error("Create user error:", error);
-      if (error.message === "Username already exists") {
+      if (error.message === "Username already exists" || error.message.includes("Invalid role")) {
         res.status(400).json({ error: error.message });
       } else {
         res.status(500).json({ error: "Internal server error" });
@@ -50,6 +55,16 @@ class UserController {
 
   async updateUser(req: AuthRequest, res: Response) {
     try {
+      // Only admin and superadmin can update users
+      if (req.user?.role !== "admin" && req.user?.role !== "superadmin") {
+        return res.status(403).json({ error: "Not authorized to update users" });
+      }
+
+      // Prevent updating to admin/superadmin role
+      if (req.body.role === "superadmin" || req.body.role === "admin") {
+        return res.status(400).json({ error: "Cannot set role to admin or superadmin" });
+      }
+
       const canModify = await userService.canUserModify(
         req.params.id,
         req.user!.id,
@@ -65,8 +80,8 @@ class UserController {
       res.json(user);
     } catch (error: any) {
       logger.error("Update user error:", error);
-      if (error.message === "User not found") {
-        res.status(404).json({ error: error.message });
+      if (error.message === "User not found" || error.message.includes("Invalid role")) {
+        res.status(400).json({ error: error.message });
       } else {
         res.status(500).json({ error: "Internal server error" });
       }

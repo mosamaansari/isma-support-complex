@@ -24,8 +24,8 @@ class AuthController {
       const result = await authService.superAdminLogin(username, password);
       res.json(result);
     } catch (error: any) {
-      logger.error("SuperAdmin login error:", error);
-      const statusCode = error.message === "Invalid superadmin credentials" ? 401 : 500;
+      logger.error("Admin login error:", error);
+      const statusCode = error.message.includes("Invalid admin credentials") || error.message.includes("Invalid superadmin credentials") ? 401 : 500;
       res.status(statusCode).json({
         error: error.message || "Internal server error",
       });

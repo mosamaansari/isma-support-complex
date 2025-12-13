@@ -17,6 +17,11 @@ enum UserRole {
   warehouse_manager
 }
 
+enum RegularUserRole {
+  cashier
+  warehouse_manager
+}
+
 enum PaymentType {
   cash
   credit
@@ -39,17 +44,31 @@ enum ExpenseCategory {
   other
 }
 
-model User {
+model AdminUser {
   id             String   @id @default(cuid())
   username       String   @unique
   password       String
-  role           UserRole @default(cashier)
+  role           UserRole // superadmin or admin only
   name           String
   email          String?
   profilePicture String?
-  permissions    String[] @default([])
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+
+  @@map("admin_users")
+}
+
+model User {
+  id             String         @id @default(cuid())
+  username       String         @unique
+  password       String
+  role           RegularUserRole @default(cashier)
+  name           String
+  email          String?
+  profilePicture String?
+  permissions    String[]       @default([])
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
 
   sales              Sale[]
   expenses           Expense[]

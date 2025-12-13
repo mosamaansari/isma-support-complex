@@ -1,20 +1,24 @@
 import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router";
 import PageMeta from "../../components/common/PageMeta";
+import { useData } from "../../context/DataContext";
 import Input from "../../components/form/input/InputField";
 import Label from "../../components/form/Label";
 import Button from "../../components/ui/button/Button";
 import { DownloadIcon, PlusIcon } from "../../icons";
 import api from "../../services/api";
-import { DailyReport, DateRangeReport } from "../../types";
 
 export default function Reports() {
-  const [reportType, setReportType] = useState<"daily" | "weekly" | "monthly" | "yearly" | "custom">("daily");
+  const { getSalesByDateRange, getExpensesByDateRange } = useData();
+  const [reportType, setReportType] = useState<"daily" | "weekly" | "monthly" | "custom">("daily");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [report, setReport] = useState<DailyReport | DateRangeReport | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [openingBalance, setOpeningBalance] = useState<{
+    cash: number;
+    cards: Array<{ cardId: string; cardName: string; balance: number }>;
+    total: number;
+  } | null>(null);
+  const printRef = useRef<HTMLDivElement>(null);
 
   const getDateRange = () => {
     const today = new Date();
@@ -34,10 +38,6 @@ export default function Reports() {
         start = new Date(today.getFullYear(), today.getMonth(), 1);
         end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
         break;
-      case "yearly":
-        start = new Date(today.getFullYear(), 0, 1);
-        end = new Date(today.getFullYear(), 11, 31);
-        break;
       case "custom":
         if (!startDate || !endDate) return null;
         start = new Date(startDate);
@@ -51,45 +51,104 @@ export default function Reports() {
     };
   };
 
-  const loadReport = async () => {
-    const dateRange = getDateRange();
-    if (!dateRange) {
-      setError("Please select date range");
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
+  const loadOpeningBalance = async (date: string) => {
     try {
-      if (dateRange.start === dateRange.end) {
-        // Daily report
-        const dailyReport = await api.getDailyReport(dateRange.start);
-        setReport(dailyReport);
+      const balance = await api.getOpeningBalance(date);
+      if (balance) {
+        const cards = balance.cardBalances || [];
+        const cardTotal = cards.reduce((sum: number, cb: any) => sum + Number(cb.balance || 0), 0);
+        setOpeningBalance({
+          cash: Number(balance.cashBalance || 0),
+          cards: cards.map((cb: any) => ({
+            cardId: cb.cardId,
+            cardName: cb.cardName || "Card",
+            balance: Number(cb.balance || 0),
+          })),
+          total: Number(balance.cashBalance || 0) + cardTotal,
+        });
       } else {
-        // Date range report
-        const rangeReport = await api.getDateRangeReport(dateRange.start, dateRange.end);
-        setReport(rangeReport);
+        setOpeningBalance(null);
       }
-    } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to load report");
-      console.error("Error loading report:", err);
-    } finally {
-      setLoading(false);
+    } catch (error: any) {
+      if (error.response?.status !== 404) {
+        console.error("Error loading opening balance:", error);
+      }
+      setOpeningBalance(null);
     }
   };
 
   useEffect(() => {
     const dateRange = getDateRange();
-    if (dateRange && (reportType !== "custom" || (startDate && endDate))) {
-      loadReport();
+    if (dateRange) {
+      // Load opening balance for the start date
+      loadOpeningBalance(dateRange.start);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reportType, startDate, endDate]);
 
-  const printRef = useRef<HTMLDivElement>(null);
+  const dateRange = getDateRange();
+  const filteredSales = dateRange
+    ? getSalesByDateRange(dateRange.start, dateRange.end)
+    : [];
+  const filteredExpenses = dateRange
+    ? getExpensesByDateRange(dateRange.start, dateRange.end)
+    : [];
+
+  const totalSales = filteredSales.reduce((sum, s) => sum + Number(s.total), 0);
+  const totalExpenses = filteredExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
+  const openingTotal = openingBalance?.total || 0;
+  const combinedTotal = openingTotal + totalSales;
+  const closingBalance = combinedTotal - totalExpenses;
+  const profit = totalSales - totalExpenses;
+
+  const exportToCSV = () => {
+    if (!dateRange) return;
+
+    const csvRows = [
+      ["Report Type", reportType],
+      ["Date Range", `${dateRange.start} to ${dateRange.end}`],
+      [],
+      ["Opening Balance", openingTotal.toFixed(2)],
+      ["Total Sales", totalSales.toFixed(2)],
+      ["Combined (Opening + Sales)", combinedTotal.toFixed(2)],
+      ["Total Expenses", totalExpenses.toFixed(2)],
+      ["Closing Balance", closingBalance.toFixed(2)],
+      [],
+      ["Sales Report"],
+      ["Bill Number", "Date", "Customer", "Total"],
+      ...filteredSales.map((s) => [
+        s.billNumber,
+        new Date(s.createdAt).toLocaleDateString(),
+        s.customerName || "Walk-in",
+        Number(s.total).toFixed(2),
+      ]),
+      [],
+      ["Expenses Report"],
+      ["Date", "Category", "Description", "Amount"],
+      ...filteredExpenses.map((e) => [
+        new Date(e.date).toLocaleDateString(),
+        e.category,
+        e.description,
+        Number(e.amount).toFixed(2),
+      ]),
+      [],
+      ["Profit/Loss", profit.toFixed(2)],
+    ];
+
+    const csvContent =
+      "data:text/csv;charset=utf-8," +
+      csvRows.map((row) => row.join(",")).join("\n");
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `report_${dateRange.start}_${dateRange.end}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const exportToPDF = () => {
-    if (!printRef.current || !report) return;
+    if (!printRef.current || !dateRange) return;
 
     const printWindow = window.open("", "_blank");
     if (!printWindow) {
@@ -97,16 +156,13 @@ export default function Reports() {
       return;
     }
 
-    const dateRange = getDateRange();
-
-    // Get the report content HTML
     const reportContent = printRef.current.innerHTML;
 
     printWindow.document.write(`
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Report - ${dateRange?.start}${dateRange?.start !== dateRange?.end ? ` to ${dateRange?.end}` : ""}</title>
+          <title>Report - ${dateRange.start}${dateRange.start !== dateRange.end ? ` to ${dateRange.end}` : ""}</title>
           <style>
             @media print {
               @page { margin: 15mm; }
@@ -132,36 +188,6 @@ export default function Reports() {
               margin-bottom: 10px; 
               font-size: 18px;
             }
-            h3 { 
-              color: #000; 
-              margin-top: 15px; 
-              margin-bottom: 8px; 
-              font-size: 16px;
-            }
-            .summary-grid {
-              display: grid;
-              grid-template-columns: repeat(2, 1fr);
-              gap: 15px;
-              margin: 20px 0;
-            }
-            .summary-card {
-              background: #f9f9f9;
-              padding: 15px;
-              border: 1px solid #ddd;
-              border-radius: 5px;
-            }
-            .summary-card p {
-              margin: 5px 0;
-            }
-            .summary-label {
-              font-size: 12px;
-              color: #666;
-            }
-            .summary-value {
-              font-size: 20px;
-              font-weight: bold;
-              color: #000;
-            }
             table {
               width: 100%;
               border-collapse: collapse;
@@ -180,14 +206,14 @@ export default function Reports() {
               font-weight: bold;
               font-size: 1.1em;
             }
-            p {
-              margin: 5px 0;
+            .financial-flow {
+              background-color: #f9f9f9;
             }
           </style>
         </head>
         <body>
-          <h1>Isma Sports Complex - Daily Report</h1>
-          <p><strong>Date:</strong> ${dateRange?.start}${dateRange?.start !== dateRange?.end ? ` to ${dateRange?.end}` : ""}</p>
+          <h1>Isma Sports Complex - Financial Report</h1>
+          <p><strong>Date Range:</strong> ${dateRange.start}${dateRange.start !== dateRange.end ? ` to ${dateRange.end}` : ""}</p>
           ${reportContent}
           <script>
             window.onload = function() {
@@ -203,18 +229,14 @@ export default function Reports() {
     printWindow.document.close();
   };
 
-  const dateRange = getDateRange();
-  const isDaily = report && "openingBalance" in report && !("summary" in report);
-  const summary = isDaily ? null : (report as DateRangeReport)?.summary;
-
   return (
     <>
       <PageMeta
         title="Reports & Analysis | Isma Sports Complex"
-        description="View comprehensive daily reports"
+        description="View sales, expenses and profit reports"
       />
-      <div className="mb-6">
-        <div className="flex items-center justify-between mb-4">
+      <div className="mb-6" ref={printRef}>
+        <div className="flex items-center justify-between mb-4 no-print">
           <h1 className="text-2xl font-bold text-gray-800 dark:text-white">
             Reports & Analysis
           </h1>
@@ -225,23 +247,17 @@ export default function Reports() {
                 Add Opening Balance
               </Button>
             </Link>
-            {report && (
-              <Button onClick={exportToPDF} size="sm">
-                <DownloadIcon className="w-4 h-4 mr-2" />
-                Export to PDF
-              </Button>
-            )}
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 mb-6 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 mb-6 md:grid-cols-2 no-print">
           <div>
             <Label>Report Type</Label>
             <select
               value={reportType}
               onChange={(e) =>
                 setReportType(
-                  e.target.value as "daily" | "weekly" | "monthly" | "yearly" | "custom"
+                  e.target.value as "daily" | "weekly" | "monthly" | "custom"
                 )
               }
               className="w-full px-4 py-2 border border-gray-300 rounded-lg dark:bg-gray-800 dark:border-gray-700 dark:text-white"
@@ -249,7 +265,6 @@ export default function Reports() {
               <option value="daily">Daily</option>
               <option value="weekly">Weekly</option>
               <option value="monthly">Monthly</option>
-              <option value="yearly">Yearly</option>
               <option value="custom">Custom Range</option>
             </select>
           </div>
@@ -275,162 +290,255 @@ export default function Reports() {
           )}
         </div>
 
-        {loading && (
-          <div className="text-center py-8">
-            <p className="text-gray-500">Loading report...</p>
-          </div>
-        )}
-
-        {error && (
-          <div className="p-4 mb-6 text-red-600 bg-red-50 rounded-lg dark:bg-red-900/20 dark:text-red-400">
-            {error}
-          </div>
-        )}
-
-        {report && !loading && (
-          <div ref={printRef}>
-            {/* Summary Cards */}
-            <div className="grid grid-cols-1 gap-4 mb-6 md:grid-cols-2 lg:grid-cols-4">
-              {isDaily ? (
-                <>
-                  <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-                    <p className="text-sm text-gray-600 dark:text-gray-400">Opening Balance</p>
-                    <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                      Rs. {(report as DailyReport).openingBalance.total.toFixed(2)}
-                    </p>
-                  </div>
-                  <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-                    <p className="text-sm text-gray-600 dark:text-gray-400">Total Sales</p>
-                    <p className="text-2xl font-bold text-green-600 dark:text-green-400">
-                      Rs. {(report as DailyReport).sales.total.toFixed(2)}
-                    </p>
-                  </div>
-                  <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-                    <p className="text-sm text-gray-600 dark:text-gray-400">Total Purchases</p>
-                    <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
-                      Rs. {(report as DailyReport).purchases.total.toFixed(2)}
-                    </p>
-                  </div>
-                  <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-                    <p className="text-sm text-gray-600 dark:text-gray-400">Closing Balance</p>
-                    <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">
-                      Rs. {(report as DailyReport).closingBalance.total.toFixed(2)}
-                    </p>
-                  </div>
-                </>
-              ) : (
-                summary && (
-                  <>
-                    <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-                      <p className="text-sm text-gray-600 dark:text-gray-400">Opening Balance</p>
-                      <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                        Rs. {summary.openingBalance.total.toFixed(2)}
-                      </p>
-                    </div>
-                    <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-                      <p className="text-sm text-gray-600 dark:text-gray-400">Total Sales</p>
-                      <p className="text-2xl font-bold text-green-600 dark:text-green-400">
-                        Rs. {summary.sales.total.toFixed(2)}
-                      </p>
-                    </div>
-                    <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-                      <p className="text-sm text-gray-600 dark:text-gray-400">Total Purchases</p>
-                      <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
-                        Rs. {summary.purchases.total.toFixed(2)}
-                      </p>
-                    </div>
-                    <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-                      <p className="text-sm text-gray-600 dark:text-gray-400">Closing Balance</p>
-                      <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">
-                        Rs. {summary.closingBalance.total.toFixed(2)}
-                      </p>
-                    </div>
-                  </>
-                )
-              )}
+        {dateRange && (
+          <>
+            <div className="grid grid-cols-1 gap-4 mb-6 md:grid-cols-4 no-print">
+              <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Total Sales
+                </p>
+                <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+                  Rs. {totalSales.toFixed(2)}
+                </p>
+              </div>
+              <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Total Expenses
+                </p>
+                <p className="text-2xl font-bold text-red-600 dark:text-red-400">
+                  Rs. {totalExpenses.toFixed(2)}
+                </p>
+              </div>
+              <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Profit/Loss
+                </p>
+                <p
+                  className={`text-2xl font-bold ${
+                    profit >= 0
+                      ? "text-green-600 dark:text-green-400"
+                      : "text-red-600 dark:text-red-400"
+                  }`}
+                >
+                  Rs. {profit.toFixed(2)}
+                </p>
+              </div>
+              <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Total Bills
+                </p>
+                <p className="text-2xl font-bold text-gray-800 dark:text-white">
+                  {filteredSales.length}
+                </p>
+              </div>
             </div>
 
-            {/* Detailed Report */}
-            {isDaily ? (
+            <div className="mb-6 flex gap-2 no-print">
+              <Button onClick={exportToCSV} size="sm">
+                <DownloadIcon className="w-4 h-4 mr-2" />
+                Export to CSV
+              </Button>
+              <Button onClick={exportToPDF} size="sm" variant="outline">
+                <DownloadIcon className="w-4 h-4 mr-2" />
+                Print / PDF
+              </Button>
+            </div>
+
+            {/* Financial Flow Table */}
+            <div className="mb-6 p-6 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+              <h2 className="mb-4 text-xl font-semibold text-gray-800 dark:text-white">
+                Financial Flow Report
+              </h2>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-gray-200 dark:border-gray-700">
+                      <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Description
+                      </th>
+                      <th className="p-2 text-right text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Amount (Rs.)
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="border-b border-gray-100 dark:border-gray-700">
+                      <td className="p-2 font-semibold text-gray-800 dark:text-white">
+                        Opening Balance
+                      </td>
+                      <td className="p-2 text-right font-semibold text-gray-800 dark:text-white">
+                        {openingTotal > 0 ? `+ Rs. ${openingTotal.toFixed(2)}` : "Rs. 0.00"}
+                      </td>
+                    </tr>
+                    <tr className="border-b border-gray-100 dark:border-gray-700">
+                      <td className="p-2 pl-6 text-gray-700 dark:text-gray-300">
+                        Cash
+                      </td>
+                      <td className="p-2 text-right text-gray-700 dark:text-gray-300">
+                        Rs. {(openingBalance?.cash || 0).toFixed(2)}
+                      </td>
+                    </tr>
+                    {openingBalance?.cards.map((card) => (
+                      <tr key={card.cardId} className="border-b border-gray-100 dark:border-gray-700">
+                        <td className="p-2 pl-6 text-gray-700 dark:text-gray-300">
+                          {card.cardName}
+                        </td>
+                        <td className="p-2 text-right text-gray-700 dark:text-gray-300">
+                          Rs. {card.balance.toFixed(2)}
+                        </td>
+                      </tr>
+                    ))}
+                    <tr className="border-b border-gray-100 dark:border-gray-700">
+                      <td className="p-2 font-semibold text-gray-800 dark:text-white">
+                        Total Sales
+                      </td>
+                      <td className="p-2 text-right font-semibold text-gray-800 dark:text-white">
+                        + Rs. {totalSales.toFixed(2)}
+                      </td>
+                    </tr>
+                    <tr className="border-b border-gray-100 dark:border-gray-700">
+                      <td className="p-2 font-semibold text-gray-800 dark:text-white">
+                        Combined (Opening + Sales)
+                      </td>
+                      <td className="p-2 text-right font-semibold text-gray-800 dark:text-white">
+                        Rs. {combinedTotal.toFixed(2)}
+                      </td>
+                    </tr>
+                    <tr className="border-b border-gray-100 dark:border-gray-700">
+                      <td className="p-2 font-semibold text-gray-800 dark:text-white">
+                        Total Expenses
+                      </td>
+                      <td className="p-2 text-right font-semibold text-gray-800 dark:text-white">
+                        - Rs. {totalExpenses.toFixed(2)}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="p-2 font-bold text-lg text-gray-800 dark:text-white">
+                        Closing Balance
+                      </td>
+                      <td className="p-2 text-right font-bold text-lg text-gray-800 dark:text-white">
+                        Rs. {closingBalance.toFixed(2)}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+              {/* Sales Report Table - Left Side */}
               <div className="p-6 bg-white rounded-lg shadow-sm dark:bg-gray-800">
                 <h2 className="mb-4 text-xl font-semibold text-gray-800 dark:text-white">
-                  Daily Report - {dateRange?.start}
+                  Sales Report
                 </h2>
-                <div className="space-y-6">
-                  <div>
-                    <h3 className="mb-2 font-semibold text-gray-700 dark:text-gray-300">Opening Balance</h3>
-                    <p>Cash: Rs. {(report as DailyReport).openingBalance.cash.toFixed(2)}</p>
-                    {(report as DailyReport).openingBalance.cards.map((card) => (
-                      <p key={card.cardId}>
-                        {card.cardName}: Rs. {card.balance.toFixed(2)}
-                      </p>
-                    ))}
-                    <p className="font-semibold">
-                      Total: Rs. {(report as DailyReport).openingBalance.total.toFixed(2)}
-                    </p>
-                  </div>
-
-                  <div>
-                    <h3 className="mb-2 font-semibold text-gray-700 dark:text-gray-300">Sales</h3>
-                    <p>Total: Rs. {(report as DailyReport).sales.total.toFixed(2)}</p>
-                    <p>Cash: Rs. {(report as DailyReport).sales.cash.toFixed(2)}</p>
-                    <p>Card: Rs. {(report as DailyReport).sales.card.toFixed(2)}</p>
-                    <p>Credit: Rs. {(report as DailyReport).sales.credit.toFixed(2)}</p>
-                    <p>Bills: {(report as DailyReport).sales.count}</p>
-                  </div>
-
-                  <div>
-                    <h3 className="mb-2 font-semibold text-gray-700 dark:text-gray-300">Purchases</h3>
-                    <p>Total: Rs. {(report as DailyReport).purchases.total.toFixed(2)}</p>
-                    <p>Cash: Rs. {(report as DailyReport).purchases.cash.toFixed(2)}</p>
-                    <p>Card: Rs. {(report as DailyReport).purchases.card.toFixed(2)}</p>
-                    <p>Count: {(report as DailyReport).purchases.count}</p>
-                  </div>
-
-                  <div>
-                    <h3 className="mb-2 font-semibold text-gray-700 dark:text-gray-300">Expenses</h3>
-                    <p>Total: Rs. {(report as DailyReport).expenses.total.toFixed(2)}</p>
-                    <p>Cash: Rs. {(report as DailyReport).expenses.cash.toFixed(2)}</p>
-                    <p>Card: Rs. {(report as DailyReport).expenses.card.toFixed(2)}</p>
-                    <p>Count: {(report as DailyReport).expenses.count}</p>
-                  </div>
-
-                  <div>
-                    <h3 className="mb-2 font-semibold text-gray-700 dark:text-gray-300">Closing Balance</h3>
-                    <p>Cash: Rs. {(report as DailyReport).closingBalance.cash.toFixed(2)}</p>
-                    {(report as DailyReport).closingBalance.cards.map((card) => (
-                      <p key={card.cardId}>
-                        {card.cardName}: Rs. {card.balance.toFixed(2)}
-                      </p>
-                    ))}
-                    <p className="font-semibold">
-                      Total: Rs. {(report as DailyReport).closingBalance.total.toFixed(2)}
-                    </p>
-                  </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-gray-200 dark:border-gray-700">
+                        <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                          Bill #
+                        </th>
+                        <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                          Date
+                        </th>
+                        <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                          Customer
+                        </th>
+                        <th className="p-2 text-right text-sm font-medium text-gray-700 dark:text-gray-300">
+                          Amount
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredSales.length === 0 ? (
+                        <tr>
+                          <td colSpan={4} className="p-4 text-center text-gray-500">
+                            No sales found
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredSales.map((sale) => (
+                          <tr
+                            key={sale.id}
+                            className="border-b border-gray-100 dark:border-gray-700"
+                          >
+                            <td className="p-2 text-gray-700 dark:text-gray-300">
+                              {sale.billNumber}
+                            </td>
+                            <td className="p-2 text-gray-700 dark:text-gray-300">
+                              {new Date(sale.createdAt).toLocaleDateString()}
+                            </td>
+                            <td className="p-2 text-gray-700 dark:text-gray-300">
+                              {sale.customerName || "Walk-in"}
+                            </td>
+                            <td className="p-2 text-right font-semibold text-gray-800 dark:text-white">
+                              Rs. {Number(sale.total).toFixed(2)}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
                 </div>
               </div>
-            ) : (
+
+              {/* Expenses Report Table - Right Side */}
               <div className="p-6 bg-white rounded-lg shadow-sm dark:bg-gray-800">
                 <h2 className="mb-4 text-xl font-semibold text-gray-800 dark:text-white">
-                  Date Range Report - {dateRange?.start} to {dateRange?.end}
+                  Expenses Report
                 </h2>
-                {summary && (
-                  <div className="space-y-6">
-                    <div>
-                      <h3 className="mb-2 font-semibold text-gray-700 dark:text-gray-300">Summary</h3>
-                      <p>Opening Balance: Rs. {summary.openingBalance.total.toFixed(2)}</p>
-                      <p>Total Sales: Rs. {summary.sales.total.toFixed(2)}</p>
-                      <p>Total Purchases: Rs. {summary.purchases.total.toFixed(2)}</p>
-                      <p>Total Expenses: Rs. {summary.expenses.total.toFixed(2)}</p>
-                      <p className="font-semibold">
-                        Closing Balance: Rs. {summary.closingBalance.total.toFixed(2)}
-                      </p>
-                    </div>
-                  </div>
-                )}
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-gray-200 dark:border-gray-700">
+                        <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                          Date
+                        </th>
+                        <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                          Category
+                        </th>
+                        <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                          Description
+                        </th>
+                        <th className="p-2 text-right text-sm font-medium text-gray-700 dark:text-gray-300">
+                          Amount
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredExpenses.length === 0 ? (
+                        <tr>
+                          <td colSpan={4} className="p-4 text-center text-gray-500">
+                            No expenses found
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredExpenses.map((expense) => (
+                          <tr
+                            key={expense.id}
+                            className="border-b border-gray-100 dark:border-gray-700"
+                          >
+                            <td className="p-2 text-gray-700 dark:text-gray-300">
+                              {new Date(expense.date).toLocaleDateString()}
+                            </td>
+                            <td className="p-2 text-gray-700 dark:text-gray-300 capitalize">
+                              {expense.category}
+                            </td>
+                            <td className="p-2 text-gray-700 dark:text-gray-300">
+                              {expense.description}
+                            </td>
+                            <td className="p-2 text-right font-semibold text-gray-800 dark:text-white">
+                              Rs. {Number(expense.amount).toFixed(2)}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            )}
-          </div>
+            </div>
+          </>
         )}
       </div>
     </>

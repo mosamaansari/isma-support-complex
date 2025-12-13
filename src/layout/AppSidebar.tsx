@@ -15,6 +15,7 @@ import {
 } from "../icons";
 import { useSidebar } from "../context/SidebarContext";
 import { useData } from "../context/DataContext";
+import { hasPermission } from "../utils/permissions";
 import SidebarWidget from "./SidebarWidget";
 
 type NavItem = {
@@ -28,6 +29,19 @@ const AppSidebar: React.FC = () => {
   const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
   const location = useLocation();
   const { currentUser } = useData();
+
+  // Check if user has permission for a path
+  const canAccess = (path: string): boolean => {
+    if (!currentUser) return false;
+    
+    // Superadmin and admin have access to everything
+    if (currentUser.role === "superadmin" || currentUser.role === "admin") {
+      return true;
+    }
+
+    // Check permissions
+    return hasPermission(currentUser.role, path, currentUser.permissions);
+  };
 
   // Filter menu items based on user role and permissions
   const getNavItems = (): NavItem[] => {
@@ -69,43 +83,51 @@ const AppSidebar: React.FC = () => {
       },
     ];
 
-    // SuperAdmin and Admin see all items
-    if (currentUser?.role === "superadmin" || currentUser?.role === "admin") {
-      return allItems;
-    }
+    // Filter items based on permissions
+    return allItems.filter((item) => {
+      // Dashboard is always accessible
+      if (item.path === "/") return true;
 
-    // Cashier only sees Sales
-    if (currentUser?.role === "cashier") {
-      return [
-        allItems[0], // Dashboard
-        allItems[1], // Sales & Billing
-      ];
-    }
+      // If item has subItems, check if at least one subItem is accessible
+      if (item.subItems) {
+        const accessibleSubItems = item.subItems.filter((subItem) =>
+          canAccess(subItem.path)
+        );
+        // Only show parent item if at least one subItem is accessible
+        if (accessibleSubItems.length > 0) {
+          // Filter subItems to only show accessible ones
+          item.subItems = accessibleSubItems;
+          return true;
+        }
+        return false;
+      }
 
-    // Warehouse Manager only sees Inventory
-    if (currentUser?.role === "warehouse_manager") {
-      return [
-        allItems[0], // Dashboard
-        allItems[2], // Inventory
-      ];
-    }
-
-    return allItems;
+      // Check direct path access
+      return item.path ? canAccess(item.path) : false;
+    });
   };
 
   const navItems = getNavItems();
 
   const othersItems: NavItem[] = [
-    ...(currentUser?.role === "superadmin" || currentUser?.role === "admin"
+    ...(canAccess("/users") || canAccess("/users/add")
       ? [
           {
             icon: <UserCircleIcon />,
             name: "Users",
             subItems: [
-              { name: "User List", path: "/users", pro: false },
-              { name: "Add User", path: "/users/add", pro: false },
+              ...(canAccess("/users")
+                ? [{ name: "User List", path: "/users", pro: false }]
+                : []),
+              ...(canAccess("/users/add")
+                ? [{ name: "Add User", path: "/users/add", pro: false }]
+                : []),
             ],
           },
+        ]
+      : []),
+    ...(canAccess("/settings")
+      ? [
           {
             icon: <LockIcon />,
             name: "Settings",
@@ -319,7 +341,7 @@ const AppSidebar: React.FC = () => {
     >
       <div
         className={`py-8 flex ${
-          !isExpanded && !isHovered ? "lg:justify-center" : "justify-start"
+          !isExpanded && !isHovered ? "lg:justify-center" : "justify-center"
         }`}
       >
         <Link to="/">
@@ -327,7 +349,7 @@ const AppSidebar: React.FC = () => {
             <img
               src="/images/logo/logo.png"
               alt="Isma Sports Complex"
-              width={150}
+              width={180}
               height={40}
             />
           ) : (
