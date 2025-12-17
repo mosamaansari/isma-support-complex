@@ -22,6 +22,8 @@ export interface Product {
   salePrice?: number;
   shopQuantity: number;
   warehouseQuantity: number;
+  shopMinStockLevel: number;
+  warehouseMinStockLevel: number;
   minStockLevel: number;
   lowStockNotifiedAt?: string | null;
   model?: string;
@@ -39,6 +41,9 @@ export interface SaleItem {
   productId: string;
   productName: string;
   quantity: number;
+  shopQuantity?: number;
+  warehouseQuantity?: number;
+  fromWarehouse?: boolean;
   unitPrice: number;
   customPrice?: number; // Custom price for this customer
   discount: number;
@@ -105,6 +110,8 @@ export interface PurchaseItem {
   productId: string;
   productName: string;
   quantity: number;
+  shopQuantity?: number;
+  warehouseQuantity?: number;
   cost: number;
   discount?: number;
   total: number;

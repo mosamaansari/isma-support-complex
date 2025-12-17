@@ -94,13 +94,20 @@ class DashboardService {
           id: true,
           shopQuantity: true,
           warehouseQuantity: true,
+          shopMinStockLevel: true,
+          warehouseMinStockLevel: true,
           minStockLevel: true,
         },
       });
       const lowStockProducts = allProducts.filter(
-        (product) =>
-          Number(product.shopQuantity || 0) + Number(product.warehouseQuantity || 0) <
-          Number(product.minStockLevel || 0)
+        (product) => {
+          const shopThreshold = product.shopMinStockLevel ?? product.minStockLevel ?? 0;
+          const warehouseThreshold = product.warehouseMinStockLevel ?? product.minStockLevel ?? 0;
+          return (
+            (shopThreshold > 0 && Number(product.shopQuantity || 0) <= Number(shopThreshold)) ||
+            (warehouseThreshold > 0 && Number(product.warehouseQuantity || 0) <= Number(warehouseThreshold))
+          );
+        }
       );
       const lowStockCount = lowStockProducts.length;
 

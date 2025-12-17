@@ -22,6 +22,12 @@ export const normalizeProduct = (product: any) => {
     salePrice: decimalToNumber(product.salePrice),
     quantity: typeof product.quantity === 'string' ? parseInt(product.quantity) : (product.quantity || 0),
     minStockLevel: typeof product.minStockLevel === 'string' ? parseInt(product.minStockLevel) : (product.minStockLevel || 0),
+    shopMinStockLevel: typeof product.shopMinStockLevel === 'string'
+      ? parseInt(product.shopMinStockLevel)
+      : (product.shopMinStockLevel ?? 0),
+    warehouseMinStockLevel: typeof product.warehouseMinStockLevel === 'string'
+      ? parseInt(product.warehouseMinStockLevel)
+      : (product.warehouseMinStockLevel ?? 0),
   };
 };
 
@@ -63,6 +69,8 @@ export const normalizeSale = (sale: any) => {
       total: decimalToNumber(item.total),
       discountType: item.discountType || 'percent',
       taxType: item.taxType || 'percent',
+      shopQuantity: item.shopQuantity ?? (item.fromWarehouse ? 0 : item.quantity),
+      warehouseQuantity: item.warehouseQuantity ?? (item.fromWarehouse ? item.quantity : 0),
     })) || [],
   };
 };
@@ -107,6 +115,8 @@ export const normalizePurchase = (purchase: any) => {
       cost: decimalToNumber(item.cost),
       discount: decimalToNumber(item.discount || 0),
       total: decimalToNumber(item.total),
+      shopQuantity: item.shopQuantity ?? (item.toWarehouse === false ? item.quantity : 0),
+      warehouseQuantity: item.warehouseQuantity ?? (item.toWarehouse === false ? 0 : item.quantity),
     })) || [],
   };
 };

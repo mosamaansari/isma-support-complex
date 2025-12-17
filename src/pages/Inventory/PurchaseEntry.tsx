@@ -146,8 +146,13 @@ export default function PurchaseEntry() {
           // Load products for items
           const itemsWithProducts = purchase.items.map((item: any) => {
             const product = products.find(p => p.id === item.productId);
+            const shopQty = item.shopQuantity ?? (item.toWarehouse === false ? item.quantity : 0);
+            const warehouseQty = item.warehouseQuantity ?? (item.toWarehouse === false ? 0 : item.quantity);
             return {
               ...item,
+              shopQuantity: shopQty,
+              warehouseQuantity: warehouseQty,
+              quantity: shopQty + warehouseQty,
               productId: item.productId?.trim() || item.productId,
               product: product || { id: item.productId, name: item.productName } as Product,
             };
@@ -186,7 +191,13 @@ export default function PurchaseEntry() {
       setSelectedProducts(
         selectedProducts.map((item) =>
           item.productId === product.id
-            ? { ...item, quantity: item.quantity + 1, total: item.cost * (item.quantity + 1) }
+            ? {
+                ...item,
+                warehouseQuantity: (item.warehouseQuantity || 0) + 1,
+                shopQuantity: item.shopQuantity || 0,
+                quantity: (item.shopQuantity || 0) + (item.warehouseQuantity || 0) + 1,
+                total: item.cost * ((item.shopQuantity || 0) + (item.warehouseQuantity || 0) + 1),
+              }
             : item
         )
       );
@@ -197,8 +208,11 @@ export default function PurchaseEntry() {
           productId: product.id.trim(),
           productName: product.name,
           quantity: 1,
+          shopQuantity: 0,
+          warehouseQuantity: 1,
           cost: 0,
           total: 0,
+          toWarehouse: true,
           product,
         },
       ]);
@@ -206,14 +220,27 @@ export default function PurchaseEntry() {
     setSearchTerm("");
   };
 
-  const updateItemQuantity = (productId: string, rawQuantity: string) => {
-    // Allow empty input while typing; store as 0 but do not remove row
+  const updateItemLocationQuantity = (
+    productId: string,
+    location: "shop" | "warehouse",
+    rawQuantity: string
+  ) => {
     const parsed = rawQuantity === "" ? 0 : parseInt(rawQuantity, 10);
     const safeQuantity = Number.isNaN(parsed) ? 0 : parsed;
     setSelectedProducts(
       selectedProducts.map((item) => {
         if (item.productId === productId) {
-          return { ...item, quantity: safeQuantity, total: item.cost * safeQuantity };
+          const shopQty = location === "shop" ? safeQuantity : item.shopQuantity || 0;
+          const warehouseQty = location === "warehouse" ? safeQuantity : item.warehouseQuantity || 0;
+          const totalQty = shopQty + warehouseQty;
+          return {
+            ...item,
+            shopQuantity: shopQty,
+            warehouseQuantity: warehouseQty,
+            quantity: totalQty,
+            total: item.cost * totalQty,
+            toWarehouse: warehouseQty > 0 && shopQty === 0,
+          };
         }
         return item;
       })
@@ -228,7 +255,9 @@ export default function PurchaseEntry() {
     setSelectedProducts(
       selectedProducts.map((item) => {
         if (item.productId === productId) {
-          return { ...item, cost, total: cost * item.quantity };
+          const totalQty = (item.shopQuantity || 0) + (item.warehouseQuantity || 0);
+          const safeTotal = totalQty || item.quantity;
+          return { ...item, cost, total: cost * safeTotal, quantity: safeTotal };
         }
         return item;
       })
@@ -313,7 +342,8 @@ export default function PurchaseEntry() {
     }
     // Validate quantities > 0
     for (const item of selectedProducts) {
-      if (!item.quantity || item.quantity <= 0) {
+      const totalQty = (item.shopQuantity || 0) + (item.warehouseQuantity || 0);
+      if (!totalQty || totalQty <= 0) {
         showError(`Quantity for "${item.productName}" must be greater than 0`);
         return;
       }
@@ -360,7 +390,9 @@ export default function PurchaseEntry() {
       const purchaseItems: PurchaseItem[] = selectedProducts.map((item) => ({
         productId: item.productId.trim(),
         productName: item.productName,
-        quantity: item.quantity,
+        quantity: (item.shopQuantity || 0) + (item.warehouseQuantity || 0),
+        shopQuantity: item.shopQuantity || 0,
+        warehouseQuantity: item.warehouseQuantity || 0,
         cost: item.cost,
         discount: item.discount || 0,
         total: item.total,
@@ -528,7 +560,7 @@ export default function PurchaseEntry() {
                           {product.name}
                         </p>
                         <p className="text-sm text-gray-500 dark:text-gray-400">
-                          Current Stock: {(product.shopQuantity || 0) + (product.warehouseQuantity || 0)}
+                          Stock — Shop: {product.shopQuantity || 0} | Warehouse: {product.warehouseQuantity || 0}
                         </p>
                       </div>
                       <p className="font-semibold text-brand-600 dark:text-brand-400">
@@ -561,7 +593,10 @@ export default function PurchaseEntry() {
                         Cost
                       </th>
                       <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
-                        Qty
+                        Shop Qty
+                      </th>
+                      <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Warehouse Qty
                       </th>
                       <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
                         Total
@@ -602,9 +637,18 @@ export default function PurchaseEntry() {
                         <td className="p-2">
                           <Input
                             type="number"
-                            min="1"
-                            value={item.quantity === 0 ? "" : item.quantity}
-                            onChange={(e) => updateItemQuantity(item.productId, e.target.value)}
+                            min="0"
+                            value={item.shopQuantity === 0 ? "" : item.shopQuantity}
+                            onChange={(e) => updateItemLocationQuantity(item.productId, "shop", e.target.value)}
+                            className="w-20"
+                          />
+                        </td>
+                        <td className="p-2">
+                          <Input
+                            type="number"
+                            min="0"
+                            value={item.warehouseQuantity === 0 ? "" : item.warehouseQuantity}
+                            onChange={(e) => updateItemLocationQuantity(item.productId, "warehouse", e.target.value)}
                             className="w-20"
                           />
                         </td>

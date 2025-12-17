@@ -38,11 +38,16 @@ const productFormSchema = yup.object().shape({
     .required("Warehouse quantity is required")
     .min(0, "Warehouse quantity cannot be negative")
     .integer("Warehouse quantity must be a whole number"),
-  minStockLevel: yup
+  shopMinStockLevel: yup
     .number()
-    .required("Minimum stock level is required")
-    .min(0, "Minimum stock level cannot be negative")
-    .integer("Minimum stock level must be a whole number"),
+    .required("Shop minimum stock is required")
+    .min(0, "Shop minimum stock cannot be negative")
+    .integer("Shop minimum stock must be a whole number"),
+  warehouseMinStockLevel: yup
+    .number()
+    .required("Warehouse minimum stock is required")
+    .min(0, "Warehouse minimum stock cannot be negative")
+    .integer("Warehouse minimum stock must be a whole number"),
   model: yup
     .string()
     .optional()
@@ -81,7 +86,8 @@ export default function ProductForm() {
       salePrice: 0,
       shopQuantity: 0,
       warehouseQuantity: 0,
-      minStockLevel: 0,
+      shopMinStockLevel: 0,
+      warehouseMinStockLevel: 0,
       model: "",
       manufacturer: "",
       barcode: "",
@@ -94,7 +100,8 @@ export default function ProductForm() {
     salePrice: watch("salePrice"),
     shopQuantity: watch("shopQuantity"),
     warehouseQuantity: watch("warehouseQuantity"),
-    minStockLevel: watch("minStockLevel"),
+    shopMinStockLevel: watch("shopMinStockLevel"),
+    warehouseMinStockLevel: watch("warehouseMinStockLevel"),
     model: watch("model"),
     manufacturer: watch("manufacturer"),
     barcode: watch("barcode"),
@@ -110,7 +117,8 @@ export default function ProductForm() {
           salePrice: product.salePrice || 0,
           shopQuantity: product.shopQuantity || 0,
           warehouseQuantity: product.warehouseQuantity || 0,
-          minStockLevel: product.minStockLevel,
+          shopMinStockLevel: (product as any).shopMinStockLevel ?? product.minStockLevel ?? 0,
+          warehouseMinStockLevel: (product as any).warehouseMinStockLevel ?? product.minStockLevel ?? 0,
           model: product.model || "",
           manufacturer: product.manufacturer || "",
           barcode: product.barcode || "",
@@ -155,7 +163,9 @@ export default function ProductForm() {
       salePrice: data.salePrice || undefined,
       shopQuantity: data.shopQuantity,
       warehouseQuantity: data.warehouseQuantity,
-      minStockLevel: data.minStockLevel,
+      shopMinStockLevel: data.shopMinStockLevel,
+      warehouseMinStockLevel: data.warehouseMinStockLevel,
+      minStockLevel: Math.min(data.shopMinStockLevel, data.warehouseMinStockLevel),
       model: data.model || undefined,
       manufacturer: data.manufacturer || undefined,
       barcode: data.barcode || undefined,
@@ -322,27 +332,48 @@ export default function ProductForm() {
             </div>
           </div>
 
-          <div>
-            <Label>
-              Minimum Stock Level <span className="text-error-500">*</span>
-            </Label>
-            <Input
-              type="number"
-              name="minStockLevel"
-              min="0"
-              value={formData.minStockLevel}
-              onChange={(e) => {
-                const value = parseInt(e.target.value) || 0;
-                setValue("minStockLevel", value);
-              }}
-              onBlur={register("minStockLevel").onBlur}
-              placeholder="0"
-              required
-              error={!!errors.minStockLevel}
-              hint={errors.minStockLevel?.message}
-            />
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div>
+              <Label>
+                Shop Min Stock <span className="text-error-500">*</span>
+              </Label>
+              <Input
+                type="number"
+                name="shopMinStockLevel"
+                min="0"
+                value={formData.shopMinStockLevel}
+                onChange={(e) => {
+                  const value = parseInt(e.target.value) || 0;
+                  setValue("shopMinStockLevel", value);
+                }}
+                onBlur={register("shopMinStockLevel").onBlur}
+                placeholder="0"
+                required
+                error={!!errors.shopMinStockLevel}
+                hint={errors.shopMinStockLevel?.message}
+              />
+            </div>
+            <div>
+              <Label>
+                Warehouse Min Stock <span className="text-error-500">*</span>
+              </Label>
+              <Input
+                type="number"
+                name="warehouseMinStockLevel"
+                min="0"
+                value={formData.warehouseMinStockLevel}
+                onChange={(e) => {
+                  const value = parseInt(e.target.value) || 0;
+                  setValue("warehouseMinStockLevel", value);
+                }}
+                onBlur={register("warehouseMinStockLevel").onBlur}
+                placeholder="0"
+                required
+                error={!!errors.warehouseMinStockLevel}
+                hint={errors.warehouseMinStockLevel?.message}
+              />
+            </div>
           </div>
-
           <div>
             <Label>Barcode (Optional)</Label>
             <Input

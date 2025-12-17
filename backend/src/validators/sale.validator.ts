@@ -23,6 +23,26 @@ export const createSaleSchema = Joi.object({
             "number.min": "Quantity must be at least 1",
             "any.required": "Quantity is required",
           }),
+        shopQuantity: Joi.number()
+          .integer()
+          .min(0)
+          .optional()
+          .default(0)
+          .messages({
+            "number.base": "Shop quantity must be a number",
+            "number.integer": "Shop quantity must be an integer",
+            "number.min": "Shop quantity cannot be negative",
+          }),
+        warehouseQuantity: Joi.number()
+          .integer()
+          .min(0)
+          .optional()
+          .default(0)
+          .messages({
+            "number.base": "Warehouse quantity must be a number",
+            "number.integer": "Warehouse quantity must be an integer",
+            "number.min": "Warehouse quantity cannot be negative",
+          }),
         unitPrice: Joi.number()
           .min(0)
           .required()
@@ -105,6 +125,13 @@ export const createSaleSchema = Joi.object({
     .pattern(/^[0-9+\-\s()]*$/)
     .messages({
       "string.pattern.base": "Invalid phone number format",
+    }),
+  customerCity: Joi.string()
+    .optional()
+    .allow("", null)
+    .max(50)
+    .messages({
+      "string.max": "City name must be less than or equal to 50 characters",
     }),
   paymentType: Joi.string()
     .optional()

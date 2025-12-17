@@ -86,6 +86,8 @@ model Product {
   salePrice         Decimal? @db.Decimal(10, 2)
   shopQuantity      Int      @default(0)
   warehouseQuantity Int      @default(0)
+  shopMinStockLevel Int      @default(0)
+  warehouseMinStockLevel Int @default(0)
   minStockLevel     Int      @default(0)
   lowStockNotifiedAt DateTime?
   model             String?
@@ -161,6 +163,7 @@ model Sale {
   customerId       String?
   customerName     String?
   customerPhone    String?
+  customerCity     String?
   date             DateTime    @default(now())
   userId           String
   userName         String
@@ -186,6 +189,8 @@ model SaleItem {
   productId     String
   productName   String
   quantity      Int
+  shopQuantity  Int      @default(0)
+  warehouseQuantity Int  @default(0)
   unitPrice     Decimal  @db.Decimal(10, 2)
   customPrice   Decimal? @db.Decimal(10, 2) // Custom price for customer
   discount      Decimal  @default(0) @db.Decimal(10, 2)
@@ -265,6 +270,8 @@ model PurchaseItem {
   productId   String
   productName String
   quantity    Int
+  shopQuantity Int      @default(0)
+  warehouseQuantity Int @default(0)
   cost        Decimal  @db.Decimal(10, 2)
   discount    Decimal  @default(0) @db.Decimal(10, 2)
   total       Decimal  @db.Decimal(10, 2)

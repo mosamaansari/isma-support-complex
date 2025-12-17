@@ -393,9 +393,14 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const getLowStockProducts = () => {
-    return products.filter((p) => 
-      (p.shopQuantity || 0) + (p.warehouseQuantity || 0) <= p.minStockLevel
-    );
+    return products.filter((p) => {
+      const shopThreshold = (p as any).shopMinStockLevel ?? p.minStockLevel ?? 0;
+      const warehouseThreshold = (p as any).warehouseMinStockLevel ?? p.minStockLevel ?? 0;
+      return (
+        (shopThreshold > 0 && (p.shopQuantity || 0) <= shopThreshold) ||
+        (warehouseThreshold > 0 && (p.warehouseQuantity || 0) <= warehouseThreshold)
+      );
+    });
   };
 
   // Sale functions
@@ -428,6 +433,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           productId: item.productId,
           productName: item.productName,
           quantity: item.quantity,
+          shopQuantity: (item as any).shopQuantity ?? item.quantity,
+          warehouseQuantity: (item as any).warehouseQuantity ?? 0,
           unitPrice: item.unitPrice,
           customPrice: item.customPrice || undefined,
           discount: item.discount || 0,
@@ -611,6 +618,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         items: purchaseData.items.map((item) => ({
           productId: item.productId?.trim() || item.productId,
           quantity: item.quantity,
+          shopQuantity: (item as any).shopQuantity ?? item.quantity,
+          warehouseQuantity: (item as any).warehouseQuantity ?? 0,
           cost: item.cost,
           discount: item.discount || 0,
         })),
@@ -640,6 +649,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         apiData.items = purchaseData.items.map((item) => ({
           productId: item.productId,
           quantity: item.quantity,
+          shopQuantity: (item as any).shopQuantity ?? item.quantity,
+          warehouseQuantity: (item as any).warehouseQuantity ?? 0,
           cost: item.cost,
           discount: item.discount || 0,
         }));

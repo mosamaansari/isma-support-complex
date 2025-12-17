@@ -40,6 +40,26 @@ export const createPurchaseSchema = Joi.object({
             "number.min": "Quantity must be at least 1",
             "any.required": "Quantity is required",
           }),
+        shopQuantity: Joi.number()
+          .integer()
+          .min(0)
+          .optional()
+          .default(0)
+          .messages({
+            "number.base": "Shop quantity must be a number",
+            "number.integer": "Shop quantity must be an integer",
+            "number.min": "Shop quantity cannot be negative",
+          }),
+        warehouseQuantity: Joi.number()
+          .integer()
+          .min(0)
+          .optional()
+          .default(0)
+          .messages({
+            "number.base": "Warehouse quantity must be a number",
+            "number.integer": "Warehouse quantity must be an integer",
+            "number.min": "Warehouse quantity cannot be negative",
+          }),
         cost: Joi.number()
           .min(0)
           .required()
@@ -183,6 +203,8 @@ export const updatePurchaseSchema = Joi.object({
             "string.min": "Product ID cannot be empty",
           }),
         quantity: Joi.number().integer().min(1).required(),
+        shopQuantity: Joi.number().integer().min(0).optional().default(0),
+        warehouseQuantity: Joi.number().integer().min(0).optional().default(0),
         cost: Joi.number().min(0.01).required().messages({
           "number.base": "Cost must be a number",
           "number.min": "Cost must be greater than 0",

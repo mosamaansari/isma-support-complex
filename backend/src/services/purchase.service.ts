@@ -2,6 +2,45 @@ import prisma from "../config/database";
 import logger from "../utils/logger";
 import productService from "./product.service";
 
+const splitPurchaseQuantities = (item: {
+  quantity: number;
+  shopQuantity?: number;
+  warehouseQuantity?: number;
+  toWarehouse?: boolean;
+  productId?: string;
+}) => {
+  const rawShop = Number(item.shopQuantity ?? 0);
+  const rawWarehouse = Number(item.warehouseQuantity ?? 0);
+  const splitTotal = rawShop + rawWarehouse;
+
+  const fallbackTotal = Number(item.quantity || 0);
+  const totalQuantity = splitTotal > 0 ? splitTotal : fallbackTotal;
+
+  if (!Number.isFinite(totalQuantity) || totalQuantity <= 0) {
+    throw new Error(`Quantity must be greater than 0 for product ${item.productId || ""}`);
+  }
+
+  const shopQuantity =
+    splitTotal > 0
+      ? rawShop
+      : item.toWarehouse === false
+      ? totalQuantity
+      : 0;
+
+  const warehouseQuantity =
+    splitTotal > 0
+      ? rawWarehouse
+      : item.toWarehouse === false
+      ? 0
+      : totalQuantity;
+
+  return {
+    shopQuantity,
+    warehouseQuantity,
+    totalQuantity: shopQuantity + warehouseQuantity,
+  };
+};
+
 class PurchaseService {
   async getPurchases(filters: {
     startDate?: string;
@@ -117,18 +156,22 @@ class PurchaseService {
         throw new Error(`Product ${item.productId} not found`);
       }
 
-      const itemSubtotal = item.cost * item.quantity;
+      const { shopQuantity, warehouseQuantity, totalQuantity } = splitPurchaseQuantities(item);
+
+      const itemSubtotal = item.cost * totalQuantity;
       const itemDiscount = (itemSubtotal * (item.discount || 0)) / 100;
       const itemTotal = itemSubtotal - itemDiscount;
 
       purchaseItems.push({
         productId: product.id,
         productName: product.name,
-        quantity: item.quantity,
+        quantity: totalQuantity,
+        shopQuantity,
+        warehouseQuantity,
         cost: item.cost,
         discount: item.discount || 0,
         total: itemTotal,
-        toWarehouse: item.toWarehouse !== undefined ? item.toWarehouse : true,
+        toWarehouse: warehouseQuantity > 0 && shopQuantity === 0 ? true : item.toWarehouse ?? false,
       });
     }
 
@@ -212,18 +255,14 @@ class PurchaseService {
       });
 
       if (productForUpdate) {
-        if (purchaseItem.toWarehouse) {
-          if ('warehouseQuantity' in productForUpdate) {
-            updateData.warehouseQuantity = { increment: item.quantity };
-          } else {
-            updateData.quantity = { increment: item.quantity };
-          }
-        } else {
-          if ('shopQuantity' in productForUpdate) {
-            updateData.shopQuantity = { increment: item.quantity };
-          } else {
-            updateData.quantity = { increment: item.quantity };
-          }
+        if ("warehouseQuantity" in productForUpdate && purchaseItem.warehouseQuantity > 0) {
+          updateData.warehouseQuantity = { increment: purchaseItem.warehouseQuantity };
+        }
+        if ("shopQuantity" in productForUpdate && purchaseItem.shopQuantity > 0) {
+          updateData.shopQuantity = { increment: purchaseItem.shopQuantity };
+        }
+        if (!("shopQuantity" in productForUpdate) && !("warehouseQuantity" in productForUpdate)) {
+          updateData.quantity = { increment: purchaseItem.quantity };
         }
 
         const updatedProduct = await prisma.product.update({
@@ -350,15 +389,33 @@ class PurchaseService {
       for (const oldItem of purchase.items) {
         const product = await prisma.product.findUnique({ where: { id: oldItem.productId } });
         if (product) {
-          if (oldItem.toWarehouse) {
+          const revertShopQty = Number(
+            (oldItem as any).shopQuantity ??
+              (oldItem.toWarehouse === false ? oldItem.quantity : 0)
+          );
+          const revertWarehouseQty = Number(
+            (oldItem as any).warehouseQuantity ??
+              (oldItem.toWarehouse === false ? 0 : oldItem.quantity)
+          );
+
+          if (revertWarehouseQty > 0) {
             await prisma.product.update({
               where: { id: product.id },
-              data: { warehouseQuantity: { decrement: oldItem.quantity } },
+              data: { warehouseQuantity: { decrement: revertWarehouseQty } },
             });
-          } else {
+          }
+
+          if (revertShopQty > 0) {
             await prisma.product.update({
               where: { id: product.id },
-              data: { shopQuantity: { decrement: oldItem.quantity } },
+              data: { shopQuantity: { decrement: revertShopQty } },
+            });
+          }
+
+          if (!("shopQuantity" in product) && !("warehouseQuantity" in product)) {
+            await prisma.product.update({
+              where: { id: product.id },
+              data: { quantity: { decrement: oldItem.quantity } } as any,
             });
           }
         }
@@ -380,30 +437,41 @@ class PurchaseService {
           throw new Error(`Product ${item.productId} not found`);
         }
 
-        const itemSubtotal = item.cost * item.quantity;
+        const { shopQuantity, warehouseQuantity, totalQuantity } = splitPurchaseQuantities(item);
+
+        const itemSubtotal = item.cost * totalQuantity;
         const itemDiscount = (itemSubtotal * (item.discount || 0)) / 100;
         const itemTotal = itemSubtotal - itemDiscount;
 
         purchaseItems.push({
           productId: product.id,
           productName: product.name,
-          quantity: item.quantity,
+          quantity: totalQuantity,
+          shopQuantity,
+          warehouseQuantity,
           cost: item.cost,
           discount: item.discount || 0,
           total: itemTotal,
-          toWarehouse: item.toWarehouse !== undefined ? item.toWarehouse : true,
+          toWarehouse: warehouseQuantity > 0 && shopQuantity === 0 ? true : item.toWarehouse ?? false,
         });
 
         // Apply stock increment based on destination
-        if (item.toWarehouse !== false) {
+        if (warehouseQuantity > 0) {
           await prisma.product.update({
             where: { id: product.id },
-            data: { warehouseQuantity: { increment: item.quantity } },
+            data: { warehouseQuantity: { increment: warehouseQuantity } },
           });
-        } else {
+        }
+        if (shopQuantity > 0) {
           await prisma.product.update({
             where: { id: product.id },
-            data: { shopQuantity: { increment: item.quantity } },
+            data: { shopQuantity: { increment: shopQuantity } },
+          });
+        }
+        if (!("shopQuantity" in product) && !("warehouseQuantity" in product)) {
+          await prisma.product.update({
+            where: { id: product.id },
+            data: { quantity: { increment: totalQuantity } } as any,
           });
         }
       }

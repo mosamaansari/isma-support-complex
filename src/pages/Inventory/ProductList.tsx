@@ -53,8 +53,12 @@ export default function ProductList() {
     const matchesSearch =
       product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (product.category && product.category.toLowerCase().includes(searchTerm.toLowerCase()));
-    const totalQuantity = (product.shopQuantity || 0) + (product.warehouseQuantity || 0);
-    const matchesLowStock = !showLowStock || totalQuantity <= product.minStockLevel;
+    const shopMin = (product as any).shopMinStockLevel ?? product.minStockLevel ?? 0;
+    const warehouseMin = (product as any).warehouseMinStockLevel ?? product.minStockLevel ?? 0;
+    const shopLow = shopMin > 0 && (product.shopQuantity || 0) <= shopMin;
+    const warehouseLow = warehouseMin > 0 && (product.warehouseQuantity || 0) <= warehouseMin;
+    const matchesLowStock =
+      !showLowStock || shopLow || warehouseLow;
     return matchesSearch && matchesLowStock;
   });
 
@@ -206,10 +210,13 @@ export default function ProductList() {
                 Sale Price
               </th>
               <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
-                Quantity
+                Shop Stock
               </th>
               <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
-                Min Stock
+                Warehouse Stock
+              </th>
+              <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                Total Stock
               </th>
               <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
                 Status
@@ -222,7 +229,7 @@ export default function ProductList() {
           <tbody>
             {filteredProducts.length === 0 ? (
               <tr>
-                <td colSpan={8} className="p-8 text-center text-gray-500">
+                <td colSpan={9} className="p-8 text-center text-gray-500">
                   {products.length === 0
                     ? "No products available. Add your first product!"
                     : "No products match your search criteria"}
@@ -231,7 +238,11 @@ export default function ProductList() {
             ) : (
               filteredProducts.map((product) => {
                 const totalQuantity = (product.shopQuantity || 0) + (product.warehouseQuantity || 0);
-                const isLowStock = totalQuantity <= product.minStockLevel;
+                const shopMin = (product as any).shopMinStockLevel ?? product.minStockLevel ?? 0;
+                const warehouseMin = (product as any).warehouseMinStockLevel ?? product.minStockLevel ?? 0;
+                const shopLow = shopMin > 0 && (product.shopQuantity || 0) <= shopMin;
+                const warehouseLow = warehouseMin > 0 && (product.warehouseQuantity || 0) <= warehouseMin;
+                const isLowStock = shopLow || warehouseLow;
                 return (
                   <tr
                     key={product.id}
@@ -261,17 +272,22 @@ export default function ProductList() {
                     </td>
                     <td className="p-4">
                       <span
-                        className={`font-semibold ${
-                          isLowStock
-                            ? "text-orange-600 dark:text-orange-400"
-                            : "text-gray-800 dark:text-white"
-                        }`}
+                        className={`font-semibold ${shopLow ? "text-orange-600 dark:text-orange-400" : "text-gray-800 dark:text-white"}`}
                       >
-                        {(product.shopQuantity || 0) + (product.warehouseQuantity || 0)}
+                        {(product.shopQuantity || 0)}{" "}
+                        <span className="text-xs text-gray-500 dark:text-gray-400">(min {shopMin})</span>
                       </span>
                     </td>
-                    <td className="p-4 text-gray-700 dark:text-gray-300">
-                      {product.minStockLevel}
+                    <td className="p-4">
+                      <span
+                        className={`font-semibold ${warehouseLow ? "text-orange-600 dark:text-orange-400" : "text-gray-800 dark:text-white"}`}
+                      >
+                        {(product.warehouseQuantity || 0)}{" "}
+                        <span className="text-xs text-gray-500 dark:text-gray-400">(min {warehouseMin})</span>
+                      </span>
+                    </td>
+                    <td className="p-4 font-semibold text-gray-800 dark:text-white">
+                      {totalQuantity}
                     </td>
                     <td className="p-4">
                       {isLowStock ? (
@@ -385,4 +401,5 @@ export default function ProductList() {
     </>
   );
 }
+
 

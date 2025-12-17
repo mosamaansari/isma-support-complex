@@ -55,6 +55,26 @@ export const createProductSchema = Joi.object({
       "number.min": "Warehouse quantity cannot be negative",
       "any.required": "Warehouse quantity is required",
     }),
+  shopMinStockLevel: Joi.number()
+    .optional()
+    .integer()
+    .min(0)
+    .default(0)
+    .messages({
+      "number.base": "Shop minimum stock must be a number",
+      "number.integer": "Shop minimum stock must be an integer",
+      "number.min": "Shop minimum stock cannot be negative",
+    }),
+  warehouseMinStockLevel: Joi.number()
+    .optional()
+    .integer()
+    .min(0)
+    .default(0)
+    .messages({
+      "number.base": "Warehouse minimum stock must be a number",
+      "number.integer": "Warehouse minimum stock must be an integer",
+      "number.min": "Warehouse minimum stock cannot be negative",
+    }),
   minStockLevel: Joi.number()
     .optional()
     .integer()
@@ -148,6 +168,24 @@ export const updateProductSchema = Joi.object({
       "number.base": "Warehouse quantity must be a number",
       "number.integer": "Warehouse quantity must be an integer",
       "number.min": "Warehouse quantity cannot be negative",
+    }),
+  shopMinStockLevel: Joi.number()
+    .optional()
+    .integer()
+    .min(0)
+    .messages({
+      "number.base": "Shop minimum stock must be a number",
+      "number.integer": "Shop minimum stock must be an integer",
+      "number.min": "Shop minimum stock cannot be negative",
+    }),
+  warehouseMinStockLevel: Joi.number()
+    .optional()
+    .integer()
+    .min(0)
+    .messages({
+      "number.base": "Warehouse minimum stock must be a number",
+      "number.integer": "Warehouse minimum stock must be an integer",
+      "number.min": "Warehouse minimum stock cannot be negative",
     }),
   minStockLevel: Joi.number()
     .optional()

@@ -171,6 +171,28 @@ export default function SalesEntry() {
     );
   };
 
+  const recalcItemTotals = (
+    item: SaleItem & { product: Product },
+    overrides: Partial<SaleItem & { shopQuantity?: number; warehouseQuantity?: number }> = {}
+  ) => {
+    const updated = { ...item, ...overrides };
+    const quantity = updated.quantity ?? 0;
+    const effectivePrice =
+      updated.customPrice && updated.customPrice > 0 ? updated.customPrice : updated.unitPrice;
+    const discountAmount =
+      updated.discountType === "value"
+        ? (updated.discount || 0)
+        : (effectivePrice * quantity * (updated.discount || 0)) / 100;
+    const taxAmount =
+      updated.taxType === "value"
+        ? (updated.tax || 0)
+        : (effectivePrice * quantity * (updated.tax || 0)) / 100;
+
+    const total = (effectivePrice * quantity) - discountAmount + taxAmount;
+
+    return { ...updated, total };
+  };
+
   const addProductToCart = (product: Product) => {
     const existingItem = selectedProducts.find(
       (item) => item.productId === product.id
@@ -180,27 +202,39 @@ export default function SalesEntry() {
       setSelectedProducts(
         selectedProducts.map((item) =>
           item.productId === product.id
-            ? { ...item, quantity: item.quantity + 1 }
+            ? (() => {
+                const nextShopQty = (item.shopQuantity || 0) + 1;
+                if (nextShopQty > (item.product.shopQuantity || 0)) {
+                  showError(`Shop stock for ${item.productName} is only ${item.product.shopQuantity || 0}`);
+                  return item;
+                }
+                return recalcItemTotals(item as any, {
+                  shopQuantity: nextShopQty,
+                  warehouseQuantity: item.warehouseQuantity || 0,
+                  quantity: nextShopQty + (item.warehouseQuantity || 0),
+                });
+              })()
             : item
         )
       );
     } else {
-      setSelectedProducts([
-        ...selectedProducts,
-        {
-          productId: product.id,
-          productName: product.name,
-          quantity: 1,
-          unitPrice: product.salePrice || 0,
-          customPrice: undefined,
-          discount: 0,
-          discountType: "percent",
-          tax: 0,
-          taxType: "percent",
-          total: (product.salePrice || 0) * 1,
-          product,
-        },
-      ]);
+      const baseItem = {
+        productId: product.id,
+        productName: product.name,
+        quantity: 1,
+        shopQuantity: 1,
+        warehouseQuantity: 0,
+        unitPrice: product.salePrice || 0,
+        customPrice: undefined,
+        discount: 0,
+        discountType: "percent",
+        tax: 0,
+        taxType: "percent",
+        total: (product.salePrice || 0) * 1,
+        product,
+      } as SaleItem & { product: Product };
+
+      setSelectedProducts([...selectedProducts, recalcItemTotals(baseItem)]);
     }
     setSearchTerm("");
   };
@@ -209,41 +243,44 @@ export default function SalesEntry() {
     setSelectedProducts(
       selectedProducts.map((item) => {
         if (item.productId === productId) {
-          const effectivePrice = price > 0 ? price : item.unitPrice;
-          const discountAmount = item.discountType === "value" 
-            ? item.discount 
-            : (effectivePrice * item.quantity * item.discount / 100);
-          const taxAmount = item.taxType === "value"
-            ? item.tax
-            : (effectivePrice * item.quantity * item.tax / 100);
-          const newTotal = (effectivePrice * item.quantity) - discountAmount + taxAmount;
-          return { 
-            ...item, 
+          return recalcItemTotals(item as any, {
             customPrice: price > 0 ? price : undefined,
-            unitPrice: effectivePrice,
-            total: newTotal 
-          };
+            unitPrice: price > 0 ? item.unitPrice : item.unitPrice,
+          });
         }
         return item;
       })
     );
   };
 
-  const updateItemQuantity = (productId: string, rawQty: string) => {
+  const updateItemLocationQuantity = (
+    productId: string,
+    location: "shop" | "warehouse",
+    rawQty: string
+  ) => {
     const parsed = rawQty === "" ? 0 : parseInt(rawQty, 10);
     const quantity = Number.isNaN(parsed) ? 0 : parsed;
     setSelectedProducts(
       selectedProducts.map((item) => {
         if (item.productId === productId) {
-          const effectivePrice = item.customPrice || item.unitPrice;
-          const discountAmount = item.discountType === "value" 
-            ? item.discount 
-            : (effectivePrice * quantity * item.discount / 100);
-          const taxAmount = item.taxType === "value"
-            ? item.tax
-            : (effectivePrice * quantity * item.tax / 100);
-          const newTotal = (effectivePrice * quantity) - discountAmount + taxAmount;
-          return { ...item, quantity, total: newTotal };
+          const availableShop = item.product?.shopQuantity ?? 0;
+          const availableWarehouse = item.product?.warehouseQuantity ?? 0;
+          if (location === "shop" && quantity > availableShop) {
+            showError(`Shop stock available for ${item.productName} is ${availableShop}`);
+            return item;
+          }
+          if (location === "warehouse" && quantity > availableWarehouse) {
+            showError(`Warehouse stock available for ${item.productName} is ${availableWarehouse}`);
+            return item;
+          }
+          const shopQty = location === "shop" ? quantity : item.shopQuantity || 0;
+          const warehouseQty = location === "warehouse" ? quantity : item.warehouseQuantity || 0;
+          const totalQty = shopQty + warehouseQty;
+          return recalcItemTotals(item as any, {
+            shopQuantity: shopQty,
+            warehouseQuantity: warehouseQty,
+            quantity: totalQty,
+          });
         }
         return item;
       })
@@ -254,15 +291,7 @@ export default function SalesEntry() {
     setSelectedProducts(
       selectedProducts.map((item) => {
         if (item.productId === productId) {
-          const effectivePrice = item.customPrice || item.unitPrice;
-          const discountAmount = item.discountType === "value" 
-            ? discount 
-            : (effectivePrice * item.quantity * discount / 100);
-          const taxAmount = item.taxType === "value"
-            ? item.tax
-            : (effectivePrice * item.quantity * item.tax / 100);
-          const newTotal = (effectivePrice * item.quantity) - discountAmount + taxAmount;
-          return { ...item, discount, total: newTotal };
+          return recalcItemTotals(item as any, { discount });
         }
         return item;
       })
@@ -273,15 +302,7 @@ export default function SalesEntry() {
     setSelectedProducts(
       selectedProducts.map((item) => {
         if (item.productId === productId) {
-          const effectivePrice = item.customPrice || item.unitPrice;
-          const discountAmount = discountType === "value" 
-            ? item.discount 
-            : (effectivePrice * item.quantity * item.discount / 100);
-          const taxAmount = item.taxType === "value"
-            ? item.tax
-            : (effectivePrice * item.quantity * item.tax / 100);
-          const newTotal = (effectivePrice * item.quantity) - discountAmount + taxAmount;
-          return { ...item, discountType, total: newTotal };
+          return recalcItemTotals(item as any, { discountType });
         }
         return item;
       })
@@ -351,8 +372,21 @@ export default function SalesEntry() {
 
     // Validate quantities > 0
     for (const item of selectedProducts) {
-      if (!item.quantity || item.quantity <= 0) {
+      const shopQty = item.shopQuantity || 0;
+      const warehouseQty = item.warehouseQuantity || 0;
+      const totalQty = shopQty + warehouseQty;
+      if (!totalQty || totalQty <= 0) {
         showError(`Quantity for "${item.productName}" must be greater than 0`);
+        return;
+      }
+      const availableShop = item.product?.shopQuantity ?? 0;
+      const availableWarehouse = item.product?.warehouseQuantity ?? 0;
+      if (shopQty > availableShop) {
+        showError(`Shop stock for "${item.productName}" is only ${availableShop}`);
+        return;
+      }
+      if (warehouseQty > availableWarehouse) {
+        showError(`Warehouse stock for "${item.productName}" is only ${availableWarehouse}`);
         return;
       }
     }
@@ -381,14 +415,17 @@ export default function SalesEntry() {
     try {
       const saleItems: SaleItem[] = selectedProducts.map((item) => {
         const effectivePrice = item.customPrice || item.unitPrice;
+        const totalQty = (item.shopQuantity || 0) + (item.warehouseQuantity || 0) || item.quantity;
         const taxAmount = item.taxType === "value"
           ? item.tax
-          : (effectivePrice * item.quantity * (item.tax || globalTax) / 100);
+          : (effectivePrice * totalQty * (item.tax || globalTax) / 100);
         
         return {
           productId: item.productId,
           productName: item.productName,
-          quantity: item.quantity,
+          quantity: totalQty,
+          shopQuantity: item.shopQuantity || 0,
+          warehouseQuantity: item.warehouseQuantity || 0,
           unitPrice: item.unitPrice,
           customPrice: item.customPrice,
           discount: item.discount,
@@ -492,7 +529,7 @@ export default function SalesEntry() {
                           {product.name}
                         </p>
                         <p className="text-sm text-gray-500 dark:text-gray-400">
-                          {product.category || "N/A"} - Stock: {(product.shopQuantity || 0) + (product.warehouseQuantity || 0)}
+                          {product.category || "N/A"} - Shop: {product.shopQuantity || 0} | Warehouse: {product.warehouseQuantity || 0}
                         </p>
                       </div>
                       <p className="font-semibold text-brand-600 dark:text-brand-400">
@@ -528,7 +565,10 @@ export default function SalesEntry() {
                         Custom Price
                       </th>
                       <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
-                        Qty
+                        Shop Qty
+                      </th>
+                      <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Warehouse Qty
                       </th>
                       <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
                         Discount
@@ -555,7 +595,7 @@ export default function SalesEntry() {
                             {item.productName}
                           </p>
                           <p className="text-xs text-gray-500 dark:text-gray-400">
-                            Stock: {(item.product.shopQuantity || 0) + (item.product.warehouseQuantity || 0)}
+                            Stock — Shop: {item.product.shopQuantity || 0} | Warehouse: {item.product.warehouseQuantity || 0}
                           </p>
                         </td>
                         <td className="p-2 text-gray-700 dark:text-gray-300">
@@ -587,10 +627,20 @@ export default function SalesEntry() {
                         <td className="p-2">
                           <Input
                             type="number"
-                            min="1"
-                            max={((item.product.shopQuantity || 0) + (item.product.warehouseQuantity || 0)).toString()}
-                            value={item.quantity === 0 ? "" : item.quantity.toString()}
-                            onChange={(e) => updateItemQuantity(item.productId, e.target.value)}
+                            min="0"
+                            max={(item.product.shopQuantity || 0).toString()}
+                            value={item.shopQuantity === 0 ? "" : item.shopQuantity?.toString()}
+                            onChange={(e) => updateItemLocationQuantity(item.productId, "shop", e.target.value)}
+                            className="w-20"
+                          />
+                        </td>
+                        <td className="p-2">
+                          <Input
+                            type="number"
+                            min="0"
+                            max={(item.product.warehouseQuantity || 0).toString()}
+                            value={item.warehouseQuantity === 0 ? "" : item.warehouseQuantity?.toString()}
+                            onChange={(e) => updateItemLocationQuantity(item.productId, "warehouse", e.target.value)}
                             className="w-20"
                           />
                         </td>

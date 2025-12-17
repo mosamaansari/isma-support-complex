@@ -3,6 +3,43 @@ import logger from "../utils/logger";
 import whatsappService from "./whatsapp.service";
 import productService from "./product.service";
 
+const splitSaleQuantities = (item: {
+  quantity: number;
+  shopQuantity?: number;
+  warehouseQuantity?: number;
+  fromWarehouse?: boolean;
+  productId?: string;
+}) => {
+  const rawShop = Number(item.shopQuantity ?? 0);
+  const rawWarehouse = Number(item.warehouseQuantity ?? 0);
+  const splitTotal = rawShop + rawWarehouse;
+
+  let shopQuantity = rawShop;
+  let warehouseQuantity = rawWarehouse;
+
+  if (splitTotal === 0) {
+    const fallbackQty = Number(item.quantity || 0);
+    if (!Number.isFinite(fallbackQty) || fallbackQty <= 0) {
+      throw new Error(`Quantity must be greater than 0 for product ${item.productId || ""}`);
+    }
+
+    if (item.fromWarehouse) {
+      warehouseQuantity = fallbackQty;
+      shopQuantity = 0;
+    } else {
+      shopQuantity = fallbackQty;
+      warehouseQuantity = 0;
+    }
+  }
+
+  const totalQuantity = shopQuantity + warehouseQuantity;
+  if (totalQuantity <= 0) {
+    throw new Error(`Quantity must be greater than 0 for product ${item.productId || ""}`);
+  }
+
+  return { shopQuantity, warehouseQuantity, totalQuantity };
+};
+
 class SaleService {
   async getSales(filters: {
     startDate?: string;
@@ -266,10 +303,11 @@ class SaleService {
         throw new Error(`Product ${item.productId} not found`);
       }
 
+      const { shopQuantity, warehouseQuantity, totalQuantity } = splitSaleQuantities(item);
 
       const effectivePrice = item.customPrice || (product.salePrice ? Number(product.salePrice) : 0);
       const unitPrice = product.salePrice ? Number(product.salePrice) : 0;
-      const itemSubtotal = effectivePrice * item.quantity;
+      const itemSubtotal = effectivePrice * totalQuantity;
       
       // Calculate discount based on type
       let itemDiscount = 0;
@@ -297,23 +335,26 @@ class SaleService {
 
       subtotal += itemSubtotal;
 
-      // Check if selling from warehouse or shop
-      const fromWarehouse = item.fromWarehouse || false;
-      // Handle both old schema (quantity) and new schema (shopQuantity/warehouseQuantity)
-      const availableQuantity = fromWarehouse
-        ? (product.warehouseQuantity ?? 0)
-        : (product.shopQuantity ?? (product as any).quantity ?? 0);
+      const shopAvailable = product.shopQuantity ?? (product as any).quantity ?? 0;
+      const warehouseAvailable = product.warehouseQuantity ?? 0;
 
-      if (availableQuantity < item.quantity) {
+      if (shopQuantity > shopAvailable) {
         throw new Error(
-          `Insufficient ${fromWarehouse ? "warehouse" : "shop"} stock for ${product.name}. Available: ${availableQuantity}`
+          `Insufficient shop stock for ${product.name}. Available: ${shopAvailable}`
+        );
+      }
+      if (warehouseQuantity > warehouseAvailable) {
+        throw new Error(
+          `Insufficient warehouse stock for ${product.name}. Available: ${warehouseAvailable}`
         );
       }
 
       saleItems.push({
         productId: product.id,
         productName: product.name,
-        quantity: item.quantity,
+        quantity: totalQuantity,
+        shopQuantity,
+        warehouseQuantity,
         unitPrice: unitPrice,
         customPrice: item.customPrice || null,
         discount: item.discount || 0,
@@ -321,7 +362,7 @@ class SaleService {
         tax: itemTax,
         taxType: item.taxType || "percent",
         total: itemTotal,
-        fromWarehouse: fromWarehouse,
+        fromWarehouse: warehouseQuantity > 0 && shopQuantity === 0,
       });
     }
 
@@ -406,6 +447,7 @@ class SaleService {
         customerId: customerId || null,
         customerName: customerName || null,
         customerPhone: customerPhone || null,
+        customerCity: customerCity || null,
         date: data.date ? new Date(data.date) : new Date(),
         userId: user.id,
         userName: user.name,
@@ -450,24 +492,28 @@ class SaleService {
       });
 
       if (productForUpdate) {
-        // Handle both old and new schema
-        if (saleItem.fromWarehouse) {
-          if ('warehouseQuantity' in productForUpdate) {
-            updateData.warehouseQuantity = {
-              decrement: item.quantity,
-            };
-          }
-        } else {
-          if ('shopQuantity' in productForUpdate) {
-            updateData.shopQuantity = {
-              decrement: item.quantity,
-            };
-          } else {
-            // Fallback to old schema
-            updateData.quantity = {
-              decrement: item.quantity,
-            };
-          }
+        const shopQtyToDecrement =
+          (saleItem as any).shopQuantity ?? (saleItem.fromWarehouse ? 0 : saleItem.quantity);
+        const warehouseQtyToDecrement =
+          (saleItem as any).warehouseQuantity ?? (saleItem.fromWarehouse ? saleItem.quantity : 0);
+
+        if ('warehouseQuantity' in productForUpdate && warehouseQtyToDecrement > 0) {
+          updateData.warehouseQuantity = {
+            decrement: warehouseQtyToDecrement,
+          };
+        }
+
+        if ('shopQuantity' in productForUpdate && shopQtyToDecrement > 0) {
+          updateData.shopQuantity = {
+            decrement: shopQtyToDecrement,
+          };
+        }
+
+        // Fallback to old schema if needed
+        if (!('shopQuantity' in productForUpdate) && !('warehouseQuantity' in productForUpdate)) {
+          updateData.quantity = {
+            decrement: saleItem.quantity,
+          };
         }
 
         const updatedProduct = await prisma.product.update({
@@ -522,15 +568,22 @@ class SaleService {
       const product = await prisma.product.findUnique({ where: { id: item.productId } });
       
       if (product) {
-        if (item.fromWarehouse && 'warehouseQuantity' in product) {
+        const shopQtyToRestore =
+          (item as any).shopQuantity ?? (item.fromWarehouse ? 0 : item.quantity);
+        const warehouseQtyToRestore =
+          (item as any).warehouseQuantity ?? (item.fromWarehouse ? item.quantity : 0);
+
+        if (warehouseQtyToRestore > 0 && 'warehouseQuantity' in product) {
           updateData.warehouseQuantity = {
-            increment: item.quantity,
+            increment: warehouseQtyToRestore,
           };
-        } else if (!item.fromWarehouse && 'shopQuantity' in product) {
+        }
+        if (shopQtyToRestore > 0 && 'shopQuantity' in product) {
           updateData.shopQuantity = {
-            increment: item.quantity,
+            increment: shopQtyToRestore,
           };
-        } else {
+        }
+        if (!('shopQuantity' in product) && !('warehouseQuantity' in product)) {
           // Fallback to old schema
           updateData.quantity = {
             increment: item.quantity,

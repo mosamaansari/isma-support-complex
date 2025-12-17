@@ -2,6 +2,19 @@ import prisma from "../config/database";
 import logger from "../utils/logger";
 import emailService from "./email.service";
 
+const isLowStockByLocation = (product: any) => {
+  const shopThreshold = product.shopMinStockLevel ?? product.minStockLevel ?? 0;
+  const warehouseThreshold = product.warehouseMinStockLevel ?? product.minStockLevel ?? 0;
+
+  const shopQty = product.shopQuantity ?? 0;
+  const warehouseQty = product.warehouseQuantity ?? 0;
+
+  const shopLow = shopThreshold > 0 ? shopQty <= shopThreshold : false;
+  const warehouseLow = warehouseThreshold > 0 ? warehouseQty <= warehouseThreshold : false;
+
+  return { shopLow, warehouseLow, isLow: shopLow || warehouseLow };
+};
+
 class ProductService {
   async getProducts(filters: {
     search?: string;
@@ -38,13 +51,7 @@ class ProductService {
     });
 
     if (filters.lowStock === true) {
-      products = products.filter((p) => {
-        const totalQty = 
-          ('shopQuantity' in p ? p.shopQuantity : 0) + 
-          ('warehouseQuantity' in p ? p.warehouseQuantity : 0) +
-          (!('shopQuantity' in p) && !('warehouseQuantity' in p) && 'quantity' in p ? (p as any).quantity : 0);
-        return totalQty <= p.minStockLevel;
-      });
+      products = products.filter((p) => isLowStockByLocation(p).isLow);
     }
 
     const total = await prisma.product.count({ where });
@@ -200,10 +207,8 @@ class ProductService {
       },
     });
 
-    // Filter products where total quantity (shop + warehouse) is less than minStockLevel
-    return products.filter(
-      (p) => p.shopQuantity + p.warehouseQuantity <= p.minStockLevel
-    );
+    // Filter products where either shop or warehouse is at/below its threshold
+    return products.filter((p) => isLowStockByLocation(p).isLow);
   }
 
   /**
@@ -219,6 +224,8 @@ class ProductService {
         name: true,
         shopQuantity: true,
         warehouseQuantity: true,
+        shopMinStockLevel: true,
+        warehouseMinStockLevel: true,
         minStockLevel: true,
         lowStockNotifiedAt: true,
       },
@@ -226,11 +233,10 @@ class ProductService {
 
     if (!product) return;
 
-    const totalStock = (product.shopQuantity || 0) + (product.warehouseQuantity || 0);
-    const atOrBelowMin = totalStock <= product.minStockLevel;
+    const { shopLow, warehouseLow, isLow } = isLowStockByLocation(product);
 
     // If stock is above min, reset notification flag
-    if (!atOrBelowMin) {
+    if (!isLow) {
       if (product.lowStockNotifiedAt) {
         await prisma.product.update({
           where: { id: productId },
@@ -254,8 +260,12 @@ class ProductService {
         const payload = [
           {
             name: product.name,
-            currentStock: totalStock,
-            minStock: product.minStockLevel,
+            shopStock: product.shopQuantity ?? 0,
+            warehouseStock: product.warehouseQuantity ?? 0,
+            shopMin: product.shopMinStockLevel ?? product.minStockLevel ?? 0,
+            warehouseMin: product.warehouseMinStockLevel ?? product.minStockLevel ?? 0,
+            shopLow,
+            warehouseLow,
           },
         ];
 
