@@ -357,24 +357,25 @@ class ReportService {
     // Calculate closing balance
     const closingCash = openingCash + salesCash - purchasesCash - expensesCash;
     
-    // Calculate closing card balances
+    // Calculate closing card balances (using payments JSON for sales/purchases, and cardId for expenses)
+    const getCardPayments = (payments: any, cardId: string) => {
+      const list = (payments as Array<{ type?: string; amount?: number; cardId?: string }> | null) || [];
+      return list
+        .filter((p) => p.type === "card" && (!cardId || p.cardId === cardId))
+        .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+    };
+
     const closingCardBalances = openingCardBalances.map((cb) => {
       const card = cardMap.get(cb.cardId);
       if (!card) return { cardId: cb.cardId, cardName: "Unknown", balance: Number(cb.balance) };
       
-      // Add card sales, subtract card purchases and expenses
-      const cardSales = sales.filter((s) => s.paymentType === "card" && s.cardId === cb.cardId).reduce((sum, sale) => sum + Number(sale.total), 0);
-      const cardPurchases = purchases
-        .filter((p) => {
-          const payments = (p.payments as Array<{ type: string; amount: number; cardId?: string }> | null) || [];
-          return payments.some((pay) => pay.type === "card" && pay.cardId === cb.cardId);
-        })
-        .reduce((sum, p) => {
-          const payments = (p.payments as Array<{ type: string; amount: number; cardId?: string }> | null) || [];
-          const cardPayments = payments.filter((pay) => pay.type === "card" && pay.cardId === cb.cardId).reduce((s, pay) => s + pay.amount, 0);
-          return sum + cardPayments;
-        }, 0);
-      const cardExpenses = expenses.filter((e) => e.paymentType === "card" && e.cardId === cb.cardId).reduce((sum, exp) => sum + Number(exp.amount), 0);
+      // Add card sales from payments JSON, subtract card purchases (payments JSON) and card expenses (by cardId)
+      const cardSales = sales.reduce((sum, sale) => sum + getCardPayments((sale as any).payments, cb.cardId), 0);
+      const cardPurchases = purchases.reduce((sum, p) => sum + getCardPayments(p.payments, cb.cardId), 0);
+      const cardExpenses = expenses.reduce(
+        (sum, exp) => sum + (exp.cardId === cb.cardId ? Number(exp.amount) : 0),
+        0
+      );
       
       return {
         cardId: cb.cardId,
@@ -521,23 +522,24 @@ class ReportService {
     // Calculate closing balance
     const closingCash = openingCash + salesCash - purchasesCash - expensesCash;
     
-    // Calculate closing card balances
+    // Calculate closing card balances (use payments JSON + expense cardId)
+    const getCardPayments = (payments: any, cardId: string) => {
+      const list = (payments as Array<{ type?: string; amount?: number; cardId?: string }> | null) || [];
+      return list
+        .filter((p) => p.type === "card" && (!cardId || p.cardId === cardId))
+        .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+    };
+
     const closingCardBalances = openingCardBalances.map((cb) => {
       const card = cardMap.get(cb.cardId);
       if (!card) return { cardId: cb.cardId, cardName: "Unknown", balance: Number(cb.balance) };
       
-      const cardSales = sales.filter((s) => s.paymentType === "card" && s.cardId === cb.cardId).reduce((sum, sale) => sum + Number(sale.total), 0);
-      const cardPurchases = purchases
-        .filter((p) => {
-          const payments = (p.payments as Array<{ type: string; amount: number; cardId?: string }> | null) || [];
-          return payments.some((pay) => pay.type === "card" && pay.cardId === cb.cardId);
-        })
-        .reduce((sum, p) => {
-          const payments = (p.payments as Array<{ type: string; amount: number; cardId?: string }> | null) || [];
-          const cardPayments = payments.filter((pay) => pay.type === "card" && pay.cardId === cb.cardId).reduce((s, pay) => s + pay.amount, 0);
-          return sum + cardPayments;
-        }, 0);
-      const cardExpenses = expenses.filter((e) => e.paymentType === "card" && e.cardId === cb.cardId).reduce((sum, exp) => sum + Number(exp.amount), 0);
+      const cardSales = sales.reduce((sum, sale) => sum + getCardPayments((sale as any).payments, cb.cardId), 0);
+      const cardPurchases = purchases.reduce((sum, p) => sum + getCardPayments(p.payments, cb.cardId), 0);
+      const cardExpenses = expenses.reduce(
+        (sum, exp) => sum + (exp.cardId === cb.cardId ? Number(exp.amount) : 0),
+        0
+      );
       
       return {
         cardId: cb.cardId,
