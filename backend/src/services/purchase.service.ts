@@ -387,7 +387,7 @@ class PurchaseService {
     if (data.items) {
       // 1) Revert old stock
       for (const oldItem of purchase.items) {
-        const product = await prisma.product.findUnique({ where: { id: oldItem.productId } });
+        const product: any = await prisma.product.findUnique({ where: { id: oldItem.productId } });
         if (product) {
           const revertShopQty = Number(
             (oldItem as any).shopQuantity ??
@@ -427,9 +427,9 @@ class PurchaseService {
       });
 
       // 2) Create new items and apply stock increments
-      const purchaseItems = [];
+      const purchaseItems: any[] = [];
       for (const item of data.items) {
-        const product = await prisma.product.findUnique({
+        const product: any = await prisma.product.findUnique({
           where: { id: item.productId },
         });
 

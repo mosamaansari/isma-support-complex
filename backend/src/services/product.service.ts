@@ -260,12 +260,12 @@ class ProductService {
         const payload = [
           {
             name: product.name,
-            shopStock: product.shopQuantity ?? 0,
-            warehouseStock: product.warehouseQuantity ?? 0,
-            shopMin: product.shopMinStockLevel ?? product.minStockLevel ?? 0,
-            warehouseMin: product.warehouseMinStockLevel ?? product.minStockLevel ?? 0,
-            shopLow,
-            warehouseLow,
+            currentStock: (product.shopQuantity ?? 0) + (product.warehouseQuantity ?? 0),
+            minStock: Math.min(
+              product.shopMinStockLevel ?? product.minStockLevel ?? 0,
+              product.warehouseMinStockLevel ?? product.minStockLevel ?? 0,
+              product.minStockLevel ?? 0
+            ),
           },
         ];
 
