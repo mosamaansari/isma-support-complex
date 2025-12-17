@@ -79,7 +79,6 @@ export default function SalesPaymentsCombinedPrint() {
 
   const payments = sale.payments || [];
   const totalPaid = payments.reduce((sum: number, p: SalePayment) => sum + (p?.amount || 0), 0);
-  const paymentBanks = payments.map((p) => (p.bankAccountId && bankAccounts.find((b: any) => b.id === p.bankAccountId)) || defaultBank);
 
   if (payments.length === 0) {
     return (

@@ -15,6 +15,14 @@ import Checkbox from "../../components/form/input/Checkbox";
 import { ChevronLeftIcon } from "../../icons";
 import { PERMISSION_GROUPS, getDefaultPermissionsForRole } from "../../utils/availablePermissions";
 
+type FormValues = {
+  username?: string;
+  password?: string;
+  name: string;
+  email?: string;
+  role: UserRole;
+};
+
 // Strict password validation pattern
 // Must have: minimum 6 characters, at least one uppercase, one lowercase, one number, and one special character
 const strictPasswordPattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#^()_+\-=\[\]{};':"\\|,.<>\/])[A-Za-z\d@$!%*?&#^()_+\-=\[\]{};':"\\|,.<>\/]{6,}$/;
@@ -55,6 +63,13 @@ const createUserFormSchema = yup.object().shape({
 });
 
 const editUserFormSchema = yup.object().shape({
+  username: yup
+    .string()
+    .optional()
+    .trim()
+    .min(3, "Username must be at least 3 characters")
+    .max(50, "Username must be less than 50 characters")
+    .matches(/^[a-zA-Z0-9_]+$/, "Username can only contain letters, numbers, and underscores"),
   password: yup
     .string()
     .optional()
@@ -136,7 +151,7 @@ export default function UserForm() {
     setValue,
     watch,
     reset,
-  } = useForm({
+  } = useForm<FormValues>({
     resolver: yupResolver(schema),
     defaultValues: {
       username: "",
@@ -147,12 +162,12 @@ export default function UserForm() {
     },
   });
 
-  const formData = {
+  const formData: FormValues = {
     username: watch("username"),
     password: watch("password"),
-    name: watch("name"),
+    name: watch("name") || "",
     email: watch("email"),
-    role: watch("role") as UserRole,
+    role: (watch("role") as UserRole) || ("cashier" as UserRole),
   };
 
   useEffect(() => {
@@ -160,6 +175,7 @@ export default function UserForm() {
       const user = users.find((u) => u.id === id);
       if (user) {
         reset({
+          username: user.username,
           name: user.name,
           email: user.email || "",
           role: user.role,

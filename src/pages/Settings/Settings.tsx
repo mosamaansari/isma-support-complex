@@ -6,7 +6,7 @@ import Input from "../../components/form/input/InputField";
 import Label from "../../components/form/Label";
 import Button from "../../components/ui/button/Button";
 import { Modal } from "../../components/ui/modal";
-import { DownloadIcon, PlusIcon, TrashBinIcon, PencilIcon, BoxIcon } from "../../icons";
+import { DownloadIcon, TrashBinIcon, PencilIcon } from "../../icons";
 import api from "../../services/api";
 
 export default function Settings() {
@@ -21,7 +21,7 @@ export default function Settings() {
     updateBankAccount,
     deleteBankAccount,
   } = useData();
-  const { showSuccess, showError, showWarning } = useAlert();
+  const { showSuccess, showError } = useAlert();
   const [formData, setFormData] = useState(settings);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [importFile, setImportFile] = useState<File | null>(null);
