@@ -9,7 +9,6 @@ import {
   TableRow,
 } from "../ui/table";
 import Badge from "../ui/badge/Badge";
-import { DollarLineIcon } from "../../icons";
 
 export default function RecentSales() {
   const { sales } = useData();

@@ -8,7 +8,8 @@ import api from "../../services/api";
 import { Purchase, PurchasePayment } from "../../types";
 
 export default function PurchasePaymentPrint() {
-  const { purchaseId, paymentIndex } = useParams<{ purchaseId: string; paymentIndex?: string }>();
+  const { purchaseId: rawPurchaseId, paymentIndex } = useParams<{ purchaseId?: string; paymentIndex?: string }>();
+  const purchaseId = rawPurchaseId || "";
   const { settings } = useData();
   const navigate = useNavigate();
   const [purchase, setPurchase] = useState<Purchase | null>(null);
@@ -236,6 +237,7 @@ export default function PurchasePaymentPrint() {
     </>
   );
 }
+
 
 
 

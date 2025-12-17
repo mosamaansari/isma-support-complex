@@ -9,7 +9,7 @@ import { Sale, SalePayment } from "../../types";
 
 export default function SalesPaymentsCombinedPrint() {
   const { billNumber } = useParams<{ billNumber: string }>();
-  const { getSale, settings, bankAccounts, refreshBankAccounts } = useData();
+  const { settings, bankAccounts, refreshBankAccounts } = useData();
   const navigate = useNavigate();
   const [sale, setSale] = useState<Sale | null>(null);
   const [loading, setLoading] = useState(false);

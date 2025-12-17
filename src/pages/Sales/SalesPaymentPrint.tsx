@@ -9,7 +9,7 @@ import { Sale, SalePayment } from "../../types";
 
 export default function SalesPaymentPrint() {
   const { billNumber, paymentIndex } = useParams<{ billNumber: string; paymentIndex?: string }>();
-  const { getSale, settings, bankAccounts, refreshBankAccounts } = useData();
+  const { settings, bankAccounts, refreshBankAccounts } = useData();
   const navigate = useNavigate();
   const [sale, setSale] = useState<Sale | null>(null);
   const [payment, setPayment] = useState<SalePayment & { date?: string } | null>(null);

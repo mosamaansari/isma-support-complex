@@ -112,7 +112,6 @@ export default function DatePicker({
   const handleDateSelect = (day: number) => {
     const year = currentMonth.getFullYear();
     const month = currentMonth.getMonth();
-    const selectedDate = new Date(year, month, day);
     const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     
     setDisplayDate(dateStr);
@@ -412,5 +411,6 @@ export default function DatePicker({
     </div>
   );
 }
+
 
 

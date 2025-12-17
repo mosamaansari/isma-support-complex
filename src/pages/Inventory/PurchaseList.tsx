@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from "react";
-import React from "react";
 import { Link } from "react-router";
 import PageMeta from "../../components/common/PageMeta";
 import { useData } from "../../context/DataContext";

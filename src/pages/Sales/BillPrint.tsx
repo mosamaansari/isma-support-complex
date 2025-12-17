@@ -111,10 +111,6 @@ export default function BillPrint() {
     );
   }
 
-  const handlePrint = () => {
-    window.print();
-  };
-
   const handleDownloadPDF = () => {
     const printWindow = window.open("", "_blank");
     if (!printWindow) {

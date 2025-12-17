@@ -15,6 +15,7 @@ interface InputProps {
   min?: string | number;
   max?: string | number;
   step?: number;
+  minLength?: number;
   disabled?: boolean;
   success?: boolean;
   error?: boolean;
@@ -37,6 +38,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(({
   min,
   max,
   step,
+  minLength,
   disabled = false,
   success = false,
   error = false,
@@ -72,6 +74,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(({
         min={min}
         max={max}
         step={step}
+        minLength={minLength}
         disabled={disabled}
         required={required}
         readOnly={readOnly}

@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import * as yup from "yup";
-import { useData } from "../../context/DataContext";
+// import { useData } from "../../context/DataContext";
 import { useAlert } from "../../context/AlertContext";
 import Select from "./Select";
 import Button from "../ui/button/Button";
@@ -43,8 +43,7 @@ export default function RoleSelect({
   className = "",
   currentUserRole,
 }: RoleSelectProps) {
-  const { currentUser } = useData();
-  const { showSuccess, showError, showWarning } = useAlert();
+  const { showSuccess, showError } = useAlert();
   const [roles, setRoles] = useState<Array<{ name: string; label: string; description?: string; isCustom?: boolean }>>([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -340,11 +339,7 @@ export default function RoleSelect({
                   type="button"
                   size="sm"
                   disabled={isSubmitting}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    handleFormSubmit(handleAddRole)(e);
-                  }}
+                  onClick={() => handleFormSubmit(handleAddRole)()}
                 >
                   {isSubmitting ? "Adding..." : "Add Role"}
                 </Button>

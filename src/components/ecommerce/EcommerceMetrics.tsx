@@ -1,13 +1,5 @@
 import { useEffect, useState } from "react";
-import {
-  ArrowDownIcon,
-  ArrowUpIcon,
-  BoxIconLine,
-  GroupIcon,
-  DollarLineIcon,
-  FileIcon,
-} from "../../icons";
-import Badge from "../ui/badge/Badge";
+import { DollarLineIcon } from "../../icons";
 import api from "../../services/api";
 
 interface DashboardStats {
@@ -29,18 +21,15 @@ interface DashboardStats {
 export default function EcommerceMetrics() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const loadStats = async () => {
       try {
         setLoading(true);
-        setError(null);
         const data = await api.getDashboardStats();
         setStats(data);
       } catch (error: any) {
         console.error("Error loading dashboard stats:", error);
-        setError(error?.response?.data?.error || "Failed to load dashboard stats");
         // Set default stats on error
         setStats({
           metrics: {

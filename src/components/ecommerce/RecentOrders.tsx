@@ -22,13 +22,11 @@ interface RecentSale {
 export default function RecentOrders() {
   const [recentSales, setRecentSales] = useState<RecentSale[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const loadData = async () => {
       try {
         setLoading(true);
-        setError(null);
         const stats = await api.getDashboardStats();
         // Handle null/undefined recentSales
         if (stats?.recentSales && Array.isArray(stats.recentSales)) {
@@ -38,7 +36,6 @@ export default function RecentOrders() {
         }
       } catch (error: any) {
         console.error("Error loading recent sales:", error);
-        setError(error?.response?.data?.error || "Failed to load recent sales");
         setRecentSales([]);
       } finally {
         setLoading(false);

@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router";
 import api from "../../services/api";
-import { useData } from "../../context/DataContext";
 
 interface SearchResult {
   type: "product" | "sale" | "purchase" | "expense" | "customer" | "user";
@@ -56,7 +55,6 @@ export default function SearchDropdown({ query, onClose }: SearchDropdownProps) 
   const [selectedIndex, setSelectedIndex] = useState(0);
   const navigate = useNavigate();
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const { currentUser } = useData();
 
   useEffect(() => {
     if (!query || query.trim().length < 2) {
@@ -147,7 +145,7 @@ export default function SearchDropdown({ query, onClose }: SearchDropdownProps) 
               <div className="px-4 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
                 {getTypeLabel(type)}
               </div>
-              {typeResults.map((result, index) => {
+              {typeResults.map((result) => {
                 const globalIndex = results.indexOf(result);
                 return (
                   <button

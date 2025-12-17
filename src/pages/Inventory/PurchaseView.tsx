@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useParams, useNavigate, Link } from "react-router";
+import { useParams, Link } from "react-router";
 import PageMeta from "../../components/common/PageMeta";
 import api from "../../services/api";
 import { Purchase, PurchasePayment } from "../../types";
@@ -8,7 +8,6 @@ import { ChevronLeftIcon, DownloadIcon } from "../../icons";
 
 export default function PurchaseView() {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
   const [purchase, setPurchase] = useState<Purchase | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

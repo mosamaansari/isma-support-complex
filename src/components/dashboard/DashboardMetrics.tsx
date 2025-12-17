@@ -1,7 +1,6 @@
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import { useData } from "../../context/DataContext";
 import { DollarLineIcon, BoxIconLine, FileIcon, AlertIcon } from "../../icons";
-import Badge from "../ui/badge/Badge";
 import { Link } from "react-router";
 
 export default function DashboardMetrics() {

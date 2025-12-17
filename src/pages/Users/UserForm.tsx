@@ -152,7 +152,7 @@ export default function UserForm() {
     watch,
     reset,
   } = useForm<FormValues>({
-    resolver: yupResolver(schema),
+    resolver: yupResolver(schema) as any,
     defaultValues: {
       username: "",
       password: "",
@@ -163,11 +163,11 @@ export default function UserForm() {
   });
 
   const formData: FormValues = {
-    username: watch("username"),
+    username: watch("username") || "",
     password: watch("password"),
     name: watch("name") || "",
     email: watch("email"),
-    role: (watch("role") as UserRole) || ("cashier" as UserRole),
+    role: (watch("role") as UserRole) || "cashier",
   };
 
   useEffect(() => {
