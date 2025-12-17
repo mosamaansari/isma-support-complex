@@ -18,14 +18,11 @@ export const createExpenseSchema = Joi.object({
       "any.required": "Category is required",
     }),
   description: Joi.string()
-    .required()
-    .min(1)
+    .optional()
+    .allow("", null)
     .max(500)
     .messages({
-      "string.empty": "Description is required",
-      "string.min": "Description must be at least 1 character long",
       "string.max": "Description cannot exceed 500 characters",
-      "any.required": "Description is required",
     }),
   date: Joi.string()
     .optional()
@@ -35,31 +32,44 @@ export const createExpenseSchema = Joi.object({
     }),
   paymentType: Joi.string()
     .optional()
-    .valid("cash", "card", "credit", "bank_transfer")
+    .valid("cash", "bank_transfer")
     .default("cash")
     .messages({
-      "any.only": "Payment type must be one of: cash, card, credit, bank_transfer",
+      "any.only": "Payment type must be one of: cash, bank_transfer",
     }),
   cardId: Joi.string()
     .optional()
-    .uuid()
     .allow("", null)
-    .when("paymentType", {
-      is: "card",
-      then: Joi.required().messages({
-        "any.required": "Card ID is required when payment type is card",
-      }),
-      otherwise: Joi.optional(),
+    .custom((value, helpers) => {
+      // Convert empty string to null
+      if (value === "" || value === null || value === undefined) {
+        return null;
+      }
+      // Validate CUID format (starts with 'c' and is typically 25 chars)
+      if (typeof value === 'string' && value.length > 0 && !value.startsWith('c')) {
+        return helpers.error("string.pattern.base", { message: "Card ID must be a valid ID" });
+      }
+      return value;
     })
     .messages({
-      "string.uuid": "Card ID must be a valid UUID",
+      "string.pattern.base": "Card ID must be a valid ID",
     }),
   bankAccountId: Joi.string()
     .optional()
-    .uuid()
     .allow("", null)
+    .custom((value, helpers) => {
+      // Convert empty string to null
+      if (value === "" || value === null || value === undefined) {
+        return null;
+      }
+      // Validate CUID format (starts with 'c' and is typically 25 chars)
+      if (typeof value === 'string' && value.length > 0 && !value.startsWith('c')) {
+        return helpers.error("string.pattern.base", { message: "Bank account ID must be a valid ID" });
+      }
+      return value;
+    })
     .messages({
-      "string.uuid": "Bank account ID must be a valid UUID",
+      "string.pattern.base": "Bank account ID must be a valid ID",
     }),
 });
 
@@ -79,10 +89,9 @@ export const updateExpenseSchema = Joi.object({
     }),
   description: Joi.string()
     .optional()
-    .min(1)
+    .allow("", null)
     .max(500)
     .messages({
-      "string.min": "Description must be at least 1 character long",
       "string.max": "Description cannot exceed 500 characters",
     }),
   date: Joi.string()
@@ -93,30 +102,43 @@ export const updateExpenseSchema = Joi.object({
     }),
   paymentType: Joi.string()
     .optional()
-    .valid("cash", "card", "credit", "bank_transfer")
+    .valid("cash", "bank_transfer")
     .messages({
-      "any.only": "Payment type must be one of: cash, card, credit, bank_transfer",
+      "any.only": "Payment type must be one of: cash, bank_transfer",
     }),
   cardId: Joi.string()
     .optional()
-    .uuid()
     .allow("", null)
-    .when("paymentType", {
-      is: "card",
-      then: Joi.required().messages({
-        "any.required": "Card ID is required when payment type is card",
-      }),
-      otherwise: Joi.optional(),
+    .custom((value, helpers) => {
+      // Convert empty string to null
+      if (value === "" || value === null || value === undefined) {
+        return null;
+      }
+      // Validate CUID format (starts with 'c' and is typically 25 chars)
+      if (typeof value === 'string' && value.length > 0 && !value.startsWith('c')) {
+        return helpers.error("string.pattern.base", { message: "Card ID must be a valid ID" });
+      }
+      return value;
     })
     .messages({
-      "string.uuid": "Card ID must be a valid UUID",
+      "string.pattern.base": "Card ID must be a valid ID",
     }),
   bankAccountId: Joi.string()
     .optional()
-    .uuid()
     .allow("", null)
+    .custom((value, helpers) => {
+      // Convert empty string to null
+      if (value === "" || value === null || value === undefined) {
+        return null;
+      }
+      // Validate CUID format (starts with 'c' and is typically 25 chars)
+      if (typeof value === 'string' && value.length > 0 && !value.startsWith('c')) {
+        return helpers.error("string.pattern.base", { message: "Bank account ID must be a valid ID" });
+      }
+      return value;
+    })
     .messages({
-      "string.uuid": "Bank account ID must be a valid UUID",
+      "string.pattern.base": "Bank account ID must be a valid ID",
     }),
 });
 
@@ -144,6 +166,26 @@ export const getExpensesQuerySchema = Joi.object({
     .allow("")
     .messages({
       "string.base": "Search must be a string",
+    }),
+  page: Joi.number()
+    .integer()
+    .min(1)
+    .optional()
+    .messages({
+      "number.base": "Page must be a number",
+      "number.integer": "Page must be an integer",
+      "number.min": "Page must be at least 1",
+    }),
+  pageSize: Joi.number()
+    .integer()
+    .min(1)
+    .max(100)
+    .optional()
+    .messages({
+      "number.base": "Page size must be a number",
+      "number.integer": "Page size must be an integer",
+      "number.min": "Page size must be at least 1",
+      "number.max": "Page size cannot exceed 100",
     }),
 });
 

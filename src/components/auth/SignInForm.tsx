@@ -1,21 +1,53 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router";
-import { ChevronLeftIcon, EyeCloseIcon, EyeIcon } from "../../icons";
+import { useForm } from "react-hook-form";
+import { yupResolver } from "@hookform/resolvers/yup";
+import * as yup from "yup";
+import { EyeCloseIcon, EyeIcon } from "../../icons";
 import Label from "../form/Label";
 import Input from "../form/input/InputField";
 import Checkbox from "../form/input/Checkbox";
 import Button from "../ui/button/Button";
 import { useData } from "../../context/DataContext";
 
+const signInSchema = yup.object().shape({
+  username: yup
+    .string()
+    .required("Username is required")
+    .trim()
+    .min(3, "Username must be at least 3 characters")
+    .max(50, "Username must be less than 50 characters"),
+  password: yup
+    .string()
+    .required("Password is required")
+    .min(6, "Password must be at least 6 characters")
+    .max(100, "Password must be less than 100 characters"),
+});
+
 export default function SignInForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [isChecked, setIsChecked] = useState(false);
-  const [username, setUsername] = useState("admin");
-  const [password, setPassword] = useState("admin123");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const { login, currentUser, error: contextError } = useData();
   const navigate = useNavigate();
+
+  const {
+    register,
+    handleSubmit: handleFormSubmit,
+    formState: { errors },
+    setValue,
+    watch,
+  } = useForm({
+    resolver: yupResolver(signInSchema),
+    defaultValues: {
+      username: "admin",
+      password: "admin123",
+    },
+  });
+
+  const username = watch("username");
+  const password = watch("password");
 
   // Check if already logged in
   useEffect(() => {
@@ -30,17 +62,26 @@ export default function SignInForm() {
       setError(contextError);
     }
   }, [contextError]);
+
+  const onSubmit = async (data: any) => {
+    setError("");
+    setIsLoading(true);
+    try {
+      const success = await login(data.username, data.password);
+      if (success === true) {
+        navigate("/");
+      } else {
+        setError("Login failed. Please check your credentials.");
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.error || "Login failed");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="flex flex-col flex-1">
-      <div className="w-full max-w-md pt-10 mx-auto">
-        <Link
-          to="/"
-          className="inline-flex items-center text-sm text-gray-500 transition-colors hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
-        >
-          <ChevronLeftIcon className="size-5" />
-          Back to dashboard
-        </Link>
-      </div>
       <div className="flex flex-col justify-center flex-1 w-full max-w-md mx-auto">
         <div>
           <div className="mb-5 sm:mb-8">
@@ -50,35 +91,9 @@ export default function SignInForm() {
             <p className="text-sm text-gray-500 dark:text-gray-400">
               Enter your username and password to sign in!
             </p>
-            <div className="mt-3">
-              <Link
-                to="/superadmin"
-                className="text-sm text-brand-500 hover:text-brand-600 dark:text-brand-400"
-              >
-                Super Admin? Sign in here
-              </Link>
-            </div>
           </div>
           <div>
-            <form
-              onSubmit={async (e) => {
-                e.preventDefault();
-                setError("");
-                setIsLoading(true);
-                try {
-                  const success = await login(username, password);
-                  if (success === true) {
-                    navigate("/");
-                  } else {
-                    setError("Login failed. Please check your credentials.");
-                  }
-                } catch (err: any) {
-                  setError(err.response?.data?.error || "Login failed");
-                } finally {
-                  setIsLoading(false);
-                }
-              }}
-            >
+            <form onSubmit={handleFormSubmit(onSubmit)}>
               <div className="space-y-6">
                 {error && (
                   <div className="p-3 text-sm text-red-600 bg-red-50 rounded-lg dark:bg-red-900/20 dark:text-red-400">
@@ -90,10 +105,16 @@ export default function SignInForm() {
                     Username <span className="text-error-500">*</span>{" "}
                   </Label>
                   <Input
+                    name="username"
                     value={username}
-                    onChange={(e) => setUsername(e.target.value)}
+                    onChange={(e) => {
+                      setValue("username", e.target.value);
+                    }}
+                    onBlur={register("username").onBlur}
                     placeholder="Enter your username"
                     required
+                    error={!!errors.username}
+                    hint={errors.username?.message}
                   />
                 </div>
                 <div>
@@ -103,10 +124,16 @@ export default function SignInForm() {
                   <div className="relative">
                     <Input
                       type={showPassword ? "text" : "password"}
+                      name="password"
                       value={password}
-                      onChange={(e) => setPassword(e.target.value)}
+                      onChange={(e) => {
+                        setValue("password", e.target.value);
+                      }}
+                      onBlur={register("password").onBlur}
                       placeholder="Enter your password"
                       required
+                      error={!!errors.password}
+                      hint={errors.password?.message}
                     />
                     <span
                       onClick={() => setShowPassword(!showPassword)}

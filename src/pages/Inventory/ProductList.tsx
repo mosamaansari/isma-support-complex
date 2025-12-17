@@ -2,13 +2,18 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router";
 import PageMeta from "../../components/common/PageMeta";
 import { useData } from "../../context/DataContext";
+import { useAlert } from "../../context/AlertContext";
 import Button from "../../components/ui/button/Button";
 import Input from "../../components/form/input/InputField";
+import Pagination from "../../components/ui/Pagination";
+import PageSizeSelector from "../../components/ui/PageSizeSelector";
+import { Modal } from "../../components/ui/modal";
 import { PencilIcon, TrashBinIcon, AlertIcon } from "../../icons";
 
 export default function ProductList() {
   const {
     products,
+    productsPagination,
     deleteProduct,
     getLowStockProducts,
     currentUser,
@@ -16,22 +21,35 @@ export default function ProductList() {
     error,
     refreshProducts,
   } = useData();
+  const { showSuccess, showError } = useAlert();
   const [searchTerm, setSearchTerm] = useState("");
   const [showLowStock, setShowLowStock] = useState(false);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [productToDelete, setProductToDelete] = useState<string | null>(null);
   const [hasTriedRefresh, setHasTriedRefresh] = useState(false);
 
   // Refresh products on mount if empty (only once)
   useEffect(() => {
     if (products.length === 0 && !loading && currentUser && !hasTriedRefresh) {
       setHasTriedRefresh(true);
-      refreshProducts().catch(console.error);
+      // Use default values if pagination is not initialized
+      refreshProducts(productsPagination?.page || 1, productsPagination?.pageSize || 10).catch(console.error);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [products.length, loading, currentUser]);
 
+  const handlePageChange = (page: number) => {
+    refreshProducts(page, productsPagination?.pageSize || 10);
+  };
+
+  const handlePageSizeChange = (pageSize: number) => {
+    refreshProducts(1, pageSize);
+  };
+
   const lowStockProducts = getLowStockProducts();
-  const filteredProducts = products.filter((product) => {
+  const filteredProducts = (products || []).filter((product) => {
+    if (!product || !product.name) return false;
     const matchesSearch =
       product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (product.category && product.category.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -40,18 +58,26 @@ export default function ProductList() {
     return matchesSearch && matchesLowStock;
   });
 
-  const handleDelete = async (id: string) => {
-    if (window.confirm("Are you sure you want to delete this product?")) {
-      setIsDeleting(id);
-      try {
-        await deleteProduct(id);
-        await refreshProducts();
-      } catch (err) {
-        alert("Failed to delete product. Please try again.");
-        console.error("Delete error:", err);
-      } finally {
-        setIsDeleting(null);
-      }
+  const handleDeleteClick = (id: string) => {
+    setProductToDelete(id);
+    setDeleteModalOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!productToDelete) return;
+    
+    setIsDeleting(productToDelete);
+    try {
+      await deleteProduct(productToDelete);
+      await refreshProducts(productsPagination?.page || 1, productsPagination?.pageSize || 10);
+      setDeleteModalOpen(false);
+      setProductToDelete(null);
+      showSuccess("Product deleted successfully!");
+    } catch (err) {
+      showError("Failed to delete product. Please try again.");
+      console.error("Delete error:", err);
+    } finally {
+      setIsDeleting(null);
     }
   };
 
@@ -80,7 +106,7 @@ export default function ProductList() {
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <p className="text-red-500 mb-4">Error: {error}</p>
-          <Button onClick={() => refreshProducts()} size="sm">
+          <Button onClick={() => refreshProducts(productsPagination?.page || 1, productsPagination?.pageSize || 10)} size="sm">
             Retry
           </Button>
         </div>
@@ -100,11 +126,11 @@ export default function ProductList() {
             <h1 className="text-2xl font-bold text-gray-800 dark:text-white">
               Products & Inventory
             </h1>
-            {lowStockProducts.length > 0 && (
+            {(lowStockProducts || []).length > 0 && (
               <div className="flex items-center gap-2 mt-2 text-orange-600 dark:text-orange-400">
                 <AlertIcon className="w-5 h-5" />
                 <span className="text-sm">
-                  {lowStockProducts.length} product(s) are low in stock
+                  {(lowStockProducts || []).length} product(s) are low in stock
                 </span>
               </div>
             )}
@@ -118,21 +144,22 @@ export default function ProductList() {
           <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
             <p className="text-sm text-gray-600 dark:text-gray-400">Total Products</p>
             <p className="text-2xl font-bold text-gray-800 dark:text-white">
-              {products.length}
+              {(products || []).length}
             </p>
           </div>
           <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
             <p className="text-sm text-gray-600 dark:text-gray-400">Low Stock</p>
             <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
-              {lowStockProducts.length}
+              {(lowStockProducts || []).length}
             </p>
           </div>
           <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
             <p className="text-sm text-gray-600 dark:text-gray-400">Total Stock Value</p>
             <p className="text-2xl font-bold text-gray-800 dark:text-white">
               Rs.{" "}
-              {products
+              {(products || [])
                 .reduce((sum, p) => {
+                  if (!p) return sum;
                   const totalQuantity = (p.shopQuantity || 0) + (p.warehouseQuantity || 0);
                   const price = p.salePrice || 0;
                   return sum + totalQuantity * price;
@@ -176,9 +203,6 @@ export default function ProductList() {
                         Category
                       </th>
               <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
-                Cost Price
-              </th>
-              <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
                 Sale Price
               </th>
               <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -198,7 +222,7 @@ export default function ProductList() {
           <tbody>
             {filteredProducts.length === 0 ? (
               <tr>
-                <td colSpan={9} className="p-8 text-center text-gray-500">
+                <td colSpan={8} className="p-8 text-center text-gray-500">
                   {products.length === 0
                     ? "No products available. Add your first product!"
                     : "No products match your search criteria"}
@@ -231,9 +255,6 @@ export default function ProductList() {
                     </td>
                     <td className="p-4 text-gray-700 dark:text-gray-300">
                       {product.category}
-                    </td>
-                    <td className="p-4 text-gray-700 dark:text-gray-300">
-                      Rs. {product.salePrice ? Number(product.salePrice).toFixed(2) : "N/A"}
                     </td>
                     <td className="p-4 text-gray-700 dark:text-gray-300">
                       Rs. {Number(product.salePrice || 0).toFixed(2)}
@@ -274,7 +295,7 @@ export default function ProductList() {
                           currentUser?.role === "warehouse_manager" ||
                           currentUser?.role === "superadmin") && (
                           <button
-                            onClick={() => handleDelete(product.id)}
+                            onClick={() => handleDeleteClick(product.id)}
                             disabled={isDeleting === product.id}
                             className="p-2 text-red-600 hover:bg-red-50 rounded dark:hover:bg-red-900/20 disabled:opacity-50 disabled:cursor-not-allowed"
                           >
@@ -290,6 +311,77 @@ export default function ProductList() {
           </tbody>
         </table>
       </div>
+
+      {/* Pagination Controls */}
+      <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-4 bg-white rounded-lg shadow-sm p-4 dark:bg-gray-800">
+        <div className="flex items-center gap-4">
+          <PageSizeSelector
+            pageSize={productsPagination?.pageSize || 10}
+            onPageSizeChange={handlePageSizeChange}
+          />
+          <span className="text-sm text-gray-600 dark:text-gray-400">
+            Showing {((productsPagination.page - 1) * productsPagination.pageSize) + 1} to{" "}
+            {Math.min(productsPagination.page * productsPagination.pageSize, productsPagination.total)} of{" "}
+            {productsPagination.total} products
+          </span>
+        </div>
+        <Pagination
+          currentPage={productsPagination?.page || 1}
+          totalPages={productsPagination?.totalPages || 1}
+          onPageChange={handlePageChange}
+        />
+      </div>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        isOpen={deleteModalOpen}
+        onClose={() => {
+          setDeleteModalOpen(false);
+          setProductToDelete(null);
+        }}
+        className="max-w-md mx-4"
+        showCloseButton={true}
+      >
+        <div className="p-6">
+          <div className="flex items-center gap-4 mb-4">
+            <div className="flex items-center justify-center w-12 h-12 bg-red-100 rounded-full dark:bg-red-900/20">
+              <TrashBinIcon className="w-6 h-6 text-red-600 dark:text-red-400" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-gray-800 dark:text-white">
+                Delete Product
+              </h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                This action cannot be undone
+              </p>
+            </div>
+          </div>
+          <p className="mb-6 text-gray-700 dark:text-gray-300">
+            Are you sure you want to delete this product? This will permanently remove the product and all associated data.
+          </p>
+          <div className="flex gap-3 justify-end">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setDeleteModalOpen(false);
+                setProductToDelete(null);
+              }}
+              disabled={isDeleting !== null}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              onClick={confirmDelete}
+              disabled={isDeleting !== null}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              {isDeleting ? "Deleting..." : "Delete Product"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </>
   );
 }

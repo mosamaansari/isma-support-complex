@@ -1,12 +1,14 @@
 import express, { Router } from "express";
 import saleController from "../controllers/sale.controller";
-import { authenticate, authorize } from "../middleware/auth";
-import { validate, validateQuery, validateParams } from "../middleware/validate";
+import { authenticate } from "../middleware/auth";
+import { requirePermission } from "../middleware/permissions";
+import { bodyValidator, queryValidator, paramsValidator } from "../middleware/joiValidator";
 import {
   createSaleSchema,
   getSalesQuerySchema,
   getSaleByBillNumberSchema,
 } from "../validators/sale.validator";
+import { PERMISSIONS } from "../utils/permissions";
 import Joi from "joi";
 
 const router = Router();
@@ -15,7 +17,7 @@ const router = Router();
 router.get(
   "/",
   authenticate,
-  validateQuery(getSalesQuerySchema),
+  queryValidator(getSalesQuerySchema),
   saleController.getSales.bind(saleController)
 );
 
@@ -23,7 +25,7 @@ router.get(
 router.get(
   "/bill/:billNumber",
   authenticate,
-  validateParams(getSaleByBillNumberSchema),
+  paramsValidator(getSaleByBillNumberSchema),
   saleController.getSaleByBillNumber.bind(saleController)
 );
 
@@ -31,10 +33,10 @@ router.get(
 router.get(
   "/:id",
   authenticate,
-  validateParams(
+  paramsValidator(
     Joi.object({
-      id: Joi.string().uuid().required().messages({
-        "string.uuid": "Sale ID must be a valid UUID",
+      id: Joi.string().required().trim().min(1).messages({
+        "string.empty": "Sale ID is required",
         "any.required": "Sale ID is required",
       }),
     })
@@ -46,8 +48,8 @@ router.get(
 router.post(
   "/",
   authenticate,
-  authorize("superadmin", "admin", "cashier"),
-  validate(createSaleSchema),
+  requirePermission(PERMISSIONS.SALES_CREATE),
+  bodyValidator(createSaleSchema),
   saleController.createSale.bind(saleController)
 );
 
@@ -55,11 +57,11 @@ router.post(
 router.patch(
   "/:id/cancel",
   authenticate,
-  authorize("superadmin", "admin"),
-  validateParams(
+  requirePermission(PERMISSIONS.SALES_CANCEL),
+  paramsValidator(
     Joi.object({
-      id: Joi.string().uuid().required().messages({
-        "string.uuid": "Sale ID must be a valid UUID",
+      id: Joi.string().required().trim().min(1).messages({
+        "string.empty": "Sale ID is required",
         "any.required": "Sale ID is required",
       }),
     })
@@ -71,22 +73,22 @@ router.patch(
 router.post(
   "/:id/payments",
   authenticate,
-  authorize("superadmin", "admin", "cashier"),
-  validateParams(
+  requirePermission(PERMISSIONS.SALES_ADD_PAYMENT),
+  paramsValidator(
     Joi.object({
-      id: Joi.string().uuid().required().messages({
-        "string.uuid": "Sale ID must be a valid UUID",
+      id: Joi.string().required().trim().min(1).messages({
+        "string.empty": "Sale ID is required",
         "any.required": "Sale ID is required",
       }),
     })
   ),
-  validate(
+  bodyValidator(
     Joi.object({
       type: Joi.string()
         .valid("cash", "card", "credit", "bank_transfer")
         .required()
         .messages({
-          "any.only": "Payment type must be one of: cash, card, credit, bank_transfer",
+          "any.only": "Payment type must be one of: cash, bank_transfer",
           "any.required": "Payment type is required",
         }),
       amount: Joi.number()
@@ -99,17 +101,22 @@ router.post(
         }),
       cardId: Joi.string()
         .optional()
-        .uuid()
         .allow("", null)
         .messages({
-          "string.uuid": "Card ID must be a valid UUID",
+          "string.base": "Card ID must be a string",
         }),
       bankAccountId: Joi.string()
         .optional()
-        .uuid()
         .allow("", null)
         .messages({
-          "string.uuid": "Bank account ID must be a valid UUID",
+          "string.base": "Bank account ID must be a string",
+        }),
+      date: Joi.string()
+        .optional()
+        .isoDate()
+        .allow("", null)
+        .messages({
+          "string.isoDate": "Date must be a valid ISO date",
         }),
     })
   ),

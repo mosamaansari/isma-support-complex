@@ -1,29 +1,76 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
+import { useForm } from "react-hook-form";
+import { yupResolver } from "@hookform/resolvers/yup";
+import * as yup from "yup";
 import PageMeta from "../../components/common/PageMeta";
 import { useData } from "../../context/DataContext";
+import { useAlert } from "../../context/AlertContext";
 import { Product, SaleItem, SalePayment } from "../../types";
 import Input from "../../components/form/input/InputField";
+import DatePicker from "../../components/form/DatePicker";
 import Label from "../../components/form/Label";
 import Select from "../../components/form/Select";
 import Button from "../../components/ui/button/Button";
 import { TrashBinIcon, PlusIcon } from "../../icons";
 
+const salesEntrySchema = yup.object().shape({
+  customerName: yup
+    .string()
+    .required("Customer name is required")
+    .trim()
+    .min(2, "Customer name must be at least 2 characters")
+    .max(100, "Customer name must be less than 100 characters"),
+  customerPhone: yup
+    .string()
+    .optional()
+    .matches(/^[0-9+\-\s()]*$/, "Phone number contains invalid characters")
+    .max(20, "Phone number must be less than 20 characters"),
+  customerCity: yup
+    .string()
+    .optional()
+    .max(50, "City name must be less than 50 characters"),
+  date: yup
+    .string()
+    .required("Date is required"),
+});
+
 export default function SalesEntry() {
   const { products, currentUser, addSale, sales, loading, error, bankAccounts, refreshBankAccounts, cards, refreshCards } = useData();
+  const { showError } = useAlert();
   const navigate = useNavigate();
   const [selectedProducts, setSelectedProducts] = useState<
     (SaleItem & { product: Product })[]
   >([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
   const [payments, setPayments] = useState<SalePayment[]>([]);
-  const [customerName, setCustomerName] = useState("");
-  const [customerPhone, setCustomerPhone] = useState("");
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [globalDiscount, setGlobalDiscount] = useState(0);
   const [globalTax, setGlobalTax] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [backendErrors, setBackendErrors] = useState<Record<string, string>>({});
+  const [showErrors, setShowErrors] = useState(false);
+  const [formError, setFormError] = useState<string>("");
+
+  const {
+    register,
+    handleSubmit: handleFormSubmit,
+    formState: { errors },
+    setValue,
+    watch,
+  } = useForm({
+    resolver: yupResolver(salesEntrySchema),
+    defaultValues: {
+      customerName: "",
+      customerPhone: "",
+      customerCity: "",
+      date: new Date().toISOString().split("T")[0],
+    },
+  });
+
+  const customerName = watch("customerName");
+  const customerPhone = watch("customerPhone");
+  const customerCity = watch("customerCity");
 
   useEffect(() => {
     if (bankAccounts.length === 0) {
@@ -44,7 +91,7 @@ export default function SalesEntry() {
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <p className="text-gray-500 mb-4">Please login to continue</p>
-          <Button onClick={() => navigate("/signin")} size="sm">
+          <Button onClick={() => navigate("/login")} size="sm">
             Go to Login
           </Button>
         </div>
@@ -75,19 +122,15 @@ export default function SalesEntry() {
     );
   }
 
-  useEffect(() => {
-    if (searchTerm) {
-      setFilteredProducts(
-        products.filter(
-          (p) =>
-            p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (p.category && p.category.toLowerCase().includes(searchTerm.toLowerCase()))
+  // Filter products based on search term - compute directly instead of using useEffect
+  const filteredProducts = searchTerm
+    ? (products || []).filter((p) =>
+        p && p.name && (
+          p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          (p.category && p.category.toLowerCase().includes(searchTerm.toLowerCase()))
         )
-      );
-    } else {
-      setFilteredProducts([]);
-    }
-  }, [searchTerm, products]);
+      )
+    : (products || []);
 
   const addPayment = () => {
     setPayments([
@@ -110,17 +153,9 @@ export default function SalesEntry() {
       payments.map((payment, i) => {
         if (i === index) {
           const updated = { ...payment, [field]: value };
-          // If type changes to cash, remove cardId and bankAccountId
+          // If type changes to cash, remove bankAccountId
           if (field === "type" && value === "cash") {
-            delete updated.cardId;
             delete updated.bankAccountId;
-          }
-          // If type changes to card, auto-select default card if available
-          if (field === "type" && value === "card" && !updated.cardId && cards.length > 0) {
-            const defaultCard = cards.find((c) => c.isDefault && c.isActive);
-            if (defaultCard) {
-              updated.cardId = defaultCard.id;
-            }
           }
           // If type changes to bank_transfer, auto-select default bank account if available
           if (field === "type" && value === "bank_transfer" && !updated.bankAccountId && bankAccounts.length > 0) {
@@ -157,8 +192,11 @@ export default function SalesEntry() {
           productName: product.name,
           quantity: 1,
           unitPrice: product.salePrice || 0,
+          customPrice: undefined,
           discount: 0,
+          discountType: "percent",
           tax: 0,
+          taxType: "percent",
           total: (product.salePrice || 0) * 1,
           product,
         },
@@ -167,18 +205,44 @@ export default function SalesEntry() {
     setSearchTerm("");
   };
 
-  const updateItemQuantity = (productId: string, quantity: number) => {
-    if (quantity <= 0) {
-      removeItem(productId);
-      return;
-    }
+  const updateItemPrice = (productId: string, price: number) => {
     setSelectedProducts(
       selectedProducts.map((item) => {
         if (item.productId === productId) {
-          const newTotal =
-            (item.unitPrice * quantity * (1 - item.discount / 100) +
-              item.tax) *
-            (1 - globalDiscount / 100);
+          const effectivePrice = price > 0 ? price : item.unitPrice;
+          const discountAmount = item.discountType === "value" 
+            ? item.discount 
+            : (effectivePrice * item.quantity * item.discount / 100);
+          const taxAmount = item.taxType === "value"
+            ? item.tax
+            : (effectivePrice * item.quantity * item.tax / 100);
+          const newTotal = (effectivePrice * item.quantity) - discountAmount + taxAmount;
+          return { 
+            ...item, 
+            customPrice: price > 0 ? price : undefined,
+            unitPrice: effectivePrice,
+            total: newTotal 
+          };
+        }
+        return item;
+      })
+    );
+  };
+
+  const updateItemQuantity = (productId: string, rawQty: string) => {
+    const parsed = rawQty === "" ? 0 : parseInt(rawQty, 10);
+    const quantity = Number.isNaN(parsed) ? 0 : parsed;
+    setSelectedProducts(
+      selectedProducts.map((item) => {
+        if (item.productId === productId) {
+          const effectivePrice = item.customPrice || item.unitPrice;
+          const discountAmount = item.discountType === "value" 
+            ? item.discount 
+            : (effectivePrice * quantity * item.discount / 100);
+          const taxAmount = item.taxType === "value"
+            ? item.tax
+            : (effectivePrice * quantity * item.tax / 100);
+          const newTotal = (effectivePrice * quantity) - discountAmount + taxAmount;
           return { ...item, quantity, total: newTotal };
         }
         return item;
@@ -190,11 +254,34 @@ export default function SalesEntry() {
     setSelectedProducts(
       selectedProducts.map((item) => {
         if (item.productId === productId) {
-          const newTotal =
-            (item.unitPrice * item.quantity * (1 - discount / 100) +
-              item.tax) *
-            (1 - globalDiscount / 100);
+          const effectivePrice = item.customPrice || item.unitPrice;
+          const discountAmount = item.discountType === "value" 
+            ? discount 
+            : (effectivePrice * item.quantity * discount / 100);
+          const taxAmount = item.taxType === "value"
+            ? item.tax
+            : (effectivePrice * item.quantity * item.tax / 100);
+          const newTotal = (effectivePrice * item.quantity) - discountAmount + taxAmount;
           return { ...item, discount, total: newTotal };
+        }
+        return item;
+      })
+    );
+  };
+
+  const updateItemDiscountType = (productId: string, discountType: "percent" | "value") => {
+    setSelectedProducts(
+      selectedProducts.map((item) => {
+        if (item.productId === productId) {
+          const effectivePrice = item.customPrice || item.unitPrice;
+          const discountAmount = discountType === "value" 
+            ? item.discount 
+            : (effectivePrice * item.quantity * item.discount / 100);
+          const taxAmount = item.taxType === "value"
+            ? item.tax
+            : (effectivePrice * item.quantity * item.tax / 100);
+          const newTotal = (effectivePrice * item.quantity) - discountAmount + taxAmount;
+          return { ...item, discountType, total: newTotal };
         }
         return item;
       })
@@ -208,15 +295,39 @@ export default function SalesEntry() {
   };
 
   const calculateTotals = () => {
-    const subtotal = selectedProducts.reduce(
-      (sum, item) => sum + item.unitPrice * item.quantity,
-      0
-    );
-    const discountAmount = (subtotal * globalDiscount) / 100;
-    const taxAmount = (subtotal * globalTax) / 100;
-    const total = subtotal - discountAmount + taxAmount;
+    const subtotal = selectedProducts.reduce((sum, item) => {
+      const effectivePrice = item.customPrice || item.unitPrice;
+      return sum + effectivePrice * item.quantity;
+    }, 0);
+    
+    // Calculate item-level discounts and taxes
+    const itemDiscounts = selectedProducts.reduce((sum, item) => {
+      const effectivePrice = item.customPrice || item.unitPrice;
+      if (item.discountType === "value") {
+        return sum + item.discount;
+      } else {
+        return sum + (effectivePrice * item.quantity * item.discount / 100);
+      }
+    }, 0);
+    
+    const itemTaxes = selectedProducts.reduce((sum, item) => {
+      const effectivePrice = item.customPrice || item.unitPrice;
+      if (item.taxType === "value") {
+        return sum + item.tax;
+      } else {
+        return sum + (effectivePrice * item.quantity * item.tax / 100);
+      }
+    }, 0);
+    
+    // Global discount/tax are absolute amounts (Rs)
+    const globalDiscountAmount = globalDiscount;
+    const globalTaxAmount = globalTax;
+    
+    const totalDiscount = itemDiscounts + globalDiscountAmount;
+    const totalTax = itemTaxes + globalTaxAmount;
+    const total = Math.max(0, subtotal - totalDiscount + totalTax);
 
-    return { subtotal, discountAmount, taxAmount, total };
+    return { subtotal, discountAmount: totalDiscount, taxAmount: totalTax, total };
   };
 
   const generateBillNumber = () => {
@@ -228,43 +339,65 @@ export default function SalesEntry() {
     return `BILL-${dateStr}-${String(count + 1).padStart(4, "0")}`;
   };
 
-  const handleSubmit = async () => {
+  const onSubmit = async (data: any) => {
     if (selectedProducts.length === 0) {
-      alert("Please add at least one product");
+      showError("Please add at least one product");
       return;
+    }
+
+    setShowErrors(true);
+    setBackendErrors({});
+    setFormError("");
+
+    // Validate quantities > 0
+    for (const item of selectedProducts) {
+      if (!item.quantity || item.quantity <= 0) {
+        showError(`Quantity for "${item.productName}" must be greater than 0`);
+        return;
+      }
     }
 
     const { subtotal, discountAmount, taxAmount, total } = calculateTotals();
     const totalPaid = payments.reduce((sum, payment) => sum + payment.amount, 0);
     
     if (totalPaid > total) {
-      alert("Total paid amount cannot exceed total amount");
+      showError("Total paid amount cannot exceed total amount");
       return;
     }
 
-    // Validate card payments have cardId
+    // Validate payments
     for (const payment of payments) {
-      if (payment.type === "card" && !payment.cardId) {
-        alert("Please select a card for card payment");
+      if (!payment.amount || payment.amount <= 0) {
+        showError("Payment amount must be greater than 0");
         return;
       }
       if (payment.type === "bank_transfer" && !payment.bankAccountId) {
-        alert("Please select a bank account for bank transfer payment");
+        showError("Please select a bank account for bank transfer payment");
         return;
       }
     }
 
     setIsSubmitting(true);
     try {
-      const saleItems: SaleItem[] = selectedProducts.map((item) => ({
-        productId: item.productId,
-        productName: item.productName,
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-        discount: item.discount,
-        tax: (item.unitPrice * item.quantity * globalTax) / 100,
-        total: item.total,
-      }));
+      const saleItems: SaleItem[] = selectedProducts.map((item) => {
+        const effectivePrice = item.customPrice || item.unitPrice;
+        const taxAmount = item.taxType === "value"
+          ? item.tax
+          : (effectivePrice * item.quantity * (item.tax || globalTax) / 100);
+        
+        return {
+          productId: item.productId,
+          productName: item.productName,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          customPrice: item.customPrice,
+          discount: item.discount,
+          discountType: item.discountType || "percent",
+          tax: taxAmount,
+          taxType: item.taxType || "percent",
+          total: item.total,
+        };
+      });
 
       const billNumber = generateBillNumber();
 
@@ -279,12 +412,12 @@ export default function SalesEntry() {
         payments: payments.map(p => ({
           type: p.type,
           amount: p.amount,
-          cardId: p.cardId,
           bankAccountId: p.bankAccountId,
         })),
-        customerName: customerName || undefined,
-        customerPhone: customerPhone || undefined,
-        date,
+        customerName: data.customerName.trim(),
+        customerPhone: data.customerPhone || undefined,
+        customerCity: data.customerCity || undefined,
+        date: data.date,
         userId: currentUser!.id,
         userName: currentUser!.name,
         status: "completed",
@@ -293,7 +426,26 @@ export default function SalesEntry() {
       // Redirect to bill print page
       navigate(`/sales/bill/${billNumber}`);
     } catch (err: any) {
-      alert(err.response?.data?.error || "Failed to create sale. Please try again.");
+      const backendErr = err?.response?.data?.error;
+      if (backendErr && typeof backendErr === "object") {
+        const mapped: Record<string, string> = {};
+        Object.entries(backendErr).forEach(([key, value]) => {
+          if (Array.isArray(value) && value.length > 0) {
+            mapped[key.replace("data.", "")] = String(value[0]);
+          }
+        });
+        setBackendErrors(mapped);
+        setFormError("Please fix the highlighted errors.");
+        showError("Please fix the highlighted errors.");
+      } else {
+        const msg =
+          err?.response?.data?.error ||
+          err?.response?.data?.message ||
+          err?.message ||
+          "Failed to create sale. Please try again.";
+        setFormError(msg);
+        showError(msg);
+      }
       console.error("Error creating sale:", err);
     } finally {
       setIsSubmitting(false);
@@ -316,6 +468,11 @@ export default function SalesEntry() {
             <h2 className="mb-4 text-xl font-semibold text-gray-800 dark:text-white">
               Product Search
             </h2>
+            {formError && (
+              <div className="mb-4 p-3 text-sm text-error-600 bg-error-50 border border-error-200 rounded dark:text-error-300 dark:bg-error-900/20 dark:border-error-800">
+                {formError}
+              </div>
+            )}
             <Input
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -368,10 +525,16 @@ export default function SalesEntry() {
                         Price
                       </th>
                       <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Custom Price
+                      </th>
+                      <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
                         Qty
                       </th>
                       <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
-                        Disc%
+                        Discount
+                      </th>
+                      <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Disc Type
                       </th>
                       <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
                         Total
@@ -396,20 +559,38 @@ export default function SalesEntry() {
                           </p>
                         </td>
                         <td className="p-2 text-gray-700 dark:text-gray-300">
-                          Rs. {item.unitPrice.toFixed(2)}
+                          <div>
+                            <p className="text-sm">Rs. {item.unitPrice.toFixed(2)}</p>
+                            {item.customPrice && (
+                              <p className="text-xs text-green-600 dark:text-green-400">
+                                Custom: Rs. {item.customPrice.toFixed(2)}
+                              </p>
+                            )}
+                          </div>
+                        </td>
+                        <td className="p-2">
+                          <Input
+                            type="number"
+                            min="0"
+                            step={0.01}
+                            placeholder="Custom"
+                            value={item.customPrice ? item.customPrice.toString() : ""}
+                            onChange={(e) =>
+                              updateItemPrice(
+                                item.productId,
+                                e.target.value === "" ? 0 : parseFloat(e.target.value) || 0
+                              )
+                            }
+                            className="w-24"
+                          />
                         </td>
                         <td className="p-2">
                           <Input
                             type="number"
                             min="1"
                             max={((item.product.shopQuantity || 0) + (item.product.warehouseQuantity || 0)).toString()}
-                            value={item.quantity.toString()}
-                            onChange={(e) =>
-                              updateItemQuantity(
-                                item.productId,
-                                parseInt(e.target.value) || 0
-                              )
-                            }
+                            value={item.quantity === 0 ? "" : item.quantity.toString()}
+                            onChange={(e) => updateItemQuantity(item.productId, e.target.value)}
                             className="w-20"
                           />
                         </td>
@@ -417,15 +598,32 @@ export default function SalesEntry() {
                           <Input
                             type="number"
                             min="0"
-                            max="100"
-                            value={item.discount.toString()}
+                            step={0.01}
+                            value={item.discount === 0 ? "" : item.discount.toString()}
                             onChange={(e) =>
                               updateItemDiscount(
                                 item.productId,
-                                parseFloat(e.target.value) || 0
+                                e.target.value === "" ? 0 : parseFloat(e.target.value) || 0
                               )
                             }
                             className="w-20"
+                            placeholder="0"
+                          />
+                        </td>
+                        <td className="p-2">
+                          <Select
+                            value={item.discountType || "percent"}
+                            onChange={(value) =>
+                              updateItemDiscountType(
+                                item.productId,
+                                value as "percent" | "value"
+                              )
+                            }
+                            options={[
+                              { value: "percent", label: "%" },
+                              { value: "value", label: "Rs" },
+                            ]}
+                            className="w-16"
                           />
                         </td>
                         <td className="p-2 font-semibold text-gray-800 dark:text-white">
@@ -455,27 +653,65 @@ export default function SalesEntry() {
             </h2>
             <div className="space-y-4">
               <div>
-                <Label>Date</Label>
+                <Label>
+                  Customer Name <span className="text-error-500">*</span>
+                </Label>
                 <Input
-                  type="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                />
-              </div>
-              <div>
-                <Label>Customer Name</Label>
-                <Input
+                  name="customerName"
                   value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
+                  onChange={(e) => {
+                    setValue("customerName", e.target.value);
+                  }}
+                  onBlur={register("customerName").onBlur}
                   placeholder="Enter customer name"
+                  required
+                  error={!!errors.customerName}
+                  hint={errors.customerName?.message}
                 />
               </div>
               <div>
                 <Label>Phone</Label>
                 <Input
+                  name="customerPhone"
                   value={customerPhone}
-                  onChange={(e) => setCustomerPhone(e.target.value)}
+                  onChange={(e) => {
+                    setValue("customerPhone", e.target.value);
+                  }}
+                  onBlur={register("customerPhone").onBlur}
                   placeholder="Enter phone number"
+                  error={!!errors.customerPhone}
+                  hint={errors.customerPhone?.message}
+                />
+              </div>
+              <div>
+                <Label>City</Label>
+                <Input
+                  name="customerCity"
+                  value={customerCity}
+                  onChange={(e) => {
+                    setValue("customerCity", e.target.value);
+                  }}
+                  onBlur={register("customerCity").onBlur}
+                  placeholder="Enter city"
+                  error={!!errors.customerCity}
+                  hint={errors.customerCity?.message}
+                />
+              </div>
+              <div>
+                <Label>
+                  Date <span className="text-error-500">*</span>
+                </Label>
+                <DatePicker
+                  name="date"
+                  value={date}
+                  onChange={(e) => {
+                    setDate(e.target.value);
+                    setValue("date", e.target.value);
+                  }}
+                  onBlur={register("date").onBlur}
+                  required
+                  error={!!errors.date}
+                  hint={errors.date?.message}
                 />
               </div>
             </div>
@@ -507,45 +743,37 @@ export default function SalesEntry() {
                         }
                         options={[
                           { value: "cash", label: "Cash" },
-                          { value: "card", label: "Card" },
-                          { value: "credit", label: "Credit" },
                           { value: "bank_transfer", label: "Bank Transfer" },
                         ]}
                       />
                     </div>
                     <div>
                       <Label>Amount</Label>
-                      <Input
-                        type="number"
-                        min="0"
-                        max={String(remainingBalance + payment.amount)}
-                        value={payment.amount}
-                        onChange={(e) =>
-                          updatePayment(index, "amount", parseFloat(e.target.value) || 0)
-                        }
-                        placeholder="Enter amount"
-                      />
+                    <Input
+                      type="number"
+                      min="0"
+                      max={String(remainingBalance + payment.amount)}
+                      value={payment.amount === 0 ? "" : payment.amount}
+                      onChange={(e) =>
+                        updatePayment(
+                          index,
+                          "amount",
+                          e.target.value === "" ? 0 : parseFloat(e.target.value) || 0
+                        )
+                      }
+                      placeholder="Enter amount"
+                      error={
+                        (showErrors && (!payment.amount || payment.amount <= 0)) ||
+                        !!backendErrors[`payments.${index}.amount`]
+                      }
+                      hint={
+                        (showErrors && (!payment.amount || payment.amount <= 0)
+                          ? "Amount must be greater than 0"
+                          : undefined) ||
+                        backendErrors[`payments.${index}.amount`]
+                      }
+                    />
                     </div>
-                    {payment.type === "card" && (
-                      <div>
-                        <Label>Select Card</Label>
-                        <Select
-                          value={payment.cardId || ""}
-                          onChange={(value) =>
-                            updatePayment(index, "cardId", value)
-                          }
-                          options={[
-                            { value: "", label: "Select Card" },
-                            ...cards
-                              .filter((card) => card.isActive)
-                              .map((card) => ({
-                                value: card.id,
-                                label: `${card.name}${card.cardNumber ? ` - ${card.cardNumber}` : ""}${card.isDefault ? " (Default)" : ""}`,
-                              })),
-                          ]}
-                        />
-                      </div>
-                    )}
                     {payment.type === "bank_transfer" && (
                       <div>
                         <Label>Select Bank Account</Label>
@@ -564,11 +792,23 @@ export default function SalesEntry() {
                               })),
                           ]}
                         />
+                        {((showErrors && payment.type === "bank_transfer" && !payment.bankAccountId) ||
+                          backendErrors[`payments.${index}.bankAccountId`]) && (
+                          <p className="mt-1 text-xs text-error-500">
+                            {backendErrors[`payments.${index}.bankAccountId`] ||
+                              "Bank account is required for bank transfer"}
+                          </p>
+                        )}
                       </div>
                     )}
                   </div>
                 </div>
               ))}
+              {totalPaid > total && (
+                <div className="p-2 text-sm text-error-500 bg-error-50 border border-error-200 rounded dark:bg-error-900/20 dark:border-error-700">
+                  Total paid amount cannot exceed total amount.
+                </div>
+              )}
               <Button
                 onClick={addPayment}
                 variant="outline"
@@ -598,24 +838,25 @@ export default function SalesEntry() {
                 </span>
               </div>
               <div>
-                <Label>Discount (%)</Label>
+                <Label>Discount (Rs)</Label>
                 <Input
                   type="number"
                   min="0"
-                  max="100"
-                  value={globalDiscount}
+                  value={globalDiscount === 0 ? "" : globalDiscount}
                   onChange={(e) =>
-                    setGlobalDiscount(parseFloat(e.target.value) || 0)
+                    setGlobalDiscount(e.target.value === "" ? 0 : parseFloat(e.target.value) || 0)
                   }
+                  placeholder="0"
                 />
               </div>
               <div>
-                <Label>Tax (%)</Label>
+                <Label>Tax (Rs)</Label>
                 <Input
                   type="number"
                   min="0"
-                  value={globalTax}
-                  onChange={(e) => setGlobalTax(parseFloat(e.target.value) || 0)}
+                  value={globalTax === 0 ? "" : globalTax}
+                  onChange={(e) => setGlobalTax(e.target.value === "" ? 0 : parseFloat(e.target.value) || 0)}
+                  placeholder="0"
                 />
               </div>
               <div className="flex justify-between pt-2 border-t border-gray-200 dark:border-gray-700">
@@ -643,7 +884,7 @@ export default function SalesEntry() {
             </div>
 
             <Button
-              onClick={handleSubmit}
+              onClick={handleFormSubmit(onSubmit)}
               className="w-full mt-6"
               size="sm"
               disabled={selectedProducts.length === 0 || isSubmitting}

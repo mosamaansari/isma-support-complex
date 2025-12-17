@@ -24,13 +24,12 @@ enum RegularUserRole {
 
 enum PaymentType {
   cash
-  credit
-  card
   bank_transfer
 }
 
 enum SaleStatus {
   completed
+  pending
   cancelled
 }
 
@@ -45,35 +44,36 @@ enum ExpenseCategory {
 }
 
 model AdminUser {
-  id             String   @id @default(cuid())
-  username       String   @unique
-  password       String
-  role           UserRole // superadmin or admin only
-  name           String
-  email          String?
-  profilePicture String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id               String    @id @default(cuid())
+  username         String    @unique
+  password         String
+  role             String    @default("admin") // Can be superadmin, admin, or custom role
+  name             String
+  email            String?
+  profilePicture   String?
+  resetToken       String?
+  resetTokenExpiry DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   @@map("admin_users")
 }
 
 model User {
-  id             String         @id @default(cuid())
-  username       String         @unique
-  password       String
-  role           RegularUserRole @default(cashier)
-  name           String
-  email          String?
-  profilePicture String?
-  permissions    String[]       @default([])
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  id               String    @id @default(cuid())
+  username         String    @unique
+  password         String
+  role             String    @default("cashier") // Can be cashier, warehouse_manager, or custom role
+  name             String
+  email            String?
+  profilePicture   String?
+  permissions      String[]  @default([])
+  resetToken       String?
+  resetTokenExpiry DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
-  sales              Sale[]
-  expenses           Expense[]
-  purchases          Purchase[]
-  openingBalances    DailyOpeningBalance[]
+  openingBalances DailyOpeningBalance[]
 
   @@map("users")
 }
@@ -87,11 +87,16 @@ model Product {
   shopQuantity      Int      @default(0)
   warehouseQuantity Int      @default(0)
   minStockLevel     Int      @default(0)
+  lowStockNotifiedAt DateTime?
   model             String?
   manufacturer      String?
   barcode           String?
   image             String?
   description       String?
+  createdBy         String?
+  createdByType     String? // "user" or "admin"
+  updatedBy         String?
+  updatedByType     String? // "user" or "admin"
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
@@ -108,6 +113,7 @@ model Customer {
   phone          String
   email          String?
   address        String?
+  city           String?
   totalPurchases Decimal  @default(0) @db.Decimal(10, 2)
   dueAmount      Decimal  @default(0) @db.Decimal(10, 2)
   createdAt      DateTime @default(now())
@@ -126,37 +132,46 @@ model Supplier {
   address        String?
   totalPurchases Decimal  @default(0) @db.Decimal(10, 2)
   dueAmount      Decimal  @default(0) @db.Decimal(10, 2)
+  createdBy      String?
+  createdByType  String? // "user" or "admin"
+  updatedBy      String?
+  updatedByType  String? // "user" or "admin"
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   purchases Purchase[]
 
+  @@unique([name, phone], name: "supplier_name_phone")
   @@map("suppliers")
 }
 
 model Sale {
-  id              String      @id @default(cuid())
-  billNumber      String      @unique
-  subtotal        Decimal     @db.Decimal(10, 2)
-  discount        Decimal     @default(0) @db.Decimal(10, 2)
-  tax             Decimal     @default(0) @db.Decimal(10, 2)
-  total           Decimal     @db.Decimal(10, 2)
-  paymentType     PaymentType @default(cash)
-  payments        Json?       // Array of { type: "cash"|"card"|"credit"|"bank_transfer", amount: number, cardId?: string, bankAccountId?: string }
-  remainingBalance Decimal    @default(0) @db.Decimal(10, 2)
-  cardId          String?
-  bankAccountId   String?
-  status          SaleStatus  @default(completed)
-  customerId      String?
-  customerName    String?
-  customerPhone   String?
-  date            DateTime    @default(now())
-  userId          String
-  userName        String
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  id               String      @id @default(cuid())
+  billNumber       String      @unique
+  subtotal         Decimal     @db.Decimal(10, 2)
+  discount         Decimal     @default(0) @db.Decimal(10, 2)
+  tax              Decimal     @default(0) @db.Decimal(10, 2)
+  total            Decimal     @db.Decimal(10, 2)
+  paymentType      PaymentType @default(cash)
+  payments         Json? // Array of { type: "cash"|"card"|"credit"|"bank_transfer", amount: number, cardId?: string, bankAccountId?: string }
+  remainingBalance Decimal     @default(0) @db.Decimal(10, 2)
+  cardId           String?
+  bankAccountId    String?
+  status           SaleStatus  @default(completed)
+  customerId       String?
+  customerName     String?
+  customerPhone    String?
+  date             DateTime    @default(now())
+  userId           String
+  userName         String
+  createdBy        String?
+  createdByType    String? // "user" or "admin"
+  updatedBy        String?
+  updatedByType    String? // "user" or "admin"
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
 
-  user        User         @relation(fields: [userId], references: [id])
+  // Note: userId can be from either User or AdminUser table, so no foreign key constraint
   customer    Customer?    @relation(fields: [customerId], references: [id])
   card        Card?        @relation(fields: [cardId], references: [id])
   bankAccount BankAccount? @relation(fields: [bankAccountId], references: [id])
@@ -172,8 +187,11 @@ model SaleItem {
   productName   String
   quantity      Int
   unitPrice     Decimal  @db.Decimal(10, 2)
+  customPrice   Decimal? @db.Decimal(10, 2) // Custom price for customer
   discount      Decimal  @default(0) @db.Decimal(10, 2)
+  discountType  String?  @default("percent") // "percent" or "value"
   tax           Decimal  @default(0) @db.Decimal(10, 2)
+  taxType       String?  @default("percent") // "percent" or "value"
   total         Decimal  @db.Decimal(10, 2)
   fromWarehouse Boolean  @default(false)
   createdAt     DateTime @default(now())
@@ -188,41 +206,54 @@ model Expense {
   id            String          @id @default(cuid())
   amount        Decimal         @db.Decimal(10, 2)
   category      ExpenseCategory
-  description   String
+  description   String?
   paymentType   PaymentType     @default(cash)
   cardId        String?
   bankAccountId String?
   date          DateTime        @default(now())
-  userId        String
+  userId        String // userId can be from either User or AdminUser table, so no foreign key constraint
   userName      String
+  createdBy     String?
+  createdByType String? // "user" or "admin"
+  updatedBy     String?
+  updatedByType String? // "user" or "admin"
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 
-  user        User         @relation(fields: [userId], references: [id])
   card        Card?        @relation(fields: [cardId], references: [id])
   bankAccount BankAccount? @relation(fields: [bankAccountId], references: [id])
 
   @@map("expenses")
 }
 
+enum PurchaseStatus {
+  completed
+  pending
+  cancelled
+}
+
 model Purchase {
-  id               String   @id @default(cuid())
+  id               String         @id @default(cuid())
   supplierId       String?
   supplierName     String
   supplierPhone    String?
-  subtotal         Decimal  @db.Decimal(10, 2)
-  tax              Decimal  @default(0) @db.Decimal(10, 2)
-  total            Decimal  @db.Decimal(10, 2)
-  payments         Json? // Array of { type: "cash"|"card", amount: number, cardId?: string, bankAccountId?: string }
-  remainingBalance Decimal  @default(0) @db.Decimal(10, 2)
-  date             DateTime @default(now())
-  userId           String
+  subtotal         Decimal        @db.Decimal(10, 2)
+  tax              Decimal        @default(0) @db.Decimal(10, 2)
+  total            Decimal        @db.Decimal(10, 2)
+  payments         Json? // Array of { type: "cash"|"card", amount: number, cardId?: string, bankAccountId?: string, date?: string }
+  remainingBalance Decimal        @default(0) @db.Decimal(10, 2)
+  status           PurchaseStatus @default(completed)
+  date             DateTime       @default(now())
+  userId           String // userId can be from either User or AdminUser table, so no foreign key constraint
   userName         String
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdBy        String?
+  createdByType    String? // "user" or "admin"
+  updatedBy        String?
+  updatedByType    String? // "user" or "admin"
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 
   supplier Supplier?      @relation(fields: [supplierId], references: [id])
-  user     User           @relation(fields: [userId], references: [id])
   items    PurchaseItem[]
 
   @@map("purchases")
@@ -253,9 +284,9 @@ model ShopSettings {
   contactNumber     String
   email             String
   address           String
-  bankAccountNumber String
-  bankName          String
-  ifscCode          String
+  bankAccountNumber String?  @default("")
+  bankName          String?  @default("")
+  ifscCode          String?  @default("")
   gstNumber         String?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
@@ -283,6 +314,10 @@ model Card {
   accountHolder String?
   isDefault     Boolean  @default(false)
   isActive      Boolean  @default(true)
+  createdBy     String?
+  createdByType String? // "user" or "admin"
+  updatedBy     String?
+  updatedByType String? // "user" or "admin"
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -297,17 +332,22 @@ model BankAccount {
   accountName   String
   accountNumber String
   bankName      String
-  ifscCode      String
+  ifscCode      String?  @default("")
   accountHolder String?
   branchName    String?
   isDefault     Boolean  @default(false)
   isActive      Boolean  @default(true)
+  createdBy     String?
+  createdByType String? // "user" or "admin"
+  updatedBy     String?
+  updatedByType String? // "user" or "admin"
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
   sales    Sale[]
   expenses Expense[]
 
+  @@unique([accountNumber, bankName])
   @@map("bank_accounts")
 }
 
@@ -315,14 +355,30 @@ model DailyOpeningBalance {
   id            String   @id @default(cuid())
   date          DateTime @unique @db.Date
   cashBalance   Decimal  @default(0) @db.Decimal(10, 2)
-  cardBalances  Json?    // Array of { cardId: string, balance: number }
+  cardBalances  Json? // Array of { cardId: string, balance: number }
   notes         String?
   userId        String
   userName      String
+  createdBy     String?
+  createdByType String? // "user" or "admin"
+  updatedBy     String?
+  updatedByType String? // "user" or "admin"
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id])
 
   @@map("daily_opening_balances")
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  label       String
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("roles")
 }

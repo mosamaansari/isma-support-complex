@@ -1,12 +1,15 @@
 import express, { Router } from "express";
 import userController from "../controllers/user.controller";
-import { authenticate, authorize } from "../middleware/auth";
-import { validate, validateParams } from "../middleware/validate";
+import { authenticate } from "../middleware/auth";
+import { requirePermission } from "../middleware/permissions";
+import { bodyValidator, paramsValidator } from "../middleware/joiValidator";
 import {
   createUserSchema,
   updateUserSchema,
   updateProfileSchema,
+  updatePasswordSchema,
 } from "../validators/user.validator";
+import { PERMISSIONS } from "../utils/permissions";
 import Joi from "joi";
 
 const router = Router();
@@ -15,27 +18,35 @@ const router = Router();
 router.get(
   "/",
   authenticate,
-  authorize("superadmin", "admin"),
+  requirePermission(PERMISSIONS.USERS_VIEW),
   userController.getUsers.bind(userController)
 );
 
-// Update own profile (any authenticated user)
+// Update own profile information (name, email, profilePicture)
 router.put(
   "/profile",
   authenticate,
-  validate(updateProfileSchema),
+  bodyValidator(updateProfileSchema),
   userController.updateProfile.bind(userController)
+);
+
+// Update own password
+router.put(
+  "/profile/password",
+  authenticate,
+  bodyValidator(updatePasswordSchema),
+  userController.updatePassword.bind(userController)
 );
 
 // Get single user
 router.get(
   "/:id",
   authenticate,
-  authorize("superadmin", "admin"),
-  validateParams(
+  requirePermission(PERMISSIONS.USERS_VIEW),
+  paramsValidator(
     Joi.object({
-      id: Joi.string().uuid().required().messages({
-        "string.uuid": "User ID must be a valid UUID",
+      id: Joi.string().required().trim().min(1).messages({
+        "string.empty": "User ID is required",
         "any.required": "User ID is required",
       }),
     })
@@ -47,8 +58,8 @@ router.get(
 router.post(
   "/",
   authenticate,
-  authorize("superadmin", "admin"),
-  validate(createUserSchema),
+  requirePermission(PERMISSIONS.USERS_CREATE),
+  bodyValidator(createUserSchema),
   userController.createUser.bind(userController)
 );
 
@@ -56,16 +67,16 @@ router.post(
 router.put(
   "/:id",
   authenticate,
-  authorize("superadmin", "admin"),
-  validateParams(
+  requirePermission(PERMISSIONS.USERS_UPDATE),
+  paramsValidator(
     Joi.object({
-      id: Joi.string().uuid().required().messages({
-        "string.uuid": "User ID must be a valid UUID",
+      id: Joi.string().required().trim().min(1).messages({
+        "string.empty": "User ID is required",
         "any.required": "User ID is required",
       }),
     })
   ),
-  validate(updateUserSchema),
+  bodyValidator(updateUserSchema),
   userController.updateUser.bind(userController)
 );
 
@@ -73,11 +84,11 @@ router.put(
 router.delete(
   "/:id",
   authenticate,
-  authorize("superadmin", "admin"),
-  validateParams(
+  requirePermission(PERMISSIONS.USERS_DELETE),
+  paramsValidator(
     Joi.object({
-      id: Joi.string().uuid().required().messages({
-        "string.uuid": "User ID must be a valid UUID",
+      id: Joi.string().required().trim().min(1).messages({
+        "string.empty": "User ID is required",
         "any.required": "User ID is required",
       }),
     })

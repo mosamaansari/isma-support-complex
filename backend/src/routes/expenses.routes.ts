@@ -1,12 +1,14 @@
 import express, { Router } from "express";
 import expenseController from "../controllers/expense.controller";
 import { authenticate } from "../middleware/auth";
-import { validate, validateQuery, validateParams } from "../middleware/validate";
+import { requirePermission } from "../middleware/permissions";
+import { bodyValidator, queryValidator, paramsValidator } from "../middleware/joiValidator";
 import {
   createExpenseSchema,
   updateExpenseSchema,
   getExpensesQuerySchema,
 } from "../validators/expense.validator";
+import { PERMISSIONS } from "../utils/permissions";
 import Joi from "joi";
 
 const router = Router();
@@ -15,7 +17,7 @@ const router = Router();
 router.get(
   "/",
   authenticate,
-  validateQuery(getExpensesQuerySchema),
+  queryValidator(getExpensesQuerySchema),
   expenseController.getExpenses.bind(expenseController)
 );
 
@@ -23,10 +25,10 @@ router.get(
 router.get(
   "/:id",
   authenticate,
-  validateParams(
+  paramsValidator(
     Joi.object({
-      id: Joi.string().uuid().required().messages({
-        "string.uuid": "Expense ID must be a valid UUID",
+      id: Joi.string().required().trim().min(1).messages({
+        "string.empty": "Expense ID is required",
         "any.required": "Expense ID is required",
       }),
     })
@@ -38,7 +40,8 @@ router.get(
 router.post(
   "/",
   authenticate,
-  validate(createExpenseSchema),
+  requirePermission(PERMISSIONS.EXPENSES_CREATE),
+  bodyValidator(createExpenseSchema),
   expenseController.createExpense.bind(expenseController)
 );
 
@@ -46,15 +49,16 @@ router.post(
 router.put(
   "/:id",
   authenticate,
-  validateParams(
+  requirePermission(PERMISSIONS.EXPENSES_UPDATE),
+  paramsValidator(
     Joi.object({
-      id: Joi.string().uuid().required().messages({
-        "string.uuid": "Expense ID must be a valid UUID",
+      id: Joi.string().required().trim().min(1).messages({
+        "string.empty": "Expense ID is required",
         "any.required": "Expense ID is required",
       }),
     })
   ),
-  validate(updateExpenseSchema),
+  bodyValidator(updateExpenseSchema),
   expenseController.updateExpense.bind(expenseController)
 );
 
@@ -62,15 +66,23 @@ router.put(
 router.delete(
   "/:id",
   authenticate,
-  validateParams(
+  requirePermission(PERMISSIONS.EXPENSES_DELETE),
+  paramsValidator(
     Joi.object({
-      id: Joi.string().uuid().required().messages({
-        "string.uuid": "Expense ID must be a valid UUID",
+      id: Joi.string().required().trim().min(1).messages({
+        "string.empty": "Expense ID is required",
         "any.required": "Expense ID is required",
       }),
     })
   ),
   expenseController.deleteExpense.bind(expenseController)
+);
+
+// Get expense statistics (all-time totals and category grouping)
+router.get(
+  "/statistics/all-time",
+  authenticate,
+  expenseController.getExpenseStatistics.bind(expenseController)
 );
 
 export default router;

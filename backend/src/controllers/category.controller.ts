@@ -7,24 +7,51 @@ class CategoryController {
   async getCategories(req: AuthRequest, res: Response) {
     try {
       const categories = await categoryService.getCategories();
-      res.json(categories);
+      return res.status(200).json({
+        message: "Categories retrieved successfully",
+        response: {
+          data: categories,
+        },
+        error: null,
+      });
     } catch (error: any) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
       logger.error("Get categories error:", error);
-      res.status(500).json({ error: "Internal server error" });
+      return res.status(500).json({
+        message: errorMessage,
+        response: null,
+        error: errorMessage,
+      });
     }
   }
 
   async getCategory(req: AuthRequest, res: Response) {
     try {
       const category = await categoryService.getCategory(req.params.id);
-      res.json(category);
+      return res.status(200).json({
+        message: "Category retrieved successfully",
+        response: {
+          data: category,
+        },
+        error: null,
+      });
     } catch (error: any) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
       logger.error("Get category error:", error);
-      if (error.message === "Category not found") {
-        res.status(404).json({ error: error.message });
-      } else {
-        res.status(500).json({ error: "Internal server error" });
+      if (error instanceof Error && error.message === "Category not found") {
+        return res.status(404).json({
+          message: "Category not found",
+          response: null,
+          error: "Category not found",
+        });
       }
+      return res.status(500).json({
+        message: errorMessage,
+        response: null,
+        error: errorMessage,
+      });
     }
   }
 
@@ -32,14 +59,29 @@ class CategoryController {
     try {
       const category = await categoryService.createCategory(req.body);
       logger.info(`Category created: ${category.name} by ${req.user?.username}`);
-      res.status(201).json(category);
+      return res.status(201).json({
+        message: "Category created successfully",
+        response: {
+          data: category,
+        },
+        error: null,
+      });
     } catch (error: any) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
       logger.error("Create category error:", error);
-      if (error.message === "Category already exists") {
-        res.status(400).json({ error: error.message });
-      } else {
-        res.status(500).json({ error: "Internal server error" });
+      if (error instanceof Error && error.message === "Category already exists") {
+        return res.status(400).json({
+          message: errorMessage,
+          response: null,
+          error: errorMessage,
+        });
       }
+      return res.status(500).json({
+        message: errorMessage,
+        response: null,
+        error: errorMessage,
+      });
     }
   }
 
@@ -47,17 +89,33 @@ class CategoryController {
     try {
       const category = await categoryService.updateCategory(req.params.id, req.body);
       logger.info(`Category updated: ${category.name} by ${req.user?.username}`);
-      res.json(category);
+      return res.status(200).json({
+        message: "Category updated successfully",
+        response: {
+          data: category,
+        },
+        error: null,
+      });
     } catch (error: any) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
       logger.error("Update category error:", error);
       if (
-        error.message === "Category not found" ||
-        error.message === "Category name already exists"
+        error instanceof Error &&
+        (error.message === "Category not found" ||
+          error.message === "Category name already exists")
       ) {
-        res.status(400).json({ error: error.message });
-      } else {
-        res.status(500).json({ error: "Internal server error" });
+        return res.status(400).json({
+          message: errorMessage,
+          response: null,
+          error: errorMessage,
+        });
       }
+      return res.status(500).json({
+        message: errorMessage,
+        response: null,
+        error: errorMessage,
+      });
     }
   }
 
@@ -65,17 +123,33 @@ class CategoryController {
     try {
       await categoryService.deleteCategory(req.params.id);
       logger.info(`Category deleted: ${req.params.id} by ${req.user?.username}`);
-      res.json({ message: "Category deleted successfully" });
+      return res.status(200).json({
+        message: "Category deleted successfully",
+        response: {
+          data: null,
+        },
+        error: null,
+      });
     } catch (error: any) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
       logger.error("Delete category error:", error);
       if (
-        error.message === "Category not found" ||
-        error.message.includes("Cannot delete category")
+        error instanceof Error &&
+        (error.message === "Category not found" ||
+          error.message.includes("Cannot delete category"))
       ) {
-        res.status(400).json({ error: error.message });
-      } else {
-        res.status(500).json({ error: "Internal server error" });
+        return res.status(400).json({
+          message: errorMessage,
+          response: null,
+          error: errorMessage,
+        });
       }
+      return res.status(500).json({
+        message: errorMessage,
+        response: null,
+        error: errorMessage,
+      });
     }
   }
 }

@@ -1,29 +1,94 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router";
+import { useForm } from "react-hook-form";
+import { yupResolver } from "@hookform/resolvers/yup";
+import * as yup from "yup";
 import PageMeta from "../../components/common/PageMeta";
 import { useData } from "../../context/DataContext";
+import { useAlert } from "../../context/AlertContext";
 import { ExpenseCategory, PaymentType } from "../../types";
 import Input from "../../components/form/input/InputField";
+import DatePicker from "../../components/form/DatePicker";
 import Label from "../../components/form/Label";
 import Select from "../../components/form/Select";
 import Button from "../../components/ui/button/Button";
 import { ChevronLeftIcon } from "../../icons";
 
+const expenseFormSchema = yup.object().shape({
+  amount: yup
+    .number()
+    .required("Amount is required")
+    .min(0.01, "Amount must be greater than 0")
+    .max(100000000, "Amount is too large"),
+  category: yup
+    .string()
+    .required("Category is required")
+    .oneOf(["rent", "bills", "transport", "salaries", "supplies", "maintenance", "marketing", "other"], "Invalid category"),
+  description: yup
+    .string()
+    .optional()
+    .max(500, "Description must be less than 500 characters"),
+  paymentType: yup
+    .string()
+    .required("Payment type is required")
+    .oneOf(["cash", "bank_transfer"], "Invalid payment type"),
+  cardId: yup
+    .string()
+    .optional()
+    .when("paymentType", {
+      is: "card",
+      then: (schema) => schema.required("Please select a card for card payment"),
+    }),
+  bankAccountId: yup
+    .string()
+    .optional()
+    .when("paymentType", {
+      is: "bank_transfer",
+      then: (schema) => schema.required("Please select a bank account for bank transfer"),
+    }),
+  date: yup
+    .string()
+    .required("Date is required")
+    .test("not-empty", "Date is required", (value) => !!value && value.trim() !== ""),
+});
+
 export default function ExpenseForm() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { expenses, addExpense, updateExpense, currentUser, cards, refreshCards, bankAccounts, refreshBankAccounts } = useData();
+  const { expenses, addExpense, updateExpense, currentUser, cards, refreshCards, bankAccounts, refreshBankAccounts, refreshExpenses } = useData();
+  const { showSuccess, showError } = useAlert();
   const isEdit = !!id;
+  const [backendErrors, setBackendErrors] = useState<Record<string, string>>({});
 
-  const [formData, setFormData] = useState({
-    amount: "",
-    category: "other" as ExpenseCategory,
-    description: "",
-    paymentType: "cash" as PaymentType,
-    cardId: "",
-    bankAccountId: "",
-    date: new Date().toISOString().split("T")[0],
+  const {
+    register,
+    handleSubmit: handleFormSubmit,
+    formState: { errors },
+    setValue,
+    watch,
+    reset,
+  } = useForm({
+    resolver: yupResolver(expenseFormSchema),
+    defaultValues: {
+      amount: 0,
+      category: "other" as ExpenseCategory,
+      description: "",
+      paymentType: "cash" as PaymentType,
+      cardId: "",
+      bankAccountId: "",
+      date: isEdit ? "" : new Date().toISOString().split("T")[0],
+    },
   });
+
+  const formData = {
+    amount: watch("amount"),
+    category: watch("category") as ExpenseCategory,
+    description: watch("description"),
+    paymentType: watch("paymentType") as PaymentType,
+    cardId: watch("cardId"),
+    bankAccountId: watch("bankAccountId"),
+    date: watch("date"),
+  };
 
   useEffect(() => {
     if (cards.length === 0) {
@@ -39,77 +104,112 @@ export default function ExpenseForm() {
     if (isEdit && id) {
       const expense = expenses.find((e) => e.id === id);
       if (expense) {
-        setFormData({
-          amount: expense.amount.toString(),
+        // Convert date from ISO string to YYYY-MM-DD format for DatePicker
+        let dateValue = "";
+        if (expense.date) {
+          try {
+            const date = new Date(expense.date);
+            if (!isNaN(date.getTime())) {
+              const year = date.getFullYear();
+              const month = String(date.getMonth() + 1).padStart(2, "0");
+              const day = String(date.getDate()).padStart(2, "0");
+              dateValue = `${year}-${month}-${day}`;
+            }
+          } catch (e) {
+            // If date is already in YYYY-MM-DD format, use it directly
+            if (typeof expense.date === 'string' && expense.date.match(/^\d{4}-\d{2}-\d{2}/)) {
+              dateValue = expense.date.split('T')[0]; // Extract YYYY-MM-DD part if it's ISO string
+            }
+          }
+        }
+        
+        reset({
+          amount: expense.amount,
           category: expense.category,
-          description: expense.description,
+          description: expense.description || "",
           paymentType: expense.paymentType || "cash",
           cardId: (expense as any).cardId || "",
           bankAccountId: (expense as any).bankAccountId || "",
-          date: expense.date,
+          date: dateValue,
         });
       }
     }
-  }, [isEdit, id, expenses]);
+  }, [isEdit, id, expenses, reset]);
 
-  // Auto-select default card when payment type changes to card
-  useEffect(() => {
-    if (formData.paymentType === "card" && !formData.cardId && cards.length > 0) {
-      const defaultCard = cards.find((c) => c.isDefault && c.isActive) || cards[0];
-      if (defaultCard) {
-        setFormData((prev) => ({ ...prev, cardId: defaultCard.id }));
-      }
-    } else if (formData.paymentType !== "card") {
-      setFormData((prev) => ({ ...prev, cardId: "" }));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formData.paymentType, cards.length]);
 
   // Auto-select default bank account when payment type changes to bank_transfer
   useEffect(() => {
     if (formData.paymentType === "bank_transfer" && !formData.bankAccountId && bankAccounts.length > 0) {
       const defaultAccount = bankAccounts.find((acc) => acc.isDefault && acc.isActive) || bankAccounts[0];
       if (defaultAccount) {
-        setFormData((prev) => ({ ...prev, bankAccountId: defaultAccount.id }));
+        setValue("bankAccountId", defaultAccount.id);
       }
     } else if (formData.paymentType !== "bank_transfer") {
-      setFormData((prev) => ({ ...prev, bankAccountId: "" }));
+      setValue("bankAccountId", "");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.paymentType, bankAccounts.length]);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (formData.paymentType === "card" && !formData.cardId) {
-      alert("Please select a card for card payment");
-      return;
-    }
-
-    if (formData.paymentType === "bank_transfer" && !formData.bankAccountId) {
-      alert("Please select a bank account for bank transfer");
-      return;
-    }
-
-    const expenseData = {
-      amount: parseFloat(formData.amount),
-      category: formData.category,
-      description: formData.description,
-      paymentType: formData.paymentType,
-      cardId: formData.cardId || undefined,
-      bankAccountId: formData.bankAccountId || undefined,
-      date: formData.date,
+  const onSubmit = async (data: any) => {
+    const expenseData: any = {
+      amount: typeof data.amount === "number" ? data.amount : parseFloat(data.amount) || 0,
+      category: data.category,
+      description: data.description && data.description.trim() ? data.description.trim() : undefined,
+      paymentType: data.paymentType,
+      date: data.date,
       userId: currentUser!.id,
       userName: currentUser!.name,
     };
 
-    if (isEdit && id) {
-      updateExpense(id, expenseData);
-    } else {
-      addExpense(expenseData);
+    // Only include cardId if payment type is card
+    if (data.paymentType === "card" && data.cardId) {
+      expenseData.cardId = data.cardId;
     }
 
-    navigate("/expenses");
+    // Only include bankAccountId if payment type is bank_transfer
+    if (data.paymentType === "bank_transfer" && data.bankAccountId) {
+      expenseData.bankAccountId = data.bankAccountId;
+    }
+
+    try {
+      // Clear previous backend errors
+      setBackendErrors({});
+      
+      if (isEdit && id) {
+        await updateExpense(id, expenseData);
+        showSuccess("Expense updated successfully!");
+      } else {
+        await addExpense(expenseData);
+        showSuccess("Expense added successfully!");
+      }
+      // Refresh expenses list before navigating
+      await refreshExpenses(1, 10);
+      navigate("/expenses");
+    } catch (err: any) {
+      // Handle backend validation errors
+      if (err.response?.data?.error && typeof err.response.data.error === 'object') {
+        const validationErrors: Record<string, string> = {};
+        Object.keys(err.response.data.error).forEach((field) => {
+          const fieldErrors = err.response.data.error[field];
+          if (Array.isArray(fieldErrors) && fieldErrors.length > 0) {
+            validationErrors[field] = fieldErrors[0]; // Take first error message
+          }
+        });
+        setBackendErrors(validationErrors);
+        
+        // Set errors in react-hook-form
+        Object.keys(validationErrors).forEach((field) => {
+          setValue(field as any, formData[field as keyof typeof formData], { shouldValidate: false });
+        });
+        
+        // Show generic error message
+        showError("Please fix the validation errors below");
+      } else {
+        const errorMessage = err.response?.data?.error || err.response?.data?.message || "Failed to save expense. Please try again.";
+        showError(errorMessage);
+      }
+      console.error("Error saving expense:", err);
+    }
   };
 
   return (
@@ -132,21 +232,26 @@ export default function ExpenseForm() {
           {isEdit ? "Edit Expense" : "Add New Expense"}
         </h1>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleFormSubmit(onSubmit)} className="space-y-6">
           <div>
             <Label>
               Amount <span className="text-error-500">*</span>
             </Label>
             <Input
               type="number"
+              name="amount"
               step={0.01}
               min="0"
-              value={String(formData.amount)}
-              onChange={(e) =>
-                setFormData({ ...formData, amount: e.target.value })
-              }
+              value={formData.amount || ""}
+              onChange={(e) => {
+                const value = e.target.value === "" ? 0 : parseFloat(e.target.value);
+                setValue("amount", isNaN(value) ? 0 : value);
+              }}
+              onBlur={register("amount").onBlur}
               placeholder="0.00"
               required
+              error={!!errors.amount || !!backendErrors.amount}
+              hint={errors.amount?.message || backendErrors.amount}
             />
           </div>
 
@@ -156,49 +261,37 @@ export default function ExpenseForm() {
             </Label>
             <Select
               value={formData.category}
-              onChange={(value) =>
-                setFormData({
-                  ...formData,
-                  category: value as ExpenseCategory,
-                })
-              }
+              onChange={(value) => {
+                setValue("category", value);
+              }}
               options={[
                 { value: "rent", label: "Rent" },
                 { value: "bills", label: "Bills" },
                 { value: "transport", label: "Transport" },
                 { value: "salaries", label: "Salaries" },
+                { value: "supplies", label: "Supplies" },
                 { value: "maintenance", label: "Maintenance" },
                 { value: "marketing", label: "Marketing" },
                 { value: "other", label: "Other" },
               ]}
             />
+            {errors.category && (
+              <p className="mt-1.5 text-xs text-error-500">{errors.category.message}</p>
+            )}
           </div>
 
           <div>
-            <Label>
-              Description <span className="text-error-500">*</span>
-            </Label>
+            <Label>Description</Label>
             <Input
+              name="description"
               value={formData.description}
-              onChange={(e) =>
-                setFormData({ ...formData, description: e.target.value })
-              }
-              placeholder="Enter expense description"
-              required
-            />
-          </div>
-
-          <div>
-            <Label>
-              Date <span className="text-error-500">*</span>
-            </Label>
-            <Input
-              type="date"
-              value={formData.date}
-              onChange={(e) =>
-                setFormData({ ...formData, date: e.target.value })
-              }
-              required
+              onChange={(e) => {
+                setValue("description", e.target.value);
+              }}
+              onBlur={register("description").onBlur}
+              placeholder="Enter description (optional)"
+              error={!!errors.description || !!backendErrors.description}
+              hint={errors.description?.message || backendErrors.description}
             />
           </div>
 
@@ -208,88 +301,60 @@ export default function ExpenseForm() {
             </Label>
             <Select
               value={formData.paymentType}
-              onChange={(value) =>
-                setFormData({ ...formData, paymentType: value as PaymentType })
-              }
+              onChange={(value) => {
+                setValue("paymentType", value);
+              }}
               options={[
                 { value: "cash", label: "Cash" },
-                { value: "card", label: "Card" },
                 { value: "bank_transfer", label: "Bank Transfer" },
               ]}
             />
+            {(errors.paymentType || backendErrors.paymentType) && (
+              <p className="mt-1.5 text-xs text-error-500">{errors.paymentType?.message || backendErrors.paymentType}</p>
+            )}
           </div>
-
-          {formData.paymentType === "card" && (
-            <div>
-              <Label>
-                Select Card <span className="text-error-500">*</span>
-              </Label>
-              {cards.filter((c) => c.isActive).length === 0 ? (
-                <div className="p-2 text-sm text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 rounded">
-                  No active cards available. Please add a card in Settings.
-                </div>
-              ) : (
-                <>
-                  <Select
-                    value={formData.cardId}
-                    onChange={(value) =>
-                      setFormData({ ...formData, cardId: value })
-                    }
-                    options={[
-                      { value: "", label: "Select a card" },
-                      ...cards
-                        .filter((c) => c.isActive)
-                        .map((card) => ({
-                          value: card.id,
-                          label: `${card.name}${card.isDefault ? " (Default)" : ""}${card.cardNumber ? ` - ****${card.cardNumber.slice(-4)}` : ""}`,
-                        })),
-                    ]}
-                  />
-                  {!formData.cardId && (
-                    <p className="mt-1 text-xs text-error-500">
-                      Please select a card for this payment
-                    </p>
-                  )}
-                </>
-              )}
-            </div>
-          )}
 
           {formData.paymentType === "bank_transfer" && (
             <div>
               <Label>
                 Select Bank Account <span className="text-error-500">*</span>
               </Label>
-              {bankAccounts.filter((b) => b.isActive).length === 0 ? (
-                <div className="p-2 text-sm text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 rounded">
-                  No active bank accounts available. Please add a bank account in Settings.
-                </div>
-              ) : (
-                <>
-                  <Select
-                    value={formData.bankAccountId}
-                    onChange={(value) =>
-                      setFormData({ ...formData, bankAccountId: value })
-                    }
-                    options={[
-                      { value: "", label: "Select a bank account" },
-                      ...bankAccounts
-                        .filter((b) => b.isActive)
-                        .map((account) => ({
-                          value: account.id,
-                          label: `${account.accountName}${account.isDefault ? " (Default)" : ""} - ${account.bankName}`,
-                        })),
-                    ]}
-                  />
-                  {!formData.bankAccountId && (
-                    <p className="mt-1 text-xs text-error-500">
-                      Please select a bank account for this payment
-                    </p>
-                  )}
-                </>
+              <Select
+                value={formData.bankAccountId}
+                onChange={(value) => {
+                  setValue("bankAccountId", value);
+                }}
+                options={[
+                  ...bankAccounts
+                    .filter((acc) => acc.isActive)
+                    .map((acc) => ({
+                      value: acc.id,
+                      label: `${acc.accountName} - ${acc.bankName}${acc.isDefault ? " (Default)" : ""}`,
+                    })),
+                ]}
+              />
+              {(errors.bankAccountId || backendErrors.bankAccountId) && (
+                <p className="mt-1.5 text-xs text-error-500">{errors.bankAccountId?.message || backendErrors.bankAccountId}</p>
               )}
             </div>
           )}
+
+          <div>
+            <Label>
+              Date <span className="text-error-500">*</span>
+            </Label>
+            <DatePicker
+              name="date"
+              value={formData.date}
+              onChange={(e) => {
+                setValue("date", e.target.value);
+              }}
+              onBlur={register("date").onBlur}
+              required
+              error={!!errors.date || !!backendErrors.date}
+              hint={errors.date?.message || backendErrors.date}
+            />
+          </div>
 
           <div className="flex gap-4">
             <Button type="submit" size="sm">
@@ -309,4 +374,3 @@ export default function ExpenseForm() {
     </>
   );
 }
-

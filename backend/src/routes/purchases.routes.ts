@@ -1,13 +1,15 @@
 import express, { Router } from "express";
 import purchaseController from "../controllers/purchase.controller";
-import { authenticate, authorize } from "../middleware/auth";
-import { validate, validateQuery, validateParams } from "../middleware/validate";
+import { authenticate } from "../middleware/auth";
+import { requirePermission } from "../middleware/permissions";
+import { bodyValidator, queryValidator, paramsValidator } from "../middleware/joiValidator";
 import {
   createPurchaseSchema,
   updatePurchaseSchema,
   addPaymentSchema,
   getPurchasesQuerySchema,
 } from "../validators/purchase.validator";
+import { PERMISSIONS } from "../utils/permissions";
 import Joi from "joi";
 
 const router = Router();
@@ -16,7 +18,7 @@ const router = Router();
 router.get(
   "/",
   authenticate,
-  validateQuery(getPurchasesQuerySchema),
+  queryValidator(getPurchasesQuerySchema),
   purchaseController.getPurchases.bind(purchaseController)
 );
 
@@ -24,10 +26,11 @@ router.get(
 router.get(
   "/:id",
   authenticate,
-  validateParams(
+  paramsValidator(
     Joi.object({
-      id: Joi.string().uuid().required().messages({
-        "string.uuid": "Purchase ID must be a valid UUID",
+      id: Joi.string().required().trim().min(1).messages({
+        "string.empty": "Purchase ID cannot be empty",
+        "string.min": "Purchase ID cannot be empty",
         "any.required": "Purchase ID is required",
       }),
     })
@@ -39,8 +42,8 @@ router.get(
 router.post(
   "/",
   authenticate,
-  authorize("superadmin", "admin", "warehouse_manager"),
-  validate(createPurchaseSchema),
+  requirePermission(PERMISSIONS.PURCHASES_CREATE),
+  bodyValidator(createPurchaseSchema),
   purchaseController.createPurchase.bind(purchaseController)
 );
 
@@ -48,16 +51,17 @@ router.post(
 router.put(
   "/:id",
   authenticate,
-  authorize("superadmin", "admin", "warehouse_manager"),
-  validateParams(
+  requirePermission(PERMISSIONS.PURCHASES_UPDATE),
+  paramsValidator(
     Joi.object({
-      id: Joi.string().uuid().required().messages({
-        "string.uuid": "Purchase ID must be a valid UUID",
+      id: Joi.string().required().trim().min(1).messages({
+        "string.empty": "Purchase ID cannot be empty",
+        "string.min": "Purchase ID cannot be empty",
         "any.required": "Purchase ID is required",
       }),
     })
   ),
-  validate(updatePurchaseSchema),
+  bodyValidator(updatePurchaseSchema),
   purchaseController.updatePurchase.bind(purchaseController)
 );
 
@@ -65,16 +69,17 @@ router.put(
 router.post(
   "/:id/payments",
   authenticate,
-  authorize("superadmin", "admin", "warehouse_manager"),
-  validateParams(
+  requirePermission(PERMISSIONS.PURCHASES_ADD_PAYMENT),
+  paramsValidator(
     Joi.object({
-      id: Joi.string().uuid().required().messages({
-        "string.uuid": "Purchase ID must be a valid UUID",
+      id: Joi.string().required().trim().min(1).messages({
+        "string.empty": "Purchase ID cannot be empty",
+        "string.min": "Purchase ID cannot be empty",
         "any.required": "Purchase ID is required",
       }),
     })
   ),
-  validate(addPaymentSchema),
+  bodyValidator(addPaymentSchema),
   purchaseController.addPayment.bind(purchaseController)
 );
 

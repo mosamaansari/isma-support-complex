@@ -7,21 +7,45 @@ class SettingsController {
   async getSettings(req: AuthRequest, res: Response) {
     try {
       const settings = await settingsService.getSettings();
-      res.json(settings);
+      return res.status(200).json({
+        message: "Settings retrieved successfully",
+        response: {
+          data: settings,
+        },
+        error: null,
+      });
     } catch (error: any) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
       logger.error("Get settings error:", error);
-      res.status(500).json({ error: "Internal server error" });
+      return res.status(500).json({
+        message: errorMessage,
+        response: null,
+        error: errorMessage,
+      });
     }
   }
 
   async updateSettings(req: AuthRequest, res: Response) {
     try {
-      const settings = await settingsService.updateSettings(req.body);
+      const settings = await settingsService.updateSettings(req.body.data);
       logger.info(`Settings updated by ${req.user?.username}`);
-      res.json(settings);
+      return res.status(200).json({
+        message: "Settings updated successfully",
+        response: {
+          data: settings,
+        },
+        error: null,
+      });
     } catch (error: any) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
       logger.error("Update settings error:", error);
-      res.status(500).json({ error: "Internal server error" });
+      return res.status(500).json({
+        message: errorMessage,
+        response: null,
+        error: errorMessage,
+      });
     }
   }
 }

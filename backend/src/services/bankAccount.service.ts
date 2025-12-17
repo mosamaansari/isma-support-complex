@@ -40,12 +40,23 @@ class BankAccountService {
     accountName: string;
     accountNumber: string;
     bankName: string;
-    ifscCode: string;
     accountHolder?: string;
     branchName?: string;
     isDefault?: boolean;
     isActive?: boolean;
   }) {
+    // Check if account number + bank name combination already exists
+    const existingAccount = await prisma.bankAccount.findFirst({
+      where: {
+        accountNumber: data.accountNumber,
+        bankName: data.bankName,
+      },
+    });
+
+    if (existingAccount) {
+      throw new Error("An account with this account number and bank name already exists");
+    }
+
     // If setting as default, unset other default accounts
     if (data.isDefault) {
       await prisma.bankAccount.updateMany({
@@ -59,8 +70,8 @@ class BankAccountService {
         accountName: data.accountName,
         accountNumber: data.accountNumber,
         bankName: data.bankName,
-        ifscCode: data.ifscCode,
-        accountHolder: data.accountHolder || null,
+        ifscCode: "", // Set empty string for IFSC code
+        accountHolder: data.accountHolder || data.accountName || null, // Use accountName if accountHolder not provided
         branchName: data.branchName || null,
         isDefault: data.isDefault || false,
         isActive: data.isActive !== undefined ? data.isActive : true,
@@ -76,7 +87,6 @@ class BankAccountService {
       accountName?: string;
       accountNumber?: string;
       bankName?: string;
-      ifscCode?: string;
       accountHolder?: string;
       branchName?: string;
       isDefault?: boolean;
@@ -91,6 +101,25 @@ class BankAccountService {
       throw new Error("Bank account not found");
     }
 
+    // Check if account number + bank name combination already exists (excluding current account)
+    const accountNumber = data.accountNumber !== undefined ? data.accountNumber : account.accountNumber;
+    const bankName = data.bankName !== undefined ? data.bankName : account.bankName;
+
+    // Only check if accountNumber or bankName is being changed
+    if (data.accountNumber !== undefined || data.bankName !== undefined) {
+      const existingAccount = await prisma.bankAccount.findFirst({
+        where: {
+          accountNumber: accountNumber,
+          bankName: bankName,
+          id: { not: id }, // Exclude current account
+        },
+      });
+
+      if (existingAccount) {
+        throw new Error("An account with this account number and bank name already exists");
+      }
+    }
+
     // If setting as default, unset other default accounts
     if (data.isDefault === true) {
       await prisma.bankAccount.updateMany({
@@ -103,10 +132,15 @@ class BankAccountService {
     }
 
     const updateData: any = {};
-    if (data.accountName !== undefined) updateData.accountName = data.accountName;
+    if (data.accountName !== undefined) {
+      updateData.accountName = data.accountName;
+      // Auto-update accountHolder if not provided separately
+      if (data.accountHolder === undefined) {
+        updateData.accountHolder = data.accountName;
+      }
+    }
     if (data.accountNumber !== undefined) updateData.accountNumber = data.accountNumber;
     if (data.bankName !== undefined) updateData.bankName = data.bankName;
-    if (data.ifscCode !== undefined) updateData.ifscCode = data.ifscCode;
     if (data.accountHolder !== undefined) updateData.accountHolder = data.accountHolder || null;
     if (data.branchName !== undefined) updateData.branchName = data.branchName || null;
     if (data.isDefault !== undefined) updateData.isDefault = data.isDefault;

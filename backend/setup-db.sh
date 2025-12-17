@@ -29,3 +29,8 @@ echo "You can now:"
 echo "  - View database: npx prisma studio"
 echo "  - Check status: npx prisma migrate status"
 
+
+
+
+
+

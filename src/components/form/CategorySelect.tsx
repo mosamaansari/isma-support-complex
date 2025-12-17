@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useData } from "../../context/DataContext";
+import { useAlert } from "../../context/AlertContext";
 import Select from "./Select";
 import Button from "../ui/button/Button";
 import Input from "./input/InputField";
@@ -18,6 +19,7 @@ export default function CategorySelect({
   className = "",
 }: CategorySelectProps) {
   const { categories, addCategory, refreshCategories } = useData();
+  const { showSuccess, showError } = useAlert();
   const [showAddModal, setShowAddModal] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [newCategoryDesc, setNewCategoryDesc] = useState("");
@@ -31,7 +33,7 @@ export default function CategorySelect({
 
   const handleAddCategory = async () => {
     if (!newCategoryName.trim()) {
-      alert("Please enter a category name");
+      showError("Please enter a category name");
       return;
     }
 
@@ -47,8 +49,9 @@ export default function CategorySelect({
       setNewCategoryName("");
       setNewCategoryDesc("");
       setShowAddModal(false);
+      showSuccess("Category created successfully!");
     } catch (err: any) {
-      alert(err.response?.data?.error || "Failed to create category");
+      showError(err.response?.data?.error || "Failed to create category");
       console.error("Error creating category:", err);
     } finally {
       setIsSubmitting(false);

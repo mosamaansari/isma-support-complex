@@ -22,6 +22,10 @@ import rolesRoutes from "./routes/roles.routes";
 import cardsRoutes from "./routes/cards.routes";
 import bankAccountsRoutes from "./routes/bankAccounts.routes";
 import openingBalanceRoutes from "./routes/openingBalance.routes";
+import searchRoutes from "./routes/search.routes";
+import dashboardRoutes from "./routes/dashboard.routes";
+import backupRoutes from "./routes/backup.routes";
+import suppliersRoutes from "./routes/suppliers.routes";
 
 // Load environment variables
 dotenv.config();
@@ -35,8 +39,8 @@ app.use(cors({
   origin: process.env.CORS_ORIGIN || "http://localhost:5173",
   credentials: true,
 }));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: "20mb" }));
+app.use(express.urlencoded({ extended: true, limit: "20mb" }));
 app.use(morgan("combined", {
   stream: {
     write: (message: string) => logger.info(message.trim()),
@@ -93,6 +97,9 @@ app.get("/", (req: Request, res: Response) => {
       settings: "/api/settings",
       categories: "/api/categories",
       roles: "/api/roles",
+      search: "/api/search",
+      dashboard: "/api/dashboard",
+      backup: "/api/backup",
     },
   });
 });
@@ -109,8 +116,12 @@ app.use("/api/settings", settingsRoutes);
 app.use("/api/categories", categoriesRoutes);
 app.use("/api/roles", rolesRoutes);
 app.use("/api/cards", cardsRoutes);
-app.use("/api/bank-accounts", bankAccountsRoutes);
-app.use("/api/opening-balances", openingBalanceRoutes);
+    app.use("/api/bank-accounts", bankAccountsRoutes);
+    app.use("/api/opening-balances", openingBalanceRoutes);
+    app.use("/api/search", searchRoutes);
+    app.use("/api/dashboard", dashboardRoutes);
+    app.use("/api/backup", backupRoutes);
+    app.use("/api/suppliers", suppliersRoutes);
 
 // 404 handler
 app.use((req: Request, res: Response) => {

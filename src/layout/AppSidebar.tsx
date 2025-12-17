@@ -66,6 +66,7 @@ const AppSidebar: React.FC = () => {
           { name: "Products", path: "/inventory/products", pro: false },
           { name: "Add Product", path: "/inventory/product/add", pro: false },
           { name: "Purchase Entry", path: "/inventory/purchase", pro: false },
+          { name: "Purchase List", path: "/inventory/purchases", pro: false },
         ],
       },
       {
@@ -346,19 +347,39 @@ const AppSidebar: React.FC = () => {
       >
         <Link to="/">
           {isExpanded || isHovered || isMobileOpen ? (
-            <img
-              src="/images/logo/logo.png"
-              alt="Isma Sports Complex"
-              width={180}
-              height={40}
-            />
+            <>
+              <img
+                src="/images/logo/logo.png"
+                alt="Isma Sports Complex"
+                width={180}
+                height={40}
+                className="dark:hidden"
+              />
+              <img
+                src="/images/logo/logo-transparent.png"
+                alt="Isma Sports Complex"
+                width={180}
+                height={40}
+                className="hidden dark:block"
+              />
+            </>
           ) : (
-            <img
-              src="/images/logo/logo.png"
-              alt="Isma Sports Complex"
-              width={32}
-              height={32}
-            />
+            <>
+              <img
+                src="/images/logo/logo.png"
+                alt="Isma Sports Complex"
+                width={32}
+                height={32}
+                className="dark:hidden"
+              />
+              <img
+                src="/images/logo/logo-transparent.png"
+                alt="Isma Sports Complex"
+                width={32}
+                height={32}
+                className="hidden dark:block"
+              />
+            </>
           )}
         </Link>
       </div>

@@ -2,8 +2,10 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import PageMeta from "../../components/common/PageMeta";
 import { useData } from "../../context/DataContext";
+import { useAlert } from "../../context/AlertContext";
 import { DailyOpeningBalance, CardBalance } from "../../types";
 import Input from "../../components/form/input/InputField";
+import DatePicker from "../../components/form/DatePicker";
 import Label from "../../components/form/Label";
 import Button from "../../components/ui/button/Button";
 import { ChevronLeftIcon, PlusIcon, TrashBinIcon } from "../../icons";
@@ -11,6 +13,7 @@ import api from "../../services/api";
 
 export default function OpeningBalance() {
   const { cards, refreshCards } = useData();
+  const { showSuccess, showError } = useAlert();
   const navigate = useNavigate();
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [cashBalance, setCashBalance] = useState(0);
@@ -60,14 +63,14 @@ export default function OpeningBalance() {
 
   const addCardBalance = () => {
     if (cards.filter((c) => c.isActive).length === 0) {
-      alert("No active cards available");
+      showError("No active cards available");
       return;
     }
     const availableCards = cards.filter(
       (c) => c.isActive && !cardBalances.some((cb) => cb.cardId === c.id)
     );
     if (availableCards.length === 0) {
-      alert("All active cards have been added");
+      showError("All active cards have been added");
       return;
     }
     setCardBalances([
@@ -93,13 +96,13 @@ export default function OpeningBalance() {
 
   const handleSubmit = async () => {
     if (cashBalance < 0) {
-      alert("Cash balance cannot be negative");
+      showError("Cash balance cannot be negative");
       return;
     }
 
     const invalidCard = cardBalances.find((cb) => cb.balance < 0);
     if (invalidCard) {
-      alert("Card balance cannot be negative");
+      showError("Card balance cannot be negative");
       return;
     }
 
@@ -114,14 +117,14 @@ export default function OpeningBalance() {
 
       if (existingBalance) {
         await api.updateOpeningBalance(existingBalance.id, data);
-        alert("Opening balance updated successfully!");
+        showSuccess("Opening balance updated successfully!");
       } else {
         await api.createOpeningBalance(data);
-        alert("Opening balance created successfully!");
+        showSuccess("Opening balance created successfully!");
       }
       navigate("/reports");
     } catch (error: any) {
-      alert(error.response?.data?.error || "Failed to save opening balance");
+      showError(error.response?.data?.error || "Failed to save opening balance");
     } finally {
       setIsSubmitting(false);
     }
@@ -156,8 +159,7 @@ export default function OpeningBalance() {
                 <Label>
                   Date <span className="text-error-500">*</span>
                 </Label>
-                <Input
-                  type="date"
+                <DatePicker
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
                   required

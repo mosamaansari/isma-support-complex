@@ -1,39 +1,110 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate, Link } from "react-router";
+import { useForm } from "react-hook-form";
+import { yupResolver } from "@hookform/resolvers/yup";
+import * as yup from "yup";
 import { useDropzone } from "react-dropzone";
 import PageMeta from "../../components/common/PageMeta";
 import { useData } from "../../context/DataContext";
+import { useAlert } from "../../context/AlertContext";
 import Input from "../../components/form/input/InputField";
 import Label from "../../components/form/Label";
 import Button from "../../components/ui/button/Button";
 import CategorySelect from "../../components/form/CategorySelect";
 import { ChevronLeftIcon, TrashBinIcon } from "../../icons";
 
+const productFormSchema = yup.object().shape({
+  name: yup
+    .string()
+    .required("Product name is required")
+    .trim()
+    .min(2, "Product name must be at least 2 characters")
+    .max(100, "Product name must be less than 100 characters"),
+  category: yup
+    .string()
+    .optional(),
+  salePrice: yup
+    .number()
+    .required("Sale price is required")
+    .min(0.01, "Sale price must be greater than 0")
+    .max(10000000, "Sale price is too large"),
+  shopQuantity: yup
+    .number()
+    .required("Shop quantity is required")
+    .min(0, "Shop quantity cannot be negative")
+    .integer("Shop quantity must be a whole number"),
+  warehouseQuantity: yup
+    .number()
+    .required("Warehouse quantity is required")
+    .min(0, "Warehouse quantity cannot be negative")
+    .integer("Warehouse quantity must be a whole number"),
+  minStockLevel: yup
+    .number()
+    .required("Minimum stock level is required")
+    .min(0, "Minimum stock level cannot be negative")
+    .integer("Minimum stock level must be a whole number"),
+  model: yup
+    .string()
+    .optional()
+    .max(100, "Model name must be less than 100 characters"),
+  manufacturer: yup
+    .string()
+    .optional()
+    .max(100, "Manufacturer name must be less than 100 characters"),
+  barcode: yup
+    .string()
+    .optional()
+    .max(50, "Barcode must be less than 50 characters"),
+});
+
 export default function ProductForm() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { addProduct, updateProduct, getProduct } = useData();
+  const { showSuccess, showError } = useAlert();
   const isEdit = !!id;
 
-  const [formData, setFormData] = useState({
-    name: "",
-    category: "",
-    salePrice: 0,
-    shopQuantity: 0,
-    warehouseQuantity: 0,
-    minStockLevel: 0,
-    model: "",
-    manufacturer: "",
-    barcode: "",
-    image: "",
-  });
   const [imagePreview, setImagePreview] = useState<string>("");
+
+  const {
+    register,
+    handleSubmit: handleFormSubmit,
+    formState: { errors },
+    setValue,
+    watch,
+    reset,
+  } = useForm({
+    resolver: yupResolver(productFormSchema),
+    defaultValues: {
+      name: "",
+      category: "",
+      salePrice: 0,
+      shopQuantity: 0,
+      warehouseQuantity: 0,
+      minStockLevel: 0,
+      model: "",
+      manufacturer: "",
+      barcode: "",
+    },
+  });
+
+  const formData = {
+    name: watch("name"),
+    category: watch("category") || "",
+    salePrice: watch("salePrice"),
+    shopQuantity: watch("shopQuantity"),
+    warehouseQuantity: watch("warehouseQuantity"),
+    minStockLevel: watch("minStockLevel"),
+    model: watch("model"),
+    manufacturer: watch("manufacturer"),
+    barcode: watch("barcode"),
+  };
 
   useEffect(() => {
     if (isEdit && id) {
       const product = getProduct(id);
       if (product) {
-        setFormData({
+        reset({
           name: product.name,
           category: product.category || "",
           salePrice: product.salePrice || 0,
@@ -43,14 +114,13 @@ export default function ProductForm() {
           model: product.model || "",
           manufacturer: product.manufacturer || "",
           barcode: product.barcode || "",
-          image: product.image || "",
         });
         if (product.image) {
           setImagePreview(product.image);
         }
       }
     }
-  }, [isEdit, id, getProduct]);
+  }, [isEdit, id, getProduct, reset]);
 
   const onDrop = (acceptedFiles: File[]) => {
     if (acceptedFiles.length > 0) {
@@ -59,7 +129,6 @@ export default function ProductForm() {
       reader.onload = () => {
         const result = reader.result as string;
         setImagePreview(result);
-        setFormData({ ...formData, image: result });
       };
       reader.readAsDataURL(file);
     }
@@ -77,34 +146,33 @@ export default function ProductForm() {
 
   const removeImage = () => {
     setImagePreview("");
-    setFormData({ ...formData, image: "" });
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
+  const onSubmit = async (data: any) => {
     const productData = {
-      name: formData.name,
-      category: formData.category || undefined,
-      salePrice: formData.salePrice || undefined,
-      shopQuantity: formData.shopQuantity,
-      warehouseQuantity: formData.warehouseQuantity,
-      minStockLevel: formData.minStockLevel,
-      model: formData.model || undefined,
-      manufacturer: formData.manufacturer || undefined,
-      barcode: formData.barcode || undefined,
-      image: formData.image || undefined,
+      name: data.name.trim(),
+      category: data.category || undefined,
+      salePrice: data.salePrice || undefined,
+      shopQuantity: data.shopQuantity,
+      warehouseQuantity: data.warehouseQuantity,
+      minStockLevel: data.minStockLevel,
+      model: data.model || undefined,
+      manufacturer: data.manufacturer || undefined,
+      barcode: data.barcode || undefined,
+      image: imagePreview || undefined,
     };
 
     try {
       if (isEdit && id) {
         await updateProduct(id, productData);
+        showSuccess("Product updated successfully!");
       } else {
         await addProduct(productData);
+        showSuccess("Product added successfully!");
       }
       navigate("/inventory/products");
     } catch (err: any) {
-      alert(err.response?.data?.error || "Failed to save product. Please try again.");
+      showError(err.response?.data?.error || "Failed to save product. Please try again.");
       console.error("Error saving product:", err);
     }
   };
@@ -129,42 +197,54 @@ export default function ProductForm() {
           {isEdit ? "Edit Product" : "Add New Product"}
         </h1>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleFormSubmit(onSubmit)} className="space-y-6">
           <div>
             <Label>
               Product Name <span className="text-error-500">*</span>
             </Label>
             <Input
+              name="name"
               value={formData.name}
-              onChange={(e) =>
-                setFormData({ ...formData, name: e.target.value })
-              }
+              onChange={(e) => {
+                setValue("name", e.target.value);
+              }}
+              onBlur={register("name").onBlur}
               placeholder="Enter product name"
               required
+              error={!!errors.name}
+              hint={errors.name?.message}
             />
           </div>
 
           <div>
             <Label>Category</Label>
             <CategorySelect
-              value={formData.category}
-              onChange={(value) =>
-                setFormData({ ...formData, category: value })
-              }
+              value={formData.category || ""}
+              onChange={(value) => {
+                setValue("category", value);
+              }}
             />
           </div>
 
           <div>
-            <Label>Sale Price</Label>
+            <Label>
+              Sale Price <span className="text-error-500">*</span>
+            </Label>
             <Input
               type="number"
+              name="salePrice"
               step={0.01}
-              min="0"
-              value={String(formData.salePrice)}
-              onChange={(e) =>
-                setFormData({ ...formData, salePrice: parseFloat(e.target.value) || 0 })
-              }
+              min="0.01"
+              value={formData.salePrice}
+              onChange={(e) => {
+                const value = parseFloat(e.target.value) || 0;
+                setValue("salePrice", value);
+              }}
+              onBlur={register("salePrice").onBlur}
               placeholder="0.00"
+              required
+              error={!!errors.salePrice}
+              hint={errors.salePrice?.message}
             />
           </div>
 
@@ -175,13 +255,18 @@ export default function ProductForm() {
               </Label>
               <Input
                 type="number"
+                name="shopQuantity"
                 min="0"
-                value={String(formData.shopQuantity)}
-                onChange={(e) =>
-                  setFormData({ ...formData, shopQuantity: parseInt(e.target.value) || 0 })
-                }
+                value={formData.shopQuantity}
+                onChange={(e) => {
+                  const value = parseInt(e.target.value) || 0;
+                  setValue("shopQuantity", value);
+                }}
+                onBlur={register("shopQuantity").onBlur}
                 placeholder="0"
                 required
+                error={!!errors.shopQuantity}
+                hint={errors.shopQuantity?.message}
               />
             </div>
             <div>
@@ -190,13 +275,18 @@ export default function ProductForm() {
               </Label>
               <Input
                 type="number"
+                name="warehouseQuantity"
                 min="0"
-                value={String(formData.warehouseQuantity)}
-                onChange={(e) =>
-                  setFormData({ ...formData, warehouseQuantity: parseInt(e.target.value) || 0 })
-                }
+                value={formData.warehouseQuantity}
+                onChange={(e) => {
+                  const value = parseInt(e.target.value) || 0;
+                  setValue("warehouseQuantity", value);
+                }}
+                onBlur={register("warehouseQuantity").onBlur}
                 placeholder="0"
                 required
+                error={!!errors.warehouseQuantity}
+                hint={errors.warehouseQuantity?.message}
               />
             </div>
           </div>
@@ -205,21 +295,29 @@ export default function ProductForm() {
             <div>
               <Label>Model</Label>
               <Input
+                name="model"
                 value={formData.model}
-                onChange={(e) =>
-                  setFormData({ ...formData, model: e.target.value })
-                }
+                onChange={(e) => {
+                  setValue("model", e.target.value);
+                }}
+                onBlur={register("model").onBlur}
                 placeholder="Enter model (optional)"
+                error={!!errors.model}
+                hint={errors.model?.message}
               />
             </div>
             <div>
               <Label>Manufacturer</Label>
               <Input
+                name="manufacturer"
                 value={formData.manufacturer}
-                onChange={(e) =>
-                  setFormData({ ...formData, manufacturer: e.target.value })
-                }
+                onChange={(e) => {
+                  setValue("manufacturer", e.target.value);
+                }}
+                onBlur={register("manufacturer").onBlur}
                 placeholder="Enter manufacturer (optional)"
+                error={!!errors.manufacturer}
+                hint={errors.manufacturer?.message}
               />
             </div>
           </div>
@@ -230,24 +328,33 @@ export default function ProductForm() {
             </Label>
             <Input
               type="number"
+              name="minStockLevel"
               min="0"
-              value={String(formData.minStockLevel)}
-              onChange={(e) =>
-                setFormData({ ...formData, minStockLevel: parseInt(e.target.value) || 0 })
-              }
+              value={formData.minStockLevel}
+              onChange={(e) => {
+                const value = parseInt(e.target.value) || 0;
+                setValue("minStockLevel", value);
+              }}
+              onBlur={register("minStockLevel").onBlur}
               placeholder="0"
               required
+              error={!!errors.minStockLevel}
+              hint={errors.minStockLevel?.message}
             />
           </div>
 
           <div>
             <Label>Barcode (Optional)</Label>
             <Input
+              name="barcode"
               value={formData.barcode}
-              onChange={(e) =>
-                setFormData({ ...formData, barcode: e.target.value })
-              }
+              onChange={(e) => {
+                setValue("barcode", e.target.value);
+              }}
+              onBlur={register("barcode").onBlur}
               placeholder="Enter barcode"
+              error={!!errors.barcode}
+              hint={errors.barcode?.message}
             />
           </div>
 
@@ -325,4 +432,3 @@ export default function ProductForm() {
     </>
   );
 }
-

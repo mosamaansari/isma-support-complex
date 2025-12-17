@@ -6,31 +6,58 @@ import { AuthRequest } from "../middleware/auth";
 class ProductController {
   async getProducts(req: AuthRequest, res: Response) {
     try {
-      const { search, category, lowStock } = req.query;
+      const { search, category, lowStock, page, pageSize } = req.query;
       const filters = {
         search: search as string | undefined,
         category: category as string | undefined,
         lowStock: lowStock === "true",
+        page: page ? parseInt(page as string) : undefined,
+        pageSize: pageSize ? parseInt(pageSize as string) : undefined,
       };
-      const products = await productService.getProducts(filters);
-      res.json(products);
-    } catch (error: any) {
+      const result = await productService.getProducts(filters);
+      return res.status(200).json({
+        message: "Products retrieved successfully",
+        response: result,
+        error: null,
+      });
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
       logger.error("Get products error:", error);
-      res.status(500).json({ error: "Internal server error" });
+      return res.status(500).json({
+        message: errorMessage,
+        response: null,
+        error: errorMessage,
+      });
     }
   }
 
   async getProduct(req: AuthRequest, res: Response) {
     try {
       const product = await productService.getProduct(req.params.id);
-      res.json(product);
-    } catch (error: any) {
+      return res.status(200).json({
+        message: "Product retrieved successfully",
+        response: {
+          data: product,
+        },
+        error: null,
+      });
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
       logger.error("Get product error:", error);
-      if (error.message === "Product not found") {
-        res.status(404).json({ error: error.message });
-      } else {
-        res.status(500).json({ error: "Internal server error" });
+      if (error instanceof Error && error.message === "Product not found") {
+        return res.status(404).json({
+          message: "Product not found",
+          response: null,
+          error: "Product not found",
+        });
       }
+      return res.status(500).json({
+        message: errorMessage,
+        response: null,
+        error: errorMessage,
+      });
     }
   }
 
@@ -38,10 +65,22 @@ class ProductController {
     try {
       const product = await productService.createProduct(req.body);
       logger.info(`Product created: ${product.name} by ${req.user?.username}`);
-      res.status(201).json(product);
-    } catch (error: any) {
+      return res.status(201).json({
+        message: "Product created successfully",
+        response: {
+          data: product,
+        },
+        error: null,
+      });
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
       logger.error("Create product error:", error);
-      res.status(500).json({ error: "Internal server error" });
+      return res.status(500).json({
+        message: errorMessage,
+        response: null,
+        error: errorMessage,
+      });
     }
   }
 
@@ -49,10 +88,22 @@ class ProductController {
     try {
       const product = await productService.updateProduct(req.params.id, req.body);
       logger.info(`Product updated: ${product.name} by ${req.user?.username}`);
-      res.json(product);
-    } catch (error: any) {
+      return res.status(200).json({
+        message: "Product updated successfully",
+        response: {
+          data: product,
+        },
+        error: null,
+      });
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
       logger.error("Update product error:", error);
-      res.status(500).json({ error: "Internal server error" });
+      return res.status(500).json({
+        message: errorMessage,
+        response: null,
+        error: errorMessage,
+      });
     }
   }
 
@@ -60,20 +111,44 @@ class ProductController {
     try {
       await productService.deleteProduct(req.params.id);
       logger.info(`Product deleted: ${req.params.id} by ${req.user?.username}`);
-      res.json({ message: "Product deleted successfully" });
-    } catch (error: any) {
+      return res.status(200).json({
+        message: "Product deleted successfully",
+        response: {
+          data: null,
+        },
+        error: null,
+      });
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
       logger.error("Delete product error:", error);
-      res.status(500).json({ error: "Internal server error" });
+      return res.status(500).json({
+        message: errorMessage,
+        response: null,
+        error: errorMessage,
+      });
     }
   }
 
   async getLowStockProducts(req: AuthRequest, res: Response) {
     try {
       const products = await productService.getLowStockProducts();
-      res.json(products);
-    } catch (error: any) {
+      return res.status(200).json({
+        message: "Low stock products retrieved successfully",
+        response: {
+          data: products,
+        },
+        error: null,
+      });
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
       logger.error("Get low stock products error:", error);
-      res.status(500).json({ error: "Internal server error" });
+      return res.status(500).json({
+        message: errorMessage,
+        response: null,
+        error: errorMessage,
+      });
     }
   }
 }

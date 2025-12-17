@@ -1,10 +1,16 @@
 import bcrypt from "bcryptjs";
 import prisma from "../config/database";
 import logger from "../utils/logger";
+import emailService from "./email.service";
 
 class UserService {
-  async getUsers() {
-    const users = await prisma.user.findMany({
+  async getUsers(filters?: { page?: number; pageSize?: number }) {
+    const page = filters?.page || 1;
+    const pageSize = filters?.pageSize || 10;
+    const skip = (page - 1) * pageSize;
+
+    const [users, total] = await Promise.all([
+      prisma.user.findMany({
       select: {
         id: true,
         username: true,
@@ -16,9 +22,21 @@ class UserService {
         createdAt: true,
       },
       orderBy: { createdAt: "desc" },
-    });
+        skip,
+        take: pageSize,
+      }),
+      prisma.user.count(),
+    ]);
 
-    return users;
+    return {
+      data: users,
+      pagination: {
+        page,
+        pageSize,
+        total,
+        totalPages: Math.ceil(total / pageSize),
+      },
+    };
   }
 
   async getUser(id: string) {
@@ -52,9 +70,16 @@ class UserService {
     permissions?: string[];
     profilePicture?: string;
   }) {
-    // Only allow cashier and warehouse_manager roles
-    if (data.role !== "cashier" && data.role !== "warehouse_manager") {
-      throw new Error("Invalid role. Only cashier and warehouse_manager are allowed");
+    // Validate role exists (either default enum role or custom role in database)
+    const defaultRoles = ["superadmin", "admin", "cashier", "warehouse_manager"];
+    if (!defaultRoles.includes(data.role)) {
+      // Check if it's a custom role in database
+      const customRole = await prisma.role.findUnique({
+        where: { name: data.role, isActive: true },
+      });
+      if (!customRole) {
+        throw new Error(`Invalid role: ${data.role}. Role does not exist.`);
+      }
     }
 
     // Check if username exists in regular users
@@ -83,7 +108,7 @@ class UserService {
         password: hashedPassword,
         name: data.name,
         email: data.email || null,
-        role: data.role as any,
+        role: data.role,
         permissions: data.permissions || [],
         profilePicture: data.profilePicture || null,
       },
@@ -99,6 +124,13 @@ class UserService {
       },
     });
 
+    // Send account creation email if email exists
+    if (user.email) {
+      emailService.sendAccountCreatedEmail(user.email, user.name, user.username).catch((err) => {
+        logger.error("Failed to send account creation email:", err);
+      });
+    }
+
     return user;
   }
 
@@ -113,6 +145,19 @@ class UserService {
       profilePicture?: string;
     }
   ) {
+    // Validate role if provided
+    if (data.role !== undefined) {
+      const defaultRoles = ["superadmin", "admin", "cashier", "warehouse_manager"];
+      if (!defaultRoles.includes(data.role)) {
+        // Check if it's a custom role in database
+        const customRole = await prisma.role.findUnique({
+          where: { name: data.role, isActive: true },
+        });
+        if (!customRole) {
+          throw new Error(`Invalid role: ${data.role}. Role does not exist.`);
+        }
+      }
+    }
     const user = await prisma.user.findUnique({
       where: { id },
     });
@@ -121,15 +166,24 @@ class UserService {
       throw new Error("User not found");
     }
 
-    // Only allow cashier and warehouse_manager roles
-    if (data.role && data.role !== "cashier" && data.role !== "warehouse_manager") {
-      throw new Error("Invalid role. Only cashier and warehouse_manager are allowed");
+    // Validate role if provided
+    if (data.role !== undefined) {
+      const defaultRoles = ["superadmin", "admin", "cashier", "warehouse_manager"];
+      if (!defaultRoles.includes(data.role)) {
+        // Check if it's a custom role in database
+        const customRole = await prisma.role.findUnique({
+          where: { name: data.role, isActive: true },
+        });
+        if (!customRole) {
+          throw new Error(`Invalid role: ${data.role}. Role does not exist.`);
+        }
+      }
     }
 
     const updateData: any = {};
     if (data.name !== undefined) updateData.name = data.name;
     if (data.email !== undefined) updateData.email = data.email || null;
-    if (data.role !== undefined) updateData.role = data.role as any;
+    if (data.role !== undefined) updateData.role = data.role;
     if (data.permissions !== undefined) updateData.permissions = data.permissions;
     if (data.profilePicture !== undefined) updateData.profilePicture = data.profilePicture || null;
 
@@ -155,41 +209,55 @@ class UserService {
     return updatedUser;
   }
 
+  // Update profile information only (name, email, profilePicture)
   async updateProfile(
     userId: string,
+    userType: "user" | "admin",
     data: {
-      name?: string;
+      name: string;
       email?: string;
-      password?: string;
-      currentPassword?: string;
       profilePicture?: string;
     }
   ) {
+    const updateData: any = {
+      name: data.name.trim(),
+    };
+    if (data.email !== undefined) updateData.email = data.email || null;
+    if (data.profilePicture !== undefined) updateData.profilePicture = data.profilePicture || null;
+
+    if (userType === "admin") {
+      // Update admin user
+      const adminUser = await prisma.adminUser.findUnique({
+        where: { id: userId },
+      });
+
+      if (!adminUser) {
+        throw new Error("User not found");
+      }
+
+      const updatedUser = await prisma.adminUser.update({
+        where: { id: userId },
+        data: updateData,
+        select: {
+          id: true,
+          username: true,
+          name: true,
+          email: true,
+          role: true,
+          profilePicture: true,
+          createdAt: true,
+        },
+      });
+
+      return { ...updatedUser, permissions: [] };
+    } else {
+      // Update regular user
     const user = await prisma.user.findUnique({
       where: { id: userId },
     });
 
     if (!user) {
       throw new Error("User not found");
-    }
-
-    const updateData: any = {};
-    if (data.name !== undefined) updateData.name = data.name;
-    if (data.email !== undefined) updateData.email = data.email || null;
-    if (data.profilePicture !== undefined) updateData.profilePicture = data.profilePicture || null;
-
-    // If password is being changed, verify current password first
-    if (data.password) {
-      if (!data.currentPassword) {
-        throw new Error("Current password is required to change password");
-      }
-
-      const isPasswordValid = await bcrypt.compare(data.currentPassword, user.password);
-      if (!isPasswordValid) {
-        throw new Error("Current password is incorrect");
-      }
-
-      updateData.password = await bcrypt.hash(data.password, 10);
     }
 
     const updatedUser = await prisma.user.update({
@@ -207,7 +275,95 @@ class UserService {
       },
     });
 
-    return updatedUser;
+      return updatedUser;
+    }
+  }
+
+  // Update password only
+  async updatePassword(
+    userId: string,
+    userType: "user" | "admin",
+    data: {
+      currentPassword: string;
+      newPassword: string;
+      confirmPassword: string;
+    }
+  ) {
+    // Verify current password
+    if (!data.currentPassword) {
+      throw new Error("Current password is required");
+    }
+
+    // Verify passwords match
+    if (data.newPassword !== data.confirmPassword) {
+      throw new Error("Passwords must match");
+    }
+
+    if (userType === "admin") {
+      // Update admin user password
+      const adminUser = await prisma.adminUser.findUnique({
+        where: { id: userId },
+      });
+
+      if (!adminUser) {
+        throw new Error("User not found");
+      }
+
+      const isPasswordValid = await bcrypt.compare(data.currentPassword, adminUser.password);
+      if (!isPasswordValid) {
+        throw new Error("Current password is incorrect");
+      }
+
+      // Hash and update password
+      const hashedPassword = await bcrypt.hash(data.newPassword, 10);
+      
+      await prisma.adminUser.update({
+        where: { id: userId },
+        data: {
+          password: hashedPassword,
+        },
+      });
+
+      // Send password changed email if email exists
+      if (adminUser.email) {
+        emailService.sendPasswordChangedEmail(adminUser.email, adminUser.name).catch((err) => {
+          logger.error("Failed to send password changed email:", err);
+        });
+      }
+    } else {
+      // Update regular user password
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+      });
+
+      if (!user) {
+        throw new Error("User not found");
+      }
+
+      const isPasswordValid = await bcrypt.compare(data.currentPassword, user.password);
+      if (!isPasswordValid) {
+        throw new Error("Current password is incorrect");
+      }
+
+      // Hash and update password
+      const hashedPassword = await bcrypt.hash(data.newPassword, 10);
+      
+      await prisma.user.update({
+        where: { id: userId },
+        data: {
+          password: hashedPassword,
+        },
+      });
+
+      // Send password changed email if email exists
+      if (user.email) {
+        emailService.sendPasswordChangedEmail(user.email, user.name).catch((err) => {
+        logger.error("Failed to send password changed email:", err);
+      });
+      }
+    }
+
+    return { success: true };
   }
 
   async deleteUser(id: string) {

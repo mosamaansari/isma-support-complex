@@ -31,16 +31,6 @@ export const createBankAccountSchema = Joi.object({
       "string.max": "Bank name cannot exceed 255 characters",
       "any.required": "Bank name is required",
     }),
-  ifscCode: Joi.string()
-    .required()
-    .min(1)
-    .max(20)
-    .messages({
-      "string.empty": "IFSC code is required",
-      "string.min": "IFSC code must be at least 1 character long",
-      "string.max": "IFSC code cannot exceed 20 characters",
-      "any.required": "IFSC code is required",
-    }),
   accountHolder: Joi.string()
     .optional()
     .allow("", null)
@@ -93,14 +83,6 @@ export const updateBankAccountSchema = Joi.object({
     .messages({
       "string.min": "Bank name must be at least 1 character long",
       "string.max": "Bank name cannot exceed 255 characters",
-    }),
-  ifscCode: Joi.string()
-    .optional()
-    .min(1)
-    .max(20)
-    .messages({
-      "string.min": "IFSC code must be at least 1 character long",
-      "string.max": "IFSC code cannot exceed 20 characters",
     }),
   accountHolder: Joi.string()
     .optional()

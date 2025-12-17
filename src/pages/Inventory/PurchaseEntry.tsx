@@ -1,32 +1,80 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate, useParams } from "react-router";
+import { useFormik } from "formik";
+import * as yup from "yup";
 import PageMeta from "../../components/common/PageMeta";
 import { useData } from "../../context/DataContext";
+import { useAlert } from "../../context/AlertContext";
 import { Product, PurchaseItem, PurchasePayment } from "../../types";
 import Input from "../../components/form/input/InputField";
+import DatePicker from "../../components/form/DatePicker";
 import Label from "../../components/form/Label";
 import Select from "../../components/form/Select";
 import Button from "../../components/ui/button/Button";
 import { TrashBinIcon, ChevronLeftIcon, PlusIcon } from "../../icons";
 import api from "../../services/api";
+import { hasPermission } from "../../utils/permissions";
+import { AVAILABLE_PERMISSIONS } from "../../utils/availablePermissions";
+
+const purchaseEntrySchema = yup.object().shape({
+  supplierName: yup
+    .string()
+    .required("Supplier name is required")
+    .trim()
+    .min(2, "Supplier name must be at least 2 characters")
+    .max(100, "Supplier name must be less than 100 characters"),
+  supplierPhone: yup
+    .string()
+    .optional()
+    .matches(/^[0-9+\-\s()]*$/, "Phone number contains invalid characters")
+    .max(20, "Phone number must be less than 20 characters"),
+  date: yup
+    .string()
+    .required("Date is required"),
+  tax: yup
+    .number()
+    .min(0, "Tax cannot be negative")
+    .max(1000000, "Tax amount is too large"),
+});
 
 export default function PurchaseEntry() {
   const { id } = useParams<{ id: string }>();
   const isEdit = !!id;
   const { products, addPurchase, updatePurchase, currentUser, cards, refreshCards, bankAccounts, refreshBankAccounts } = useData();
+  const { showSuccess, showError } = useAlert();
   const navigate = useNavigate();
-  const [supplierName, setSupplierName] = useState("");
-  const [supplierPhone, setSupplierPhone] = useState("");
   const [selectedProducts, setSelectedProducts] = useState<
     (PurchaseItem & { product: Product })[]
   >([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [tax, setTax] = useState(0);
   const [payments, setPayments] = useState<PurchasePayment[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [suppliers, setSuppliers] = useState<Array<{ id: string; name: string; phone: string }>>([]);
+  const [showSupplierDropdown, setShowSupplierDropdown] = useState(false);
+  const [supplierSearchTerm, setSupplierSearchTerm] = useState("");
+  const [supplierFetchEnabled, setSupplierFetchEnabled] = useState(false);
+  const [backendErrors, setBackendErrors] = useState<Record<string, string>>({});
+  const [showErrors, setShowErrors] = useState(false);
+  const [formError, setFormError] = useState<string>("");
+
+  const formik = useFormik({
+    initialValues: {
+      supplierName: "",
+      supplierPhone: "",
+      date: new Date().toISOString().split("T")[0],
+      tax: 0,
+    },
+    validationSchema: purchaseEntrySchema,
+    onSubmit: (values: any) => onSubmit(values),
+    validateOnBlur: false,
+    validateOnChange: false,
+  });
+
+  const supplierName = formik.values.supplierName;
+  const supplierPhone = formik.values.supplierPhone;
 
   useEffect(() => {
     if (cards.length === 0) {
@@ -42,14 +90,55 @@ export default function PurchaseEntry() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Load suppliers for autocomplete
+  useEffect(() => {
+    if (!supplierFetchEnabled) return;
+
+    const loadSuppliers = async (term: string) => {
+      try {
+        const suppliersList = await api.getSuppliers(term || undefined);
+        setSuppliers(suppliersList || []);
+        setShowSupplierDropdown(true);
+      } catch (err) {
+        console.error("Error loading suppliers:", err);
+        setSuppliers([]);
+        setShowSupplierDropdown(false);
+      }
+    };
+
+    const trimmed = supplierSearchTerm.trim();
+
+    // Require at least 2 characters to show recommendations
+    if (trimmed.length < 2) {
+      setSuppliers([]);
+      setShowSupplierDropdown(false);
+      return;
+    }
+
+    const debounceTimer = setTimeout(() => {
+      loadSuppliers(trimmed);
+    }, 250);
+
+    return () => clearTimeout(debounceTimer);
+  }, [supplierSearchTerm, supplierFetchEnabled]);
+
   // Load purchase data for edit
   useEffect(() => {
     if (isEdit && id) {
       setLoading(true);
       api.getPurchase(id)
         .then((purchase: any) => {
-          setSupplierName(purchase.supplierName);
-          setSupplierPhone(purchase.supplierPhone || "");
+          if (purchase.status === "completed") {
+            showError("Completed purchases cannot be edited.");
+            navigate("/inventory/purchases");
+            return;
+          }
+          formik.setValues({
+            supplierName: purchase.supplierName,
+            supplierPhone: purchase.supplierPhone || "",
+            date: new Date(purchase.date).toISOString().split("T")[0],
+            tax: Number(purchase.tax) || 0,
+          });
           setDate(new Date(purchase.date).toISOString().split("T")[0]);
           setTax(Number(purchase.tax) || 0);
           setPayments((purchase.payments || []) as PurchasePayment[]);
@@ -59,6 +148,7 @@ export default function PurchaseEntry() {
             const product = products.find(p => p.id === item.productId);
             return {
               ...item,
+              productId: item.productId?.trim() || item.productId,
               product: product || { id: item.productId, name: item.productName } as Product,
             };
           });
@@ -66,7 +156,7 @@ export default function PurchaseEntry() {
         })
         .catch((err) => {
           console.error("Error loading purchase:", err);
-          alert("Failed to load purchase data");
+          showError("Failed to load purchase data");
           navigate("/inventory/purchases");
         })
         .finally(() => setLoading(false));
@@ -74,19 +164,20 @@ export default function PurchaseEntry() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEdit, id]);
 
-  useEffect(() => {
-    if (searchTerm) {
-      setFilteredProducts(
-        products.filter((p) =>
-          p.name.toLowerCase().includes(searchTerm.toLowerCase())
-        )
-      );
-    } else {
-      setFilteredProducts([]);
-    }
-  }, [searchTerm, products]);
+  // Filter products based on search term - compute directly instead of using useEffect
+  const filteredProducts = searchTerm
+    ? (products || []).filter((p) =>
+        p && p.name && p.name.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+    : (products || []);
 
   const addProductToPurchase = (product: Product) => {
+    // Validate product has a valid ID
+    if (!product.id || typeof product.id !== 'string' || !product.id.trim()) {
+      showError("Invalid product. Please try again.");
+      return;
+    }
+
     const existingItem = selectedProducts.find(
       (item) => item.productId === product.id
     );
@@ -103,7 +194,7 @@ export default function PurchaseEntry() {
       setSelectedProducts([
         ...selectedProducts,
         {
-          productId: product.id,
+          productId: product.id.trim(),
           productName: product.name,
           quantity: 1,
           cost: 0,
@@ -115,15 +206,14 @@ export default function PurchaseEntry() {
     setSearchTerm("");
   };
 
-  const updateItemQuantity = (productId: string, quantity: number) => {
-    if (quantity <= 0) {
-      removeItem(productId);
-      return;
-    }
+  const updateItemQuantity = (productId: string, rawQuantity: string) => {
+    // Allow empty input while typing; store as 0 but do not remove row
+    const parsed = rawQuantity === "" ? 0 : parseInt(rawQuantity, 10);
+    const safeQuantity = Number.isNaN(parsed) ? 0 : parsed;
     setSelectedProducts(
       selectedProducts.map((item) => {
         if (item.productId === productId) {
-          return { ...item, quantity, total: item.cost * quantity };
+          return { ...item, quantity: safeQuantity, total: item.cost * safeQuantity };
         }
         return item;
       })
@@ -131,6 +221,10 @@ export default function PurchaseEntry() {
   };
 
   const updateItemCost = (productId: string, cost: number) => {
+    // Validate cost is greater than 0
+    if (cost < 0) {
+      cost = 0;
+    }
     setSelectedProducts(
       selectedProducts.map((item) => {
         if (item.productId === productId) {
@@ -171,18 +265,17 @@ export default function PurchaseEntry() {
       payments.map((payment, i) => {
         if (i === index) {
           const updated = { ...payment, [field]: value };
-          // If type changes to cash, remove cardId
+          // If type changes to cash, remove bankAccountId
           if (field === "type" && value === "cash") {
-            delete updated.cardId;
             delete updated.bankAccountId;
           }
-          // If type changes to card, don't auto-select - let user choose
-          if (field === "type" && value === "card") {
-            // Only auto-select if no card is selected and there's a default card
-            if (!updated.cardId && cards.length > 0) {
-              const defaultCard = cards.find((c) => c.isDefault && c.isActive);
-              if (defaultCard) {
-                updated.cardId = defaultCard.id;
+          // If type changes to bank_transfer, auto-select default bank account if available
+          if (field === "type" && value === "bank_transfer") {
+            // Only auto-select if no bank account is selected and there's a default account
+            if (!updated.bankAccountId && bankAccounts.length > 0) {
+              const defaultAccount = bankAccounts.find((acc) => acc.isDefault && acc.isActive);
+              if (defaultAccount) {
+                updated.bankAccountId = defaultAccount.id;
               }
             }
           }
@@ -193,36 +286,79 @@ export default function PurchaseEntry() {
     );
   };
 
-  const handleSubmit = async () => {
-    if (selectedProducts.length === 0) {
-      alert("Please add at least one product");
+  const onSubmit = async (data: any) => {
+    if (!currentUser) {
+      showError("User not loaded yet. Please try again.");
       return;
     }
-    if (!supplierName) {
-      alert("Please enter supplier name");
-      return;
-    }
-    if (payments.length === 0) {
-      alert("Please add at least one payment method");
-      return;
-    }
-    if (totalPaid > total) {
-      alert("Total paid amount cannot exceed total amount");
-      return;
-    }
-
-    // Validate card payments have cardId
-    for (const payment of payments) {
-      if (payment.type === "card" && !payment.cardId) {
-        alert("Please select a card for card payment");
+    // Check permission for creating purchase (only for new purchases, not edits)
+    if (!isEdit && currentUser) {
+      const canCreate = currentUser.role === "superadmin" || 
+                       currentUser.role === "admin" ||
+                       hasPermission(
+                         currentUser.role,
+                         AVAILABLE_PERMISSIONS.PURCHASE_CREATE,
+                         currentUser.permissions
+                       );
+      
+      if (!canCreate) {
+        showError("You don't have permission to create purchases. Please contact your administrator.");
         return;
       }
     }
 
+    if (selectedProducts.length === 0) {
+      showError("Please add at least one product");
+      return;
+    }
+    // Validate quantities > 0
+    for (const item of selectedProducts) {
+      if (!item.quantity || item.quantity <= 0) {
+        showError(`Quantity for "${item.productName}" must be greater than 0`);
+        return;
+      }
+    }
+    if (payments.length === 0) {
+      showError("Please add at least one payment method");
+      return;
+    }
+    if (totalPaid > total) {
+      showError("Total paid amount cannot exceed total amount");
+      return;
+    }
+
+    setFormError("");
+    // Validate payment amounts are greater than 0
+    for (const payment of payments) {
+      if (!payment.amount || payment.amount <= 0) {
+        showError("Payment amount must be greater than 0");
+        return;
+      }
+    }
+
+    // Validate bank transfer payments have bankAccountId
+    for (const payment of payments) {
+      if (payment.type === "bank_transfer" && !payment.bankAccountId) {
+        showError("Please select a bank account for bank transfer payment");
+        return;
+      }
+    }
+
+    // Validate productIds are valid
+    for (const item of selectedProducts) {
+      if (!item.productId || typeof item.productId !== 'string' || !item.productId.trim()) {
+        showError(`Invalid product ID for ${item.productName || 'product'}. Please remove and re-add the product.`);
+        setIsSubmitting(false);
+        return;
+      }
+    }
+
+    setShowErrors(true);
+    setBackendErrors({});
     setIsSubmitting(true);
     try {
       const purchaseItems: PurchaseItem[] = selectedProducts.map((item) => ({
-        productId: item.productId,
+        productId: item.productId.trim(),
         productName: item.productName,
         quantity: item.quantity,
         cost: item.cost,
@@ -232,33 +368,112 @@ export default function PurchaseEntry() {
       }));
 
       const purchaseData = {
-        supplierName,
-        supplierPhone: supplierPhone || undefined,
+        supplierName: data.supplierName.trim(),
+        supplierPhone: data.supplierPhone || undefined,
         items: purchaseItems,
         subtotal,
-        tax,
+        tax: data.tax,
         total,
         payments,
         remainingBalance,
-        date,
-        userId: currentUser!.id,
-        userName: currentUser!.name,
+        status: (remainingBalance > 0 ? "pending" : "completed") as "completed" | "pending" | "cancelled",
+        date: data.date,
+        userId: currentUser.id,
+        userName: currentUser.name,
       };
 
       if (isEdit && id) {
         await updatePurchase(id, purchaseData);
-        alert("Purchase updated successfully!");
+        showSuccess("Purchase updated successfully!");
       } else {
         await addPurchase(purchaseData);
-        alert("Purchase entry added successfully!");
+        showSuccess("Purchase entry added successfully!");
       }
       navigate("/inventory/purchases");
     } catch (error: any) {
-      alert(error.message || `Failed to ${isEdit ? "update" : "create"} purchase`);
+      const backendErr = error?.response?.data?.error;
+      if (backendErr && typeof backendErr === "object") {
+        const mapped: Record<string, string> = {};
+        Object.entries(backendErr).forEach(([key, value]) => {
+          if (Array.isArray(value) && value.length > 0) {
+            mapped[key.replace("data.", "")] = String(value[0]);
+          }
+        });
+        setBackendErrors(mapped);
+        setFormError("Please fix the highlighted errors.");
+        showError("Please fix the highlighted errors.");
+      } else {
+        const msg =
+          error?.response?.data?.error ||
+          error?.response?.data?.message ||
+          error?.message ||
+          `Failed to ${isEdit ? "update" : "create"} purchase`;
+        setFormError(msg);
+        showError(msg);
+      }
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  // Check permission on component mount
+  useEffect(() => {
+    if (!isEdit && currentUser) {
+      const canCreate = currentUser.role === "superadmin" || 
+                       currentUser.role === "admin" ||
+                       hasPermission(
+                         currentUser.role,
+                         AVAILABLE_PERMISSIONS.PURCHASE_CREATE,
+                         currentUser.permissions
+                       );
+      
+      if (!canCreate) {
+        showError("You don't have permission to create purchases. Redirecting to purchase list...");
+        navigate("/inventory/purchases");
+      }
+    }
+  }, [isEdit, currentUser, navigate]);
+
+  // Show loading if currentUser is not loaded yet
+  if (!currentUser) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-600 mx-auto mb-4"></div>
+          <p className="text-gray-600 dark:text-gray-400">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show access denied message if user doesn't have permission
+  if (!isEdit && currentUser) {
+    const canCreate = currentUser.role === "superadmin" || 
+                     currentUser.role === "admin" ||
+                     hasPermission(
+                       currentUser.role,
+                       AVAILABLE_PERMISSIONS.PURCHASE_CREATE,
+                       currentUser.permissions
+                     );
+    
+    if (!canCreate) {
+      return (
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="text-center">
+            <h2 className="text-2xl font-bold text-gray-800 dark:text-white mb-4">
+              Access Denied
+            </h2>
+            <p className="text-gray-600 dark:text-gray-400 mb-4">
+              You don't have permission to create purchases.
+            </p>
+            <Button onClick={() => navigate("/inventory/purchases")} size="sm">
+              Go to Purchase List
+            </Button>
+          </div>
+        </div>
+      );
+    }
+  }
 
   return (
     <>
@@ -289,6 +504,11 @@ export default function PurchaseEntry() {
             <h2 className="mb-4 text-xl font-semibold text-gray-800 dark:text-white">
               Product Search
             </h2>
+            {formError && (
+              <div className="mb-4 p-3 text-sm text-error-600 bg-error-50 border border-error-200 rounded dark:text-error-300 dark:bg-error-900/20 dark:border-error-800">
+                {formError}
+              </div>
+            )}
             <Input
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -364,28 +584,27 @@ export default function PurchaseEntry() {
                           <Input
                             type="number"
                             step={0.01}
-                            min="0"
+                            min="0.01"
                             value={String(item.cost)}
-                            onChange={(e) =>
-                              updateItemCost(
-                                item.productId,
-                                parseFloat(e.target.value) || 0
-                              )
-                            }
+                            onChange={(e) => {
+                              const value = parseFloat(e.target.value) || 0;
+                              updateItemCost(item.productId, value);
+                            }}
                             className="w-24"
+                    error={showErrors && (!item.cost || item.cost <= 0)}
+                    hint={
+                      showErrors && (!item.cost || item.cost <= 0)
+                        ? "Cost must be greater than 0"
+                        : ""
+                    }
                           />
                         </td>
                         <td className="p-2">
                           <Input
                             type="number"
                             min="1"
-                            value={item.quantity}
-                            onChange={(e) =>
-                              updateItemQuantity(
-                                item.productId,
-                                parseInt(e.target.value) || 0
-                              )
-                            }
+                            value={item.quantity === 0 ? "" : item.quantity}
+                            onChange={(e) => updateItemQuantity(item.productId, e.target.value)}
                             className="w-20"
                           />
                         </td>
@@ -415,35 +634,109 @@ export default function PurchaseEntry() {
               Purchase Details
             </h2>
             <div className="space-y-4">
-              <div>
+              <div className="relative">
                 <Label>
                   Supplier Name <span className="text-error-500">*</span>
                 </Label>
                 <Input
+                  name="supplierName"
                   value={supplierName}
-                  onChange={(e) => setSupplierName(e.target.value)}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    formik.setFieldValue("supplierName", value);
+                    setSupplierSearchTerm(value);
+                  }}
+                  onFocus={() => {
+                    setSupplierFetchEnabled(true);
+                    setSupplierSearchTerm(supplierName || "");
+                  }}
+                  onBlur={() => {
+                    setTimeout(() => setShowSupplierDropdown(false), 200);
+                    formik.handleBlur("supplierName");
+                  }}
                   placeholder="Enter supplier name"
                   required
+                  error={(showErrors && !!formik.errors.supplierName) || !!backendErrors.supplierName}
+                  hint={
+                    (showErrors &&
+                      (typeof formik.errors.supplierName === "string"
+                        ? formik.errors.supplierName
+                        : undefined)) ||
+                    backendErrors.supplierName
+                  }
                 />
+                {showSupplierDropdown && suppliers.length > 0 && (
+                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg dark:bg-gray-800 dark:border-gray-700 max-h-60 overflow-y-auto">
+                    {suppliers.map((supplier) => (
+                      <div
+                        key={supplier.id}
+                        onClick={() => {
+                          formik.setFieldValue("supplierName", supplier.name);
+                          formik.setFieldValue("supplierPhone", supplier.phone || "");
+                          setSupplierSearchTerm(supplier.name);
+                          setShowSupplierDropdown(false);
+                        }}
+                        className="p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-100 dark:border-gray-700 last:border-b-0"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-medium text-gray-800 dark:text-white">
+                              {supplier.name}
+                            </p>
+                            {supplier.phone && (
+                              <p className="text-sm text-gray-500 dark:text-gray-400">
+                                {supplier.phone}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               <div>
                 <Label>Mobile Number</Label>
                 <Input
+                  name="supplierPhone"
                   value={supplierPhone}
-                  onChange={(e) => setSupplierPhone(e.target.value)}
+                  onChange={(e) => {
+                    formik.setFieldValue("supplierPhone", e.target.value);
+                  }}
+                  onBlur={() => formik.handleBlur("supplierPhone")}
                   placeholder="Enter mobile number (optional)"
                   type="tel"
+                  error={(showErrors && !!formik.errors.supplierPhone) || !!backendErrors.supplierPhone}
+                  hint={
+                    (showErrors &&
+                      (typeof formik.errors.supplierPhone === "string"
+                        ? formik.errors.supplierPhone
+                        : undefined)) ||
+                    backendErrors.supplierPhone
+                  }
                 />
               </div>
               <div>
                 <Label>
                   Date <span className="text-error-500">*</span>
                 </Label>
-                <Input
-                  type="date"
+                <DatePicker
+                  name="date"
                   value={date}
-                  onChange={(e) => setDate(e.target.value)}
+                  onChange={(e) => {
+                    setDate(e.target.value);
+                    formik.setFieldValue("date", e.target.value);
+                  }}
+                  onBlur={() => formik.handleBlur("date")}
                   required
+                  error={(showErrors && !!formik.errors.date) || !!backendErrors.date}
+                  hint={
+                    (showErrors &&
+                      (typeof formik.errors.date === "string"
+                        ? formik.errors.date
+                        : undefined)) ||
+                    backendErrors.date
+                  }
                 />
               </div>
             </div>
@@ -456,19 +749,31 @@ export default function PurchaseEntry() {
                 <span className="text-gray-600 dark:text-gray-400">Subtotal:</span>
                 <span className="text-gray-800 dark:text-white">Rs. {subtotal.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between">
-                <Label className="mb-0">Tax:</Label>
-                <div className="flex items-center gap-2">
+              <div className="flex flex-col">
+                <div className="flex justify-between items-center mb-2">
+                  <Label className="mb-0">Tax:</Label>
                   <Input
                     type="number"
+                    name="tax"
                     step={0.01}
                     min="0"
                     value={tax}
-                    onChange={(e) => setTax(parseFloat(e.target.value) || 0)}
-                    className="w-24"
+                    onChange={(e) => {
+                      const taxValue = parseFloat(e.target.value) || 0;
+                      setTax(taxValue);
+                      formik.setFieldValue("tax", taxValue);
+                    }}
+                    onBlur={() => formik.handleBlur("tax")}
+                    className="w-20"
+                    error={(showErrors && !!formik.errors.tax) || !!backendErrors.tax}
+                    hint={
+                      (showErrors &&
+                        (typeof formik.errors.tax === "string" ? formik.errors.tax : undefined)) ||
+                      backendErrors.tax
+                    }
                   />
-                  <span className="text-gray-800 dark:text-white">Rs. {tax.toFixed(2)}</span>
                 </div>
+              
               </div>
               <div className="flex justify-between pt-2 border-t border-gray-200 dark:border-gray-700">
                 <span className="text-lg font-semibold text-gray-800 dark:text-white">
@@ -507,42 +812,44 @@ export default function PurchaseEntry() {
                         onChange={(value) => updatePayment(index, "type", value)}
                         options={[
                           { value: "cash", label: "Cash" },
-                          { value: "card", label: "Card" },
+                          { value: "bank_transfer", label: "Bank Transfer" },
                         ]}
                       />
                     </div>
-                    {payment.type === "card" && (
+                    {payment.type === "bank_transfer" && (
                       <div className="mt-2">
                         <Label>
-                          Select Card <span className="text-error-500">*</span>
+                          Select Bank Account <span className="text-error-500">*</span>
                         </Label>
-                        {cards.filter((c) => c.isActive).length === 0 ? (
+                        {bankAccounts.filter((acc) => acc.isActive).length === 0 ? (
                           <div className="p-2 text-sm text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 rounded">
-                            No active cards available. Please add a card in Settings.
+                            No active bank accounts available. Please add a bank account in Settings.
                           </div>
                         ) : (
                           <>
                             <Select
-                              value={payment.cardId || ""}
-                              onChange={(value) => updatePayment(index, "cardId", value)}
+                              value={payment.bankAccountId || ""}
+                              onChange={(value) => updatePayment(index, "bankAccountId", value)}
                               options={[
-                                { value: "", label: "Select a card" },
-                                ...cards
-                                  .filter((c) => c.isActive)
-                                  .map((card) => ({
-                                    value: card.id,
-                                    label: `${card.name}${card.isDefault ? " (Default)" : ""}${card.cardNumber ? ` - ****${card.cardNumber.slice(-4)}` : ""}`,
+                                { value: "", label: "Select a bank account" },
+                                ...bankAccounts
+                                  .filter((acc) => acc.isActive)
+                                  .map((acc) => ({
+                                    value: acc.id,
+                                    label: `${acc.accountName} - ${acc.bankName}${acc.isDefault ? " (Default)" : ""}`,
                                   })),
                               ]}
                             />
-                            {!payment.cardId && (
+                            {((showErrors && !payment.bankAccountId) ||
+                              backendErrors[`payments.${index}.bankAccountId`]) && (
                               <p className="mt-1 text-xs text-error-500">
-                                Please select a card for this payment
+                                {backendErrors[`payments.${index}.bankAccountId`] ||
+                                  "Please select a bank account for this payment"}
                               </p>
                             )}
-                            {payment.cardId && (
+                            {payment.bankAccountId && (
                               <p className="mt-1 text-xs text-green-600 dark:text-green-400">
-                                Card selected: {cards.find(c => c.id === payment.cardId)?.name}
+                                Bank account selected: {bankAccounts.find(acc => acc.id === payment.bankAccountId)?.accountName}
                               </p>
                             )}
                           </>
@@ -550,20 +857,38 @@ export default function PurchaseEntry() {
                       </div>
                     )}
                     <div>
-                      <Label>Amount</Label>
+                      <Label>
+                        Amount <span className="text-error-500">*</span>
+                      </Label>
                       <Input
                         type="number"
                         step={0.01}
-                        min="0"
+                        min="0.01"
                         max={String(total - totalPaid + payment.amount)}
                         value={payment.amount}
                         onChange={(e) => updatePayment(index, "amount", parseFloat(e.target.value) || 0)}
                         placeholder="Enter amount"
+                        required
+                        error={
+                          (showErrors && (!payment.amount || payment.amount <= 0)) ||
+                          !!backendErrors[`payments.${index}.amount`]
+                        }
+                        hint={
+                          (showErrors && (!payment.amount || payment.amount <= 0)
+                            ? "Amount must be greater than 0"
+                            : undefined) ||
+                          backendErrors[`payments.${index}.amount`]
+                        }
                       />
                     </div>
                   </div>
                 </div>
               ))}
+              {totalPaid > total && (
+                <div className="p-2 text-sm text-error-500 bg-error-50 border border-error-200 rounded dark:bg-error-900/20 dark:border-error-700">
+                  Total paid amount cannot exceed total amount.
+                </div>
+              )}
               <Button
                 onClick={addPayment}
                 variant="outline"
@@ -591,7 +916,10 @@ export default function PurchaseEntry() {
             </div>
 
             <Button
-              onClick={handleSubmit}
+              onClick={() => {
+                setShowErrors(true);
+                formik.handleSubmit();
+              }}
               className="w-full mt-6"
               size="sm"
               disabled={selectedProducts.length === 0 || !supplierName || payments.length === 0 || isSubmitting}
@@ -606,3 +934,5 @@ export default function PurchaseEntry() {
     </>
   );
 }
+
+

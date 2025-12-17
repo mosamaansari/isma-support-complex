@@ -1,12 +1,14 @@
 import express, { Router } from "express";
 import openingBalanceController from "../controllers/openingBalance.controller";
-import { authenticate, authorize } from "../middleware/auth";
-import { validate, validateQuery, validateParams } from "../middleware/validate";
+import { authenticate } from "../middleware/auth";
+import { requirePermission } from "../middleware/permissions";
+import { bodyValidator, queryValidator, paramsValidator } from "../middleware/joiValidator";
 import {
   createOpeningBalanceSchema,
   updateOpeningBalanceSchema,
   getOpeningBalancesQuerySchema,
 } from "../validators/openingBalance.validator";
+import { PERMISSIONS } from "../utils/permissions";
 import Joi from "joi";
 
 const router = Router();
@@ -15,7 +17,8 @@ const router = Router();
 router.get(
   "/",
   authenticate,
-  validateQuery(getOpeningBalancesQuerySchema),
+  requirePermission(PERMISSIONS.OPENING_BALANCE_VIEW),
+  queryValidator(getOpeningBalancesQuerySchema),
   openingBalanceController.getOpeningBalances.bind(openingBalanceController)
 );
 
@@ -23,7 +26,8 @@ router.get(
 router.get(
   "/date",
   authenticate,
-  validateQuery(
+  requirePermission(PERMISSIONS.OPENING_BALANCE_VIEW),
+  queryValidator(
     Joi.object({
       date: Joi.string().required().isoDate().messages({
         "string.isoDate": "Date must be a valid ISO date",
@@ -38,8 +42,8 @@ router.get(
 router.post(
   "/",
   authenticate,
-  authorize("superadmin", "admin", "cashier"),
-  validate(createOpeningBalanceSchema),
+  requirePermission(PERMISSIONS.OPENING_BALANCE_CREATE),
+  bodyValidator(createOpeningBalanceSchema),
   openingBalanceController.createOpeningBalance.bind(openingBalanceController)
 );
 
@@ -47,16 +51,16 @@ router.post(
 router.put(
   "/:id",
   authenticate,
-  authorize("superadmin", "admin", "cashier"),
-  validateParams(
+  requirePermission(PERMISSIONS.OPENING_BALANCE_UPDATE),
+  paramsValidator(
     Joi.object({
-      id: Joi.string().uuid().required().messages({
-        "string.uuid": "Opening balance ID must be a valid UUID",
+      id: Joi.string().required().trim().min(1).messages({
+        "string.empty": "Opening balance ID is required",
         "any.required": "Opening balance ID is required",
       }),
     })
   ),
-  validate(updateOpeningBalanceSchema),
+  bodyValidator(updateOpeningBalanceSchema),
   openingBalanceController.updateOpeningBalance.bind(openingBalanceController)
 );
 
@@ -64,11 +68,11 @@ router.put(
 router.delete(
   "/:id",
   authenticate,
-  authorize("superadmin", "admin"),
-  validateParams(
+  requirePermission(PERMISSIONS.OPENING_BALANCE_DELETE),
+  paramsValidator(
     Joi.object({
-      id: Joi.string().uuid().required().messages({
-        "string.uuid": "Opening balance ID must be a valid UUID",
+      id: Joi.string().required().trim().min(1).messages({
+        "string.empty": "Opening balance ID is required",
         "any.required": "Opening balance ID is required",
       }),
     })

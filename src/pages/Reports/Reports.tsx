@@ -2,14 +2,17 @@ import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router";
 import PageMeta from "../../components/common/PageMeta";
 import { useData } from "../../context/DataContext";
+import { useAlert } from "../../context/AlertContext";
 import Input from "../../components/form/input/InputField";
+import DatePicker from "../../components/form/DatePicker";
 import Label from "../../components/form/Label";
 import Button from "../../components/ui/button/Button";
 import { DownloadIcon, PlusIcon } from "../../icons";
 import api from "../../services/api";
 
 export default function Reports() {
-  const { getSalesByDateRange, getExpensesByDateRange } = useData();
+  const { getSalesByDateRange, getExpensesByDateRange, currentUser } = useData();
+  const { showError } = useAlert();
   const [reportType, setReportType] = useState<"daily" | "weekly" | "monthly" | "custom">("daily");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -85,16 +88,26 @@ export default function Reports() {
     }
   }, [reportType, startDate, endDate]);
 
+  if (!currentUser) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <p className="text-gray-500 mb-4">Please login to continue</p>
+        </div>
+      </div>
+    );
+  }
+
   const dateRange = getDateRange();
   const filteredSales = dateRange
-    ? getSalesByDateRange(dateRange.start, dateRange.end)
+    ? (getSalesByDateRange(dateRange.start, dateRange.end) || [])
     : [];
   const filteredExpenses = dateRange
-    ? getExpensesByDateRange(dateRange.start, dateRange.end)
+    ? (getExpensesByDateRange(dateRange.start, dateRange.end) || [])
     : [];
 
-  const totalSales = filteredSales.reduce((sum, s) => sum + Number(s.total), 0);
-  const totalExpenses = filteredExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
+  const totalSales = (filteredSales || []).reduce((sum, s) => sum + Number(s?.total || 0), 0);
+  const totalExpenses = (filteredExpenses || []).reduce((sum, e) => sum + Number(e?.amount || 0), 0);
   const openingTotal = openingBalance?.total || 0;
   const combinedTotal = openingTotal + totalSales;
   const closingBalance = combinedTotal - totalExpenses;
@@ -115,20 +128,20 @@ export default function Reports() {
       [],
       ["Sales Report"],
       ["Bill Number", "Date", "Customer", "Total"],
-      ...filteredSales.map((s) => [
-        s.billNumber,
-        new Date(s.createdAt).toLocaleDateString(),
-        s.customerName || "Walk-in",
-        Number(s.total).toFixed(2),
+      ...(filteredSales || []).map((s) => [
+        s?.billNumber || "",
+        s?.createdAt ? new Date(s.createdAt).toLocaleDateString() : "",
+        s?.customerName || "Walk-in",
+        Number(s?.total || 0).toFixed(2),
       ]),
       [],
       ["Expenses Report"],
       ["Date", "Category", "Description", "Amount"],
-      ...filteredExpenses.map((e) => [
-        new Date(e.date).toLocaleDateString(),
-        e.category,
-        e.description,
-        Number(e.amount).toFixed(2),
+      ...(filteredExpenses || []).map((e) => [
+        e?.date ? new Date(e.date).toLocaleDateString() : "",
+        e?.category || "",
+        e?.description || "",
+        Number(e?.amount || 0).toFixed(2),
       ]),
       [],
       ["Profit/Loss", profit.toFixed(2)],
@@ -147,12 +160,51 @@ export default function Reports() {
     document.body.removeChild(link);
   };
 
+  const exportToExcel = async () => {
+    if (!dateRange) return;
+
+    try {
+      const reportData = {
+        summary: {
+          "Opening Balance": openingTotal.toFixed(2),
+          "Total Sales": totalSales.toFixed(2),
+          "Combined (Opening + Sales)": combinedTotal.toFixed(2),
+          "Total Expenses": totalExpenses.toFixed(2),
+          "Closing Balance": closingBalance.toFixed(2),
+          "Profit/Loss": profit.toFixed(2),
+        },
+        sales: filteredSales || [],
+        expenses: filteredExpenses || [],
+        dateRange: {
+          start: dateRange.start,
+          end: dateRange.end,
+        },
+      };
+
+      const response = await api.exportReportToExcel(reportData);
+      const blob = new Blob([response], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `report_${dateRange.start}_${dateRange.end}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error: any) {
+      console.error("Error exporting to Excel:", error);
+      showError("Failed to export to Excel. Please try again.");
+    }
+  };
+
   const exportToPDF = () => {
     if (!printRef.current || !dateRange) return;
 
     const printWindow = window.open("", "_blank");
     if (!printWindow) {
-      alert("Please allow popups to print the report");
+      showError("Please allow popups to print the report");
       return;
     }
 
@@ -272,16 +324,14 @@ export default function Reports() {
             <>
               <div>
                 <Label>Start Date</Label>
-                <Input
-                  type="date"
+                <DatePicker
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
                 />
               </div>
               <div>
                 <Label>End Date</Label>
-                <Input
-                  type="date"
+                <DatePicker
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
                 />
@@ -333,14 +383,31 @@ export default function Reports() {
               </div>
             </div>
 
-            <div className="mb-6 flex gap-2 no-print">
-              <Button onClick={exportToCSV} size="sm">
+            <div className="mb-6 flex gap-2 no-print flex-wrap">
+              <Button onClick={exportToCSV} size="sm" variant="outline">
                 <DownloadIcon className="w-4 h-4 mr-2" />
-                Export to CSV
+                Export CSV
               </Button>
-              <Button onClick={exportToPDF} size="sm" variant="outline">
+              <Button onClick={exportToExcel} size="sm" variant="outline">
+                <DownloadIcon className="w-4 h-4 mr-2" />
+                Export Excel
+              </Button>
+              <Button onClick={exportToPDF} size="sm">
                 <DownloadIcon className="w-4 h-4 mr-2" />
                 Print / PDF
+              </Button>
+              <Button 
+                onClick={() => {
+                  if (dateRange) {
+                    window.open(`/reports/payments?startDate=${dateRange.start}&endDate=${dateRange.end}&type=all`, "_blank");
+                  }
+                }}
+                size="sm"
+                variant="outline"
+                className="bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/20 dark:text-indigo-400"
+              >
+                <DownloadIcon className="w-4 h-4 mr-2" />
+                Print All Payments
               </Button>
             </div>
 
@@ -457,25 +524,28 @@ export default function Reports() {
                           </td>
                         </tr>
                       ) : (
-                        filteredSales.map((sale) => (
-                          <tr
-                            key={sale.id}
-                            className="border-b border-gray-100 dark:border-gray-700"
-                          >
-                            <td className="p-2 text-gray-700 dark:text-gray-300">
-                              {sale.billNumber}
-                            </td>
-                            <td className="p-2 text-gray-700 dark:text-gray-300">
-                              {new Date(sale.createdAt).toLocaleDateString()}
-                            </td>
-                            <td className="p-2 text-gray-700 dark:text-gray-300">
-                              {sale.customerName || "Walk-in"}
-                            </td>
-                            <td className="p-2 text-right font-semibold text-gray-800 dark:text-white">
-                              Rs. {Number(sale.total).toFixed(2)}
-                            </td>
-                          </tr>
-                        ))
+                        (filteredSales || []).map((sale) => {
+                          if (!sale || !sale.id) return null;
+                          return (
+                            <tr
+                              key={sale.id}
+                              className="border-b border-gray-100 dark:border-gray-700"
+                            >
+                              <td className="p-2 text-gray-700 dark:text-gray-300">
+                                {sale.billNumber || ""}
+                              </td>
+                              <td className="p-2 text-gray-700 dark:text-gray-300">
+                                {sale.createdAt ? new Date(sale.createdAt).toLocaleDateString() : ""}
+                              </td>
+                              <td className="p-2 text-gray-700 dark:text-gray-300">
+                                {sale.customerName || "Walk-in"}
+                              </td>
+                              <td className="p-2 text-right font-semibold text-gray-800 dark:text-white">
+                                Rs. {Number(sale.total || 0).toFixed(2)}
+                              </td>
+                            </tr>
+                          );
+                        }).filter(Boolean)
                       )}
                     </tbody>
                   </table>
@@ -513,25 +583,28 @@ export default function Reports() {
                           </td>
                         </tr>
                       ) : (
-                        filteredExpenses.map((expense) => (
-                          <tr
-                            key={expense.id}
-                            className="border-b border-gray-100 dark:border-gray-700"
-                          >
-                            <td className="p-2 text-gray-700 dark:text-gray-300">
-                              {new Date(expense.date).toLocaleDateString()}
-                            </td>
-                            <td className="p-2 text-gray-700 dark:text-gray-300 capitalize">
-                              {expense.category}
-                            </td>
-                            <td className="p-2 text-gray-700 dark:text-gray-300">
-                              {expense.description}
-                            </td>
-                            <td className="p-2 text-right font-semibold text-gray-800 dark:text-white">
-                              Rs. {Number(expense.amount).toFixed(2)}
-                            </td>
-                          </tr>
-                        ))
+                        (filteredExpenses || []).map((expense) => {
+                          if (!expense || !expense.id) return null;
+                          return (
+                            <tr
+                              key={expense.id}
+                              className="border-b border-gray-100 dark:border-gray-700"
+                            >
+                              <td className="p-2 text-gray-700 dark:text-gray-300">
+                                {expense.date ? new Date(expense.date).toLocaleDateString() : ""}
+                              </td>
+                              <td className="p-2 text-gray-700 dark:text-gray-300 capitalize">
+                                {expense.category || ""}
+                              </td>
+                              <td className="p-2 text-gray-700 dark:text-gray-300">
+                                {expense.description || ""}
+                              </td>
+                              <td className="p-2 text-right font-semibold text-gray-800 dark:text-white">
+                                Rs. {Number(expense.amount || 0).toFixed(2)}
+                              </td>
+                            </tr>
+                          );
+                        }).filter(Boolean)
                       )}
                     </tbody>
                   </table>

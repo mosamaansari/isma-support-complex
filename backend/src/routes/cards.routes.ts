@@ -1,8 +1,10 @@
 import express, { Router } from "express";
 import cardController from "../controllers/card.controller";
-import { authenticate, authorize } from "../middleware/auth";
-import { validate, validateParams } from "../middleware/validate";
+import { authenticate } from "../middleware/auth";
+import { requirePermission } from "../middleware/permissions";
+import { bodyValidator, paramsValidator } from "../middleware/joiValidator";
 import { createCardSchema, updateCardSchema } from "../validators/card.validator";
+import { PERMISSIONS } from "../utils/permissions";
 import Joi from "joi";
 
 const router = Router();
@@ -17,10 +19,10 @@ router.get("/default", authenticate, cardController.getDefaultCard.bind(cardCont
 router.get(
   "/:id",
   authenticate,
-  validateParams(
+  paramsValidator(
     Joi.object({
-      id: Joi.string().uuid().required().messages({
-        "string.uuid": "Card ID must be a valid UUID",
+      id: Joi.string().required().trim().min(1).messages({
+        "string.empty": "Card ID is required",
         "any.required": "Card ID is required",
       }),
     })
@@ -32,8 +34,8 @@ router.get(
 router.post(
   "/",
   authenticate,
-  authorize("superadmin", "admin"),
-  validate(createCardSchema),
+  requirePermission(PERMISSIONS.CARDS_CREATE),
+  bodyValidator(createCardSchema),
   cardController.createCard.bind(cardController)
 );
 
@@ -41,16 +43,16 @@ router.post(
 router.put(
   "/:id",
   authenticate,
-  authorize("superadmin", "admin"),
-  validateParams(
+  requirePermission(PERMISSIONS.CARDS_UPDATE),
+  paramsValidator(
     Joi.object({
-      id: Joi.string().uuid().required().messages({
-        "string.uuid": "Card ID must be a valid UUID",
+      id: Joi.string().required().trim().min(1).messages({
+        "string.empty": "Card ID is required",
         "any.required": "Card ID is required",
       }),
     })
   ),
-  validate(updateCardSchema),
+  bodyValidator(updateCardSchema),
   cardController.updateCard.bind(cardController)
 );
 
@@ -58,11 +60,11 @@ router.put(
 router.delete(
   "/:id",
   authenticate,
-  authorize("superadmin", "admin"),
-  validateParams(
+  requirePermission(PERMISSIONS.CARDS_DELETE),
+  paramsValidator(
     Joi.object({
-      id: Joi.string().uuid().required().messages({
-        "string.uuid": "Card ID must be a valid UUID",
+      id: Joi.string().required().trim().min(1).messages({
+        "string.empty": "Card ID is required",
         "any.required": "Card ID is required",
       }),
     })

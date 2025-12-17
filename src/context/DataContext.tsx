@@ -3,6 +3,7 @@ import {
   User,
   Product,
   Sale,
+  SalePayment,
   Expense,
   Purchase,
   PurchasePayment,
@@ -16,49 +17,56 @@ import api from "../services/api";
 interface DataContextType {
   // Users
   users: User[];
+  usersPagination: { page: number; pageSize: number; total: number; totalPages: number };
   currentUser: User | null;
   loading: boolean;
   error: string | null;
+  refreshCurrentUser: () => void;
   login: (username: string, password: string) => Promise<boolean>;
   superAdminLogin: (username: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
   addUser: (user: Omit<User, "id" | "createdAt">) => Promise<void>;
   updateUser: (id: string, user: Partial<User>) => Promise<void>;
   deleteUser: (id: string) => Promise<void>;
-  refreshUsers: () => Promise<void>;
+  refreshUsers: (page?: number, pageSize?: number) => Promise<void>;
 
   // Products
   products: Product[];
+  productsPagination: { page: number; pageSize: number; total: number; totalPages: number };
   addProduct: (product: Omit<Product, "id" | "createdAt" | "updatedAt">) => Promise<void>;
   updateProduct: (id: string, product: Partial<Product>) => Promise<void>;
   deleteProduct: (id: string) => Promise<void>;
   getProduct: (id: string) => Product | undefined;
   getLowStockProducts: () => Product[];
-  refreshProducts: () => Promise<void>;
+  refreshProducts: (page?: number, pageSize?: number) => Promise<void>;
 
   // Sales
   sales: Sale[];
+  salesPagination: { page: number; pageSize: number; total: number; totalPages: number };
   addSale: (sale: Omit<Sale, "id" | "createdAt">) => Promise<void>;
   cancelSale: (id: string) => Promise<void>;
+  addPaymentToSale: (id: string, payment: SalePayment & { date?: string }) => Promise<void>;
   getSale: (idOrBillNumber: string) => Sale | undefined;
   getSalesByDateRange: (startDate: string, endDate: string) => Sale[];
-  refreshSales: () => Promise<void>;
+  refreshSales: (page?: number, pageSize?: number) => Promise<void>;
 
   // Expenses
   expenses: Expense[];
+  expensesPagination: { page: number; pageSize: number; total: number; totalPages: number };
   addExpense: (expense: Omit<Expense, "id" | "createdAt">) => Promise<void>;
   updateExpense: (id: string, expense: Partial<Expense>) => Promise<void>;
   deleteExpense: (id: string) => Promise<void>;
   getExpensesByDateRange: (startDate: string, endDate: string) => Expense[];
-  refreshExpenses: () => Promise<void>;
+  refreshExpenses: (page?: number, pageSize?: number) => Promise<void>;
 
   // Purchases
   purchases: Purchase[];
+  purchasesPagination: { page: number; pageSize: number; total: number; totalPages: number };
   addPurchase: (purchase: Omit<Purchase, "id" | "createdAt">) => Promise<void>;
   updatePurchase: (id: string, purchase: Partial<Purchase>) => Promise<void>;
   addPaymentToPurchase: (id: string, payment: PurchasePayment & { date?: string }) => Promise<void>;
   getPurchasesByDateRange: (startDate: string, endDate: string) => Purchase[];
-  refreshPurchases: () => Promise<void>;
+  refreshPurchases: (page?: number, pageSize?: number) => Promise<void>;
 
   // Customers
   customers: Customer[];
@@ -113,9 +121,6 @@ const defaultSettings: ShopSettings = {
   contactNumber: "+92 300 1234567",
   email: "info@ismasports.com",
   address: "Karachi, Pakistan",
-  bankAccountNumber: "1234567890123456",
-  bankName: "Bank Name",
-  ifscCode: "IFSC123456",
   gstNumber: "",
 };
 
@@ -138,6 +143,13 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [loadingCards, setLoadingCards] = useState(false);
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
+  
+  // Pagination states
+  const [usersPagination, setUsersPagination] = useState({ page: 1, pageSize: 10, total: 0, totalPages: 1 });
+  const [productsPagination, setProductsPagination] = useState({ page: 1, pageSize: 10, total: 0, totalPages: 1 });
+  const [salesPagination, setSalesPagination] = useState({ page: 1, pageSize: 10, total: 0, totalPages: 1 });
+  const [expensesPagination, setExpensesPagination] = useState({ page: 1, pageSize: 10, total: 0, totalPages: 1 });
+  const [purchasesPagination, setPurchasesPagination] = useState({ page: 1, pageSize: 10, total: 0, totalPages: 1 });
 
   // Load current user from localStorage on mount
   useEffect(() => {
@@ -176,10 +188,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setError(null);
     try {
       // Load data sequentially to avoid multiple simultaneous requests
-      await refreshProducts();
-      await refreshSales();
-      await refreshExpenses();
-      await refreshPurchases();
+      // Use default values if pagination state is not initialized
+      await refreshProducts(productsPagination?.page || 1, productsPagination?.pageSize || 10);
+      await refreshSales(salesPagination?.page || 1, salesPagination?.pageSize || 10);
+      await refreshExpenses(expensesPagination?.page || 1, expensesPagination?.pageSize || 10);
+      await refreshPurchases(purchasesPagination?.page || 1, purchasesPagination?.pageSize || 10);
       await refreshSettings();
     } catch (err: any) {
       setError(err.message || "Failed to load data");
@@ -241,11 +254,39 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  const refreshUsers = async () => {
+  const refreshCurrentUser = () => {
+    const storedUser = localStorage.getItem("currentUser");
+    if (storedUser) {
+      try {
+        const user = JSON.parse(storedUser);
+        setCurrentUser(user);
+      } catch (e) {
+        console.error("Error parsing stored user:", e);
+      }
+    }
+  };
+
+  const refreshUsers = async (page?: number, pageSize?: number) => {
     try {
-      const data = await api.getUsers();
-      setUsers(data);
+      // Use provided values or fallback to pagination state or defaults
+      const currentPage = page !== undefined ? page : (usersPagination?.page || 1);
+      const currentPageSize = pageSize !== undefined ? pageSize : (usersPagination?.pageSize || 10);
+      console.log("refreshUsers called with:", { page: currentPage, pageSize: currentPageSize });
+      const result = await api.getUsers({ page: currentPage, pageSize: currentPageSize });
+      console.log("refreshUsers result:", result);
+      // Handle both old format (array) and new format ({ data: [...], pagination: {...} })
+      if (Array.isArray(result)) {
+        setUsers(result);
+      } else if (result && result.data) {
+        setUsers(result.data);
+        if (result.pagination) {
+          setUsersPagination(result.pagination);
+        }
+      } else {
+        setUsers([]);
+      }
     } catch (err: any) {
+      // console.error("refreshUsers error:", err);
       setError(err.response?.data?.error || "Failed to load users");
       throw err;
     }
@@ -290,13 +331,23 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   // Product functions
-  const refreshProducts = async () => {
+  const refreshProducts = async (page?: number, pageSize?: number) => {
     if (loadingProducts) return; // Prevent duplicate requests
     try {
       setLoadingProducts(true);
-      const data = await api.getProducts();
-      setProducts(data);
+      // Use provided values or fallback to pagination state or defaults
+      const currentPage = page !== undefined ? page : (productsPagination?.page || 1);
+      const currentPageSize = pageSize !== undefined ? pageSize : (productsPagination?.pageSize || 10);
+      // console.log("refreshProducts called with:", { page: currentPage, pageSize: currentPageSize });
+      const result = await api.getProducts({ page: currentPage, pageSize: currentPageSize });
+      // console.log("refreshProducts result:", result);
+      // API returns { data: [...], pagination: {...} }
+      setProducts(Array.isArray(result.data) ? result.data : []);
+      if (result.pagination) {
+        setProductsPagination(result.pagination);
+      }
     } catch (err: any) {
+      // console.error("refreshProducts error:", err);
       setError(err.response?.data?.error || "Failed to load products");
       throw err;
     } finally {
@@ -348,11 +399,21 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   // Sale functions
-  const refreshSales = async () => {
+  const refreshSales = async (page?: number, pageSize?: number) => {
     try {
-      const data = await api.getSales();
-      setSales(data);
+      // Use provided values or fallback to pagination state or defaults
+      const currentPage = page !== undefined ? page : (salesPagination?.page || 1);
+      const currentPageSize = pageSize !== undefined ? pageSize : (salesPagination?.pageSize || 10);
+      console.log("refreshSales called with:", { page: currentPage, pageSize: currentPageSize });
+      const result = await api.getSales({ page: currentPage, pageSize: currentPageSize });
+      console.log("refreshSales result:", result);
+      // API returns { data: [...], pagination: {...} }
+      setSales(Array.isArray(result.data) ? result.data : []);
+      if (result.pagination) {
+        setSalesPagination(result.pagination);
+      }
     } catch (err: any) {
+      console.error("refreshSales error:", err);
       setError(err.response?.data?.error || "Failed to load sales");
       throw err;
     }
@@ -365,13 +426,21 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const apiData: any = {
         items: saleData.items.map((item) => ({
           productId: item.productId,
+          productName: item.productName,
           quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          customPrice: item.customPrice || undefined,
           discount: item.discount || 0,
+          discountType: item.discountType || "percent",
+          tax: item.tax || 0,
+          taxType: item.taxType || "percent",
         })),
         customerName: saleData.customerName,
         customerPhone: saleData.customerPhone,
+        customerCity: saleData.customerCity,
         discount: saleData.discount || 0,
         tax: saleData.tax || 0,
+        date: saleData.date,
       };
       
       // Use new payments array if available, otherwise fall back to old paymentType
@@ -380,9 +449,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       } else {
         // Backward compatibility
         apiData.paymentType = saleData.paymentType;
-        if (saleData.cardId) {
-          apiData.cardId = saleData.cardId;
-        }
         if (saleData.bankAccountId) {
           apiData.bankAccountId = saleData.bankAccountId;
         }
@@ -394,7 +460,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       const newSale = await api.createSale(apiData);
       setSales([...sales, newSale]);
-      await refreshProducts(); // Refresh products to update stock
+      await refreshProducts(productsPagination?.page || 1, productsPagination?.pageSize || 10); // Refresh products to update stock
     } catch (err: any) {
       setError(err.response?.data?.error || "Failed to create sale");
       throw err;
@@ -406,9 +472,20 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setError(null);
       const updatedSale = await api.cancelSale(id);
       setSales(sales.map((s) => (s.id === id ? updatedSale : s)));
-      await refreshProducts(); // Refresh products to update stock
+      await refreshProducts(productsPagination?.page || 1, productsPagination?.pageSize || 10); // Refresh products to update stock
     } catch (err: any) {
       setError(err.response?.data?.error || "Failed to cancel sale");
+      throw err;
+    }
+  };
+
+  const addPaymentToSale = async (id: string, payment: SalePayment & { date?: string }) => {
+    try {
+      setError(null);
+      const updatedSale = await api.addPaymentToSale(id, payment);
+      setSales(sales.map((s) => (s.id === id ? updatedSale : s)));
+    } catch (err: any) {
+      setError(err.response?.data?.error || "Failed to add payment");
       throw err;
     }
   };
@@ -424,11 +501,21 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   // Expense functions
-  const refreshExpenses = async () => {
+  const refreshExpenses = async (page?: number, pageSize?: number) => {
     try {
-      const data = await api.getExpenses();
-      setExpenses(data);
+      // Use provided values or fallback to pagination state or defaults
+      const currentPage = page !== undefined ? page : (expensesPagination?.page || 1);
+      const currentPageSize = pageSize !== undefined ? pageSize : (expensesPagination?.pageSize || 10);
+      // console.log("refreshExpenses called with:", { page: currentPage, pageSize: currentPageSize });
+      const result = await api.getExpenses({ page: currentPage, pageSize: currentPageSize });
+      // console.log("refreshExpenses result:", result);
+      // API returns { data: [...], pagination: {...} }
+      setExpenses(Array.isArray(result.data) ? result.data : []);
+      if (result.pagination) {
+        setExpensesPagination(result.pagination);
+      }
     } catch (err: any) {
+      // console.error("refreshExpenses error:", err);
       setError(err.response?.data?.error || "Failed to load expenses");
       throw err;
     }
@@ -440,20 +527,20 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const apiData: any = {
         amount: expenseData.amount,
         category: expenseData.category,
-        description: expenseData.description,
         date: expenseData.date,
       };
+      if (expenseData.description) {
+        apiData.description = expenseData.description;
+      }
       if (expenseData.paymentType) {
         apiData.paymentType = expenseData.paymentType;
-      }
-      if (expenseData.cardId) {
-        apiData.cardId = expenseData.cardId;
       }
       if (expenseData.bankAccountId) {
         apiData.bankAccountId = expenseData.bankAccountId;
       }
-      const newExpense = await api.createExpense(apiData);
-      setExpenses([...expenses, newExpense]);
+      await api.createExpense(apiData);
+      // Refresh expenses list to get updated data from server
+      await refreshExpenses(expensesPagination?.page || 1, expensesPagination?.pageSize || 10);
     } catch (err: any) {
       setError(err.response?.data?.error || "Failed to create expense");
       throw err;
@@ -468,7 +555,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (expenseData.category !== undefined) apiData.category = expenseData.category;
       if (expenseData.description !== undefined) apiData.description = expenseData.description;
       if (expenseData.paymentType !== undefined) apiData.paymentType = expenseData.paymentType;
-      if (expenseData.cardId !== undefined) apiData.cardId = expenseData.cardId;
       if (expenseData.bankAccountId !== undefined) apiData.bankAccountId = expenseData.bankAccountId;
       if (expenseData.date !== undefined) apiData.date = expenseData.date;
       const updatedExpense = await api.updateExpense(id, apiData);
@@ -495,11 +581,21 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   // Purchase functions
-  const refreshPurchases = async () => {
+  const refreshPurchases = async (page?: number, pageSize?: number) => {
     try {
-      const data = await api.getPurchases();
-      setPurchases(data);
+      // Use provided values or fallback to pagination state or defaults
+      const currentPage = page !== undefined ? page : (purchasesPagination?.page || 1);
+      const currentPageSize = pageSize !== undefined ? pageSize : (purchasesPagination?.pageSize || 10);
+      // console.log("refreshPurchases called with:", { page: currentPage, pageSize: currentPageSize });
+      const result = await api.getPurchases({ page: currentPage, pageSize: currentPageSize });
+      // console.log("refreshPurchases result:", result);
+      // API returns { data: [...], pagination: {...} }
+      setPurchases(Array.isArray(result.data) ? result.data : []);
+      if (result.pagination) {
+        setPurchasesPagination(result.pagination);
+      }
     } catch (err: any) {
+      console.error("refreshPurchases error:", err);
       setError(err.response?.data?.error || "Failed to load purchases");
       throw err;
     }
@@ -513,7 +609,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         supplierName: purchaseData.supplierName,
         supplierPhone: purchaseData.supplierPhone,
         items: purchaseData.items.map((item) => ({
-          productId: item.productId,
+          productId: item.productId?.trim() || item.productId,
           quantity: item.quantity,
           cost: item.cost,
           discount: item.discount || 0,
@@ -556,7 +652,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       const updatedPurchase = await api.updatePurchase(id, apiData);
       setPurchases(purchases.map((p) => (p.id === id ? updatedPurchase : p)));
-      await refreshProducts(); // Refresh products to update stock
+      await refreshProducts(productsPagination?.page || 1, productsPagination?.pageSize || 10); // Refresh products to update stock
     } catch (err: any) {
       setError(err.response?.data?.error || "Failed to update purchase");
       throw err;
@@ -840,9 +936,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const value: DataContextType = {
     users,
+    usersPagination,
     currentUser,
     loading,
     error,
+    refreshCurrentUser,
     login,
     superAdminLogin,
     logout,
@@ -851,6 +949,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     deleteUser,
     refreshUsers,
     products,
+    productsPagination,
     addProduct,
     updateProduct,
     deleteProduct,
@@ -858,18 +957,22 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     getLowStockProducts,
     refreshProducts,
     sales,
+    salesPagination,
     addSale,
     cancelSale,
+    addPaymentToSale,
     getSale,
     getSalesByDateRange,
     refreshSales,
     expenses,
+    expensesPagination,
     addExpense,
     updateExpense,
     deleteExpense,
     getExpensesByDateRange,
     refreshExpenses,
     purchases,
+    purchasesPagination,
     addPurchase,
     updatePurchase,
     addPaymentToPurchase,

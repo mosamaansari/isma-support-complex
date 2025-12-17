@@ -1,8 +1,10 @@
 import express, { Router } from "express";
 import bankAccountController from "../controllers/bankAccount.controller";
-import { authenticate, authorize } from "../middleware/auth";
-import { validate, validateParams } from "../middleware/validate";
+import { authenticate } from "../middleware/auth";
+import { requirePermission } from "../middleware/permissions";
+import { bodyValidator, paramsValidator } from "../middleware/joiValidator";
 import { createBankAccountSchema, updateBankAccountSchema } from "../validators/bankAccount.validator";
+import { PERMISSIONS } from "../utils/permissions";
 import Joi from "joi";
 
 const router = Router();
@@ -17,10 +19,10 @@ router.get("/default", authenticate, bankAccountController.getDefaultBankAccount
 router.get(
   "/:id",
   authenticate,
-  validateParams(
+  paramsValidator(
     Joi.object({
-      id: Joi.string().uuid().required().messages({
-        "string.uuid": "Bank account ID must be a valid UUID",
+      id: Joi.string().required().trim().min(1).messages({
+        "string.empty": "Bank account ID is required",
         "any.required": "Bank account ID is required",
       }),
     })
@@ -32,8 +34,8 @@ router.get(
 router.post(
   "/",
   authenticate,
-  authorize("superadmin", "admin"),
-  validate(createBankAccountSchema),
+  requirePermission(PERMISSIONS.BANK_ACCOUNTS_CREATE),
+  bodyValidator(createBankAccountSchema),
   bankAccountController.createBankAccount.bind(bankAccountController)
 );
 
@@ -41,16 +43,16 @@ router.post(
 router.put(
   "/:id",
   authenticate,
-  authorize("superadmin", "admin"),
-  validateParams(
+  requirePermission(PERMISSIONS.BANK_ACCOUNTS_UPDATE),
+  paramsValidator(
     Joi.object({
-      id: Joi.string().uuid().required().messages({
-        "string.uuid": "Bank account ID must be a valid UUID",
+      id: Joi.string().required().trim().min(1).messages({
+        "string.empty": "Bank account ID is required",
         "any.required": "Bank account ID is required",
       }),
     })
   ),
-  validate(updateBankAccountSchema),
+  bodyValidator(updateBankAccountSchema),
   bankAccountController.updateBankAccount.bind(bankAccountController)
 );
 
@@ -58,11 +60,11 @@ router.put(
 router.delete(
   "/:id",
   authenticate,
-  authorize("superadmin", "admin"),
-  validateParams(
+  requirePermission(PERMISSIONS.BANK_ACCOUNTS_DELETE),
+  paramsValidator(
     Joi.object({
-      id: Joi.string().uuid().required().messages({
-        "string.uuid": "Bank account ID must be a valid UUID",
+      id: Joi.string().required().trim().min(1).messages({
+        "string.empty": "Bank account ID is required",
         "any.required": "Bank account ID is required",
       }),
     })

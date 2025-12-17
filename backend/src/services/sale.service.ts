@@ -1,5 +1,7 @@
 import prisma from "../config/database";
 import logger from "../utils/logger";
+import whatsappService from "./whatsapp.service";
+import productService from "./product.service";
 
 class SaleService {
   async getSales(filters: {
@@ -7,6 +9,8 @@ class SaleService {
     endDate?: string;
     status?: string;
     search?: string;
+    page?: number;
+    pageSize?: number;
   }) {
     const where: any = {};
 
@@ -29,29 +33,40 @@ class SaleService {
       ];
     }
 
+    const page = filters.page || 1;
+    const pageSize = filters.pageSize || 10;
+    const skip = (page - 1) * pageSize;
+
     try {
-      const sales = await prisma.sale.findMany({
-        where,
-        include: {
-          items: {
-            include: {
-              product: true,
+      const [sales, total] = await Promise.all([
+        prisma.sale.findMany({
+          where,
+          include: {
+            items: {
+              include: {
+                product: true,
+              },
             },
+            customer: true,
+            card: true,
+            bankAccount: true,
           },
-          user: {
-            select: {
-              id: true,
-              name: true,
-              username: true,
-            },
-          },
-          customer: true,
-          card: true,
-          bankAccount: true,
+          orderBy: { createdAt: "desc" },
+          skip,
+          take: pageSize,
+        }),
+        prisma.sale.count({ where }),
+      ]);
+
+      return {
+        data: sales,
+        pagination: {
+          page,
+          pageSize,
+          total,
+          totalPages: Math.ceil(total / pageSize),
         },
-        orderBy: { createdAt: "desc" },
-      });
-      return sales;
+      };
     } catch (error: any) {
       // If card relation doesn't exist, try without it
       if (error.message?.includes('card') || error.message?.includes('Card') || error.code === 'P2025') {
@@ -61,13 +76,6 @@ class SaleService {
             items: {
               include: {
                 product: true,
-              },
-            },
-            user: {
-              select: {
-                id: true,
-                name: true,
-                username: true,
               },
             },
             customer: true,
@@ -90,15 +98,9 @@ class SaleService {
               product: true,
             },
           },
-          user: {
-            select: {
-              id: true,
-              name: true,
-              username: true,
-            },
-          },
           customer: true,
           card: true,
+          bankAccount: true,
         },
       });
 
@@ -116,13 +118,6 @@ class SaleService {
             items: {
               include: {
                 product: true,
-              },
-            },
-            user: {
-              select: {
-                id: true,
-                name: true,
-                username: true,
               },
             },
             customer: true,
@@ -150,15 +145,9 @@ class SaleService {
               product: true,
             },
           },
-          user: {
-            select: {
-              id: true,
-              name: true,
-              username: true,
-            },
-          },
           customer: true,
           card: true,
+          bankAccount: true,
         },
       });
 
@@ -176,13 +165,6 @@ class SaleService {
             items: {
               include: {
                 product: true,
-              },
-            },
-            user: {
-              select: {
-                id: true,
-                name: true,
-                username: true,
               },
             },
             customer: true,
@@ -204,11 +186,17 @@ class SaleService {
       items: Array<{
         productId: string;
         quantity: number;
+        unitPrice: number;
+        customPrice?: number;
         discount?: number;
+        discountType?: "percent" | "value";
+        tax?: number;
+        taxType?: "percent" | "value";
         fromWarehouse?: boolean;
       }>;
       customerName?: string;
       customerPhone?: string;
+      customerCity?: string;
       customerId?: string;
       paymentType?: string;
       payments?: Array<{
@@ -223,7 +211,8 @@ class SaleService {
       tax?: number;
       date?: string;
     },
-    userId: string
+    userId: string,
+    userType?: "user" | "admin"
   ) {
     // Generate bill number
     const today = new Date();
@@ -237,14 +226,32 @@ class SaleService {
     });
     const billNumber = `BILL-${dateStr}-${String(count + 1).padStart(4, "0")}`;
 
-    // Get user
-    const user = await prisma.user.findUnique({
+    // Get user - check both AdminUser and User tables
+    let user: any = await prisma.user.findUnique({
       where: { id: userId },
+      select: { id: true, name: true, username: true },
     });
+
+    let finalUserType: "user" | "admin" = "user";
+
+    // If not found in User table, check AdminUser table
+    if (!user) {
+      const adminUser = await prisma.adminUser.findUnique({
+        where: { id: userId },
+        select: { id: true, name: true, username: true },
+      });
+      if (adminUser) {
+        user = adminUser;
+        finalUserType = "admin";
+      }
+    }
 
     if (!user) {
       throw new Error("User not found");
     }
+
+    // Use provided userType if available, otherwise use detected type
+    const userTypeToUse = userType || finalUserType;
 
     // Calculate totals
     let subtotal = 0;
@@ -260,10 +267,32 @@ class SaleService {
       }
 
 
+      const effectivePrice = item.customPrice || (product.salePrice ? Number(product.salePrice) : 0);
       const unitPrice = product.salePrice ? Number(product.salePrice) : 0;
-      const itemSubtotal = unitPrice * item.quantity;
-      const itemDiscount = (itemSubtotal * (item.discount || 0)) / 100;
-      const itemTax = (itemSubtotal * (data.tax || 0)) / 100;
+      const itemSubtotal = effectivePrice * item.quantity;
+      
+      // Calculate discount based on type
+      let itemDiscount = 0;
+      if (item.discount && item.discount > 0) {
+        if (item.discountType === "value") {
+          itemDiscount = item.discount;
+        } else {
+          itemDiscount = (itemSubtotal * item.discount) / 100;
+        }
+      }
+      
+      // Calculate tax based on type
+      let itemTax = 0;
+      if (item.tax && item.tax > 0) {
+        if (item.taxType === "value") {
+          itemTax = item.tax;
+        } else {
+          itemTax = (itemSubtotal * item.tax) / 100;
+        }
+      } else if (data.tax && data.tax > 0) {
+        itemTax = (itemSubtotal * data.tax) / 100;
+      }
+      
       const itemTotal = itemSubtotal - itemDiscount + itemTax;
 
       subtotal += itemSubtotal;
@@ -285,9 +314,12 @@ class SaleService {
         productId: product.id,
         productName: product.name,
         quantity: item.quantity,
-        unitPrice: product.salePrice || 0,
+        unitPrice: unitPrice,
+        customPrice: item.customPrice || null,
         discount: item.discount || 0,
+        discountType: item.discountType || "percent",
         tax: itemTax,
+        taxType: item.taxType || "percent",
         total: itemTotal,
         fromWarehouse: fromWarehouse,
       });
@@ -300,6 +332,7 @@ class SaleService {
     // Get or create customer (optional - use default if not provided)
     const customerName = data.customerName || "Walk-in Customer";
     const customerPhone = data.customerPhone || "0000000000";
+    const customerCity = data.customerCity || null;
 
     let customer = await prisma.customer.findFirst({
       where: { phone: customerPhone },
@@ -310,7 +343,14 @@ class SaleService {
         data: {
           name: customerName,
           phone: customerPhone,
+          city: customerCity,
         },
+      });
+    } else if (customerCity && customer.city !== customerCity) {
+      // Update city if provided and different
+      customer = await prisma.customer.update({
+        where: { id: customer.id },
+        data: { city: customerCity },
       });
     }
 
@@ -336,17 +376,19 @@ class SaleService {
       }
     } else {
       // Old single payment format (backward compatibility)
-      const paymentType = (data.paymentType || "cash") as "cash" | "card" | "credit" | "bank_transfer";
-      const paymentAmount = paymentType === "credit" ? 0 : total;
-      remainingBalance = paymentType === "credit" ? total : 0;
+      const paymentType = (data.paymentType || "cash") as "cash" | "bank_transfer";
+      const paymentAmount = total;
+      remainingBalance = 0;
       
       payments = [{
         type: paymentType,
         amount: paymentAmount,
-        cardId: data.cardId || undefined,
         bankAccountId: data.bankAccountId || undefined,
       }];
     }
+
+    // Determine status based on remaining balance
+    const saleStatus = remainingBalance > 0 ? "pending" : "completed";
 
     // Create sale with items
     const sale = await prisma.sale.create({
@@ -359,7 +401,7 @@ class SaleService {
         paymentType: payments[0]?.type || ("cash" as any),
         payments: payments as any,
         remainingBalance: remainingBalance,
-        cardId: payments.find(p => p.type === "card")?.cardId || data.cardId || null,
+        status: saleStatus as any,
         bankAccountId: payments.find(p => p.type === "bank_transfer")?.bankAccountId || data.bankAccountId || null,
         customerId: customerId || null,
         customerName: customerName || null,
@@ -367,6 +409,8 @@ class SaleService {
         date: data.date ? new Date(data.date) : new Date(),
         userId: user.id,
         userName: user.name,
+        createdBy: user.id,
+        createdByType: userTypeToUse,
         items: {
           create: saleItems,
         },
@@ -426,10 +470,32 @@ class SaleService {
           }
         }
 
-        await prisma.product.update({
+        const updatedProduct = await prisma.product.update({
           where: { id: item.productId },
           data: updateData,
         });
+
+        // Check low stock notifications (send/reset)
+        await productService.checkAndNotifyLowStock(updatedProduct.id);
+      }
+    }
+
+    // Send WhatsApp notification if customer phone number exists and payment is completed
+    if (sale.customerPhone && sale.status === "completed" && sale.customerPhone !== "0000000000") {
+      try {
+        const payments = (sale.payments as Array<{ type: string; amount: number }>) || [];
+        const totalPaid = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+        const remaining = Number(sale.remainingBalance || 0);
+        
+        await whatsappService.sendBillNotificationWithImage(
+          sale.customerPhone,
+          sale,
+          undefined
+        );
+        logger.info(`WhatsApp notification sent for new sale ${sale.billNumber}`);
+      } catch (whatsappError: any) {
+        // Don't fail the sale creation if WhatsApp fails
+        logger.error(`Failed to send WhatsApp notification: ${whatsappError.message}`);
       }
     }
 
@@ -471,10 +537,13 @@ class SaleService {
           };
         }
 
-        await prisma.product.update({
+        const updatedProduct = await prisma.product.update({
           where: { id: item.productId },
           data: updateData,
         });
+
+        // Reset notification if stock recovered
+        await productService.checkAndNotifyLowStock(updatedProduct.id);
       }
     }
 
@@ -494,7 +563,10 @@ class SaleService {
       amount: number;
       cardId?: string;
       bankAccountId?: string;
-    }
+      date?: string;
+    },
+    userId?: string,
+    userType?: "user" | "admin"
   ) {
     const sale = await prisma.sale.findUnique({
       where: { id: saleId },
@@ -514,6 +586,7 @@ class SaleService {
       amount: number;
       cardId?: string;
       bankAccountId?: string;
+      date?: string;
     }>) || [];
     
     const totalPaid = currentPayments.reduce((sum, p) => sum + p.amount, 0);
@@ -522,20 +595,35 @@ class SaleService {
     if (payment.amount > currentRemaining) {
       throw new Error("Payment amount exceeds remaining balance");
     }
+    // Guard against total paid surpassing total
+    if (totalPaid + payment.amount > Number(sale.total)) {
+      throw new Error("Total payment amount cannot exceed sale total");
+    }
 
-    const newPayments = [...currentPayments, payment];
+    // Add date to payment if not provided
+    const paymentWithDate = {
+      ...payment,
+      date: payment.date ? new Date(payment.date).toISOString() : new Date().toISOString()
+    };
+
+    const newPayments = [...currentPayments, paymentWithDate];
     const newTotalPaid = totalPaid + payment.amount;
     const newRemainingBalance = Number(sale.total) - newTotalPaid;
+    
+    // Update status: if remaining balance is 0 or less, mark as completed
+    const newStatus = newRemainingBalance <= 0 ? "completed" : "pending";
 
     const updatedSale = await prisma.sale.update({
       where: { id: saleId },
       data: {
         payments: newPayments as any,
         remainingBalance: newRemainingBalance,
+        status: newStatus as any,
         // Update paymentType to the latest payment type for backward compatibility
         paymentType: payment.type as any,
-        cardId: payment.type === "card" ? payment.cardId || sale.cardId : sale.cardId,
         bankAccountId: payment.type === "bank_transfer" ? payment.bankAccountId || sale.bankAccountId : sale.bankAccountId,
+        updatedBy: userId || null,
+        updatedByType: userType || null,
       },
       include: {
         items: {
@@ -560,6 +648,25 @@ class SaleService {
           dueAmount: newDue > 0 ? newDue : 0,
         },
       });
+    }
+
+    // Send WhatsApp notification if customer phone number exists
+    if (updatedSale.customerPhone && updatedSale.customerPhone !== "0000000000") {
+      try {
+        const payments = (updatedSale.payments as Array<{ type: string; amount: number; date?: string }>) || [];
+        const totalPaid = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+        const remaining = Number(updatedSale.remainingBalance || 0);
+        
+        await whatsappService.sendBillNotificationWithImage(
+          updatedSale.customerPhone,
+          updatedSale,
+          undefined // Image buffer can be added later if needed
+        );
+        logger.info(`WhatsApp notification sent for payment on sale ${updatedSale.billNumber}`);
+      } catch (whatsappError: any) {
+        // Don't fail the payment if WhatsApp fails
+        logger.error(`Failed to send WhatsApp notification: ${whatsappError.message}`);
+      }
     }
 
     return updatedSale;

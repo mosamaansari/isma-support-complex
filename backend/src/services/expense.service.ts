@@ -7,6 +7,8 @@ class ExpenseService {
     endDate?: string;
     category?: string;
     search?: string;
+    page?: number;
+    pageSize?: number;
   }) {
     const where: any = {};
 
@@ -25,36 +27,50 @@ class ExpenseService {
       where.description = { contains: filters.search, mode: "insensitive" };
     }
 
-    const expenses = await prisma.expense.findMany({
-      where,
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            username: true,
-          },
-        },
-        card: true,
-        bankAccount: true,
-      },
-      orderBy: { date: "desc" },
-    });
+    const page = filters.page || 1;
+    const pageSize = filters.pageSize || 10;
+    const skip = (page - 1) * pageSize;
 
-    return expenses;
+    const [expenses, total] = await Promise.all([
+      prisma.expense.findMany({
+        where,
+        include: {
+          card: true,
+          bankAccount: true,
+        },
+        orderBy: { date: "desc" },
+        skip,
+        take: pageSize,
+      }),
+      prisma.expense.count({ where }),
+    ]);
+
+    // Get summary statistics (all-time totals and category totals)
+    const [allTimeTotals, categoryTotals] = await Promise.all([
+      this.getAllTimeTotals(),
+      this.getCategoryTotals(),
+    ]);
+
+    return {
+      data: expenses,
+      pagination: {
+        page,
+        pageSize,
+        total,
+        totalPages: Math.ceil(total / pageSize),
+      },
+      summary: {
+        totalAmount: allTimeTotals.totalAmount,
+        totalCount: allTimeTotals.totalCount,
+        categoryTotals: categoryTotals,
+      },
+    };
   }
 
   async getExpense(id: string) {
     const expense = await prisma.expense.findUnique({
       where: { id },
       include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            username: true,
-          },
-        },
         card: true,
         bankAccount: true,
       },
@@ -71,34 +87,62 @@ class ExpenseService {
     data: {
       amount: number;
       category: string;
-      description: string;
+      description?: string;
       paymentType?: string;
       cardId?: string;
       bankAccountId?: string;
       date?: string;
     },
-    userId: string
+    userId: string,
+    userType?: "user" | "admin"
   ) {
-    const user = await prisma.user.findUnique({
+    // Get user - check both AdminUser and User tables
+    let user: any = await prisma.user.findUnique({
       where: { id: userId },
+      select: { id: true, name: true, username: true },
     });
+
+    let finalUserType: "user" | "admin" = "user";
+
+    // If not found in User table, check AdminUser table
+    if (!user) {
+      const adminUser = await prisma.adminUser.findUnique({
+        where: { id: userId },
+        select: { id: true, name: true, username: true },
+      });
+      if (adminUser) {
+        user = adminUser;
+        finalUserType = "admin";
+      }
+    }
 
     if (!user) {
       throw new Error("User not found");
     }
 
+    // Use provided userType if available, otherwise use detected type
+    const userTypeToUse = userType || finalUserType;
+
+    const expenseData: any = {
+      amount: data.amount,
+      category: data.category as any,
+      paymentType: (data.paymentType || "cash") as any,
+      cardId: data.cardId || null,
+      bankAccountId: data.bankAccountId || null,
+      date: data.date ? new Date(data.date) : new Date(),
+      userId: user.id,
+      userName: user.name,
+      createdBy: user.id,
+      createdByType: userTypeToUse,
+    };
+
+    // Only include description if it's provided and not empty
+    if (data.description && data.description.trim().length > 0) {
+      expenseData.description = data.description.trim();
+    }
+
     const expense = await prisma.expense.create({
-      data: {
-        amount: data.amount,
-        category: data.category as any,
-        description: data.description,
-        paymentType: (data.paymentType || "cash") as any,
-        cardId: data.cardId || null,
-        bankAccountId: data.bankAccountId || null,
-        date: data.date ? new Date(data.date) : new Date(),
-        userId: user.id,
-        userName: user.name,
-      },
+      data: expenseData,
       include: {
         card: true,
         bankAccount: true,
@@ -174,6 +218,48 @@ class ExpenseService {
 
     // User can modify if it's their own expense or if they're admin/superadmin
     return expense.userId === userId || userRole === "superadmin" || userRole === "admin";
+  }
+
+  async getAllTimeTotals() {
+    const result = await prisma.expense.aggregate({
+      _sum: {
+        amount: true,
+      },
+      _count: {
+        id: true,
+      },
+    });
+
+    return {
+      totalAmount: result._sum.amount || 0,
+      totalCount: result._count.id || 0,
+    };
+  }
+
+  async getCategoryTotals() {
+    const expenses = await prisma.expense.findMany({
+      select: {
+        category: true,
+        amount: true,
+      },
+    });
+
+    const categoryTotals: Record<string, { total: number; count: number }> = {};
+
+    expenses.forEach((expense) => {
+      const category = expense.category;
+      const amount = typeof expense.amount === 'number' 
+        ? expense.amount 
+        : parseFloat(String(expense.amount)) || 0;
+
+      if (!categoryTotals[category]) {
+        categoryTotals[category] = { total: 0, count: 0 };
+      }
+      categoryTotals[category].total += amount;
+      categoryTotals[category].count += 1;
+    });
+
+    return categoryTotals;
   }
 }
 

@@ -116,3 +116,8 @@ ALTER TABLE "users" ALTER COLUMN "role" TYPE "UserRole" USING "role"::text::"Use
 - ✅ Admin/superadmin users will be moved to `admin_users` table
 - ✅ Regular users (cashier/warehouse_manager) stay in `users` table
 
+
+
+
+
+

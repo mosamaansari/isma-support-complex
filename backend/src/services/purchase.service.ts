@@ -1,11 +1,14 @@
 import prisma from "../config/database";
 import logger from "../utils/logger";
+import productService from "./product.service";
 
 class PurchaseService {
   async getPurchases(filters: {
     startDate?: string;
     endDate?: string;
     supplierId?: string;
+    page?: number;
+    pageSize?: number;
   }) {
     const where: any = {};
 
@@ -20,27 +23,39 @@ class PurchaseService {
       where.supplierId = filters.supplierId;
     }
 
+    const page = filters.page || 1;
+    const pageSize = filters.pageSize || 10;
+    const skip = (page - 1) * pageSize;
+
     try {
-      const purchases = await prisma.purchase.findMany({
-        where,
-        include: {
-          items: {
-            include: {
-              product: true,
+      const [purchases, total] = await Promise.all([
+        prisma.purchase.findMany({
+          where,
+          include: {
+            items: {
+              include: {
+                product: true,
+              },
             },
+            supplier: true,
+            // Note: user relation removed - userId and userName are stored directly
           },
-          supplier: true,
-          user: {
-            select: {
-              id: true,
-              name: true,
-              username: true,
-            },
-          },
+          orderBy: { date: "desc" },
+          skip,
+          take: pageSize,
+        }),
+        prisma.purchase.count({ where }),
+      ]);
+
+      return {
+        data: purchases,
+        pagination: {
+          page,
+          pageSize,
+          total,
+          totalPages: Math.ceil(total / pageSize),
         },
-        orderBy: { date: "desc" },
-      });
-      return purchases;
+      };
     } catch (error: any) {
       throw error;
     }
@@ -68,25 +83,25 @@ class PurchaseService {
       }>;
       date?: string;
     },
-    userId: string
+    userId: string,
+    userType?: "user" | "admin"
   ) {
-    // Get or create supplier
+    // Get or create supplier based on name + phone combination
+    const supplierPhone = data.supplierPhone || "";
+    // Get or create supplier by name + phone (case-insensitive)
     let supplier = await prisma.supplier.findFirst({
-      where: { name: { equals: data.supplierName, mode: "insensitive" } },
+      where: {
+        name: { equals: data.supplierName, mode: "insensitive" },
+        phone: supplierPhone,
+      },
     });
 
     if (!supplier) {
       supplier = await prisma.supplier.create({
         data: {
           name: data.supplierName,
-          phone: data.supplierPhone || "",
+          phone: supplierPhone,
         },
-      });
-    } else if (data.supplierPhone && data.supplierPhone !== supplier.phone) {
-      // Update phone if provided and different
-      supplier = await prisma.supplier.update({
-        where: { id: supplier.id },
-        data: { phone: data.supplierPhone },
       });
     }
 
@@ -117,33 +132,61 @@ class PurchaseService {
       });
     }
 
-    // Get user
-    const user = await prisma.user.findUnique({
+    // Get user - check both AdminUser and User tables
+    let user: any = await prisma.user.findUnique({
       where: { id: userId },
+      select: { id: true, name: true, username: true },
     });
+
+    let finalUserType: "user" | "admin" = "user";
+
+    // If not found in User table, check AdminUser table
+    if (!user) {
+      const adminUser = await prisma.adminUser.findUnique({
+        where: { id: userId },
+        select: { id: true, name: true, username: true },
+      });
+      if (adminUser) {
+        user = adminUser;
+        finalUserType = "admin";
+      }
+    }
 
     if (!user) {
       throw new Error("User not found");
     }
 
+    // Use provided userType if available, otherwise use detected type
+    const userTypeToUse = userType || finalUserType;
+
     // Calculate total paid amount
     const totalPaid = data.payments.reduce((sum, payment) => sum + payment.amount, 0);
     const remainingBalance = data.total - totalPaid;
 
-    // Create purchase with items
+    if (totalPaid > data.total) {
+      throw new Error("Total paid amount cannot exceed total amount");
+    }
+
+    // Set status based on remaining balance
+    const status = remainingBalance > 0 ? "pending" : "completed";
+
+    // Create purchase with items (store name and phone, not supplierId)
     const purchase = await prisma.purchase.create({
       data: {
-        supplierId: supplier.id,
-        supplierName: supplier.name,
+        supplierId: null, // Don't use supplierId, just store name and phone
+        supplierName: data.supplierName,
         supplierPhone: data.supplierPhone || null,
         subtotal: data.subtotal,
         tax: data.tax || 0,
         total: data.total,
         payments: data.payments as any,
         remainingBalance: remainingBalance,
+        status: status as any,
         date: data.date ? new Date(data.date) : new Date(),
         userId: user.id,
         userName: user.name,
+        createdBy: user.id,
+        createdByType: userTypeToUse,
         items: {
           create: purchaseItems,
         },
@@ -183,10 +226,13 @@ class PurchaseService {
           }
         }
 
-        await prisma.product.update({
+        const updatedProduct = await prisma.product.update({
           where: { id: item.productId },
           data: updateData,
         });
+
+        // Reset low-stock notification flag if stock recovered
+        await productService.checkAndNotifyLowStock(updatedProduct.id);
       }
     }
 
@@ -216,13 +262,7 @@ class PurchaseService {
           },
         },
         supplier: true,
-        user: {
-          select: {
-            id: true,
-            name: true,
-            username: true,
-          },
-        },
+        // Note: user relation removed - userId and userName are stored directly
       },
     });
 
@@ -267,44 +307,69 @@ class PurchaseService {
       throw new Error("Purchase not found");
     }
 
+    // Prevent edits on completed purchases
+    if (purchase.status === "completed") {
+      throw new Error("Completed purchases cannot be edited");
+    }
+
     const updateData: any = {};
 
     // Update supplier if name changed
-    if (data.supplierName && data.supplierName !== purchase.supplierName) {
-      let supplier = await prisma.supplier.findFirst({
-        where: { name: { equals: data.supplierName, mode: "insensitive" } },
+    // Update supplier name/phone (store in purchase, not linked via ID)
+    if (data.supplierName) {
+      updateData.supplierName = data.supplierName;
+      updateData.supplierId = null; // Don't use supplierId, just store name and phone
+    }
+    if (data.supplierPhone !== undefined) {
+      updateData.supplierPhone = data.supplierPhone || null;
+    }
+
+    // Maintain supplier table for listing (name + phone unique)
+    if (data.supplierName) {
+      const supplierPhone = data.supplierPhone || "";
+      const existing = await prisma.supplier.findFirst({
+        where: {
+          name: { equals: data.supplierName, mode: "insensitive" },
+          phone: supplierPhone,
+        },
       });
 
-      if (!supplier) {
-        supplier = await prisma.supplier.create({
+      if (!existing) {
+        await prisma.supplier.create({
           data: {
             name: data.supplierName,
-            phone: data.supplierPhone || "",
+            phone: supplierPhone,
           },
         });
       }
-
-      updateData.supplierId = supplier.id;
-      updateData.supplierName = supplier.name;
-      if (data.supplierPhone) {
-        updateData.supplierPhone = data.supplierPhone;
-      }
-    } else if (data.supplierPhone && purchase.supplierId) {
-      await prisma.supplier.update({
-        where: { id: purchase.supplierId },
-        data: { phone: data.supplierPhone },
-      });
-      updateData.supplierPhone = data.supplierPhone;
     }
 
-    // Update items if provided
+    // Update items if provided, adjusting stock differences
     if (data.items) {
+      // 1) Revert old stock
+      for (const oldItem of purchase.items) {
+        const product = await prisma.product.findUnique({ where: { id: oldItem.productId } });
+        if (product) {
+          if (oldItem.toWarehouse) {
+            await prisma.product.update({
+              where: { id: product.id },
+              data: { warehouseQuantity: { decrement: oldItem.quantity } },
+            });
+          } else {
+            await prisma.product.update({
+              where: { id: product.id },
+              data: { shopQuantity: { decrement: oldItem.quantity } },
+            });
+          }
+        }
+      }
+
       // Delete old items
       await prisma.purchaseItem.deleteMany({
         where: { purchaseId: id },
       });
 
-      // Create new items
+      // 2) Create new items and apply stock increments
       const purchaseItems = [];
       for (const item of data.items) {
         const product = await prisma.product.findUnique({
@@ -328,6 +393,19 @@ class PurchaseService {
           total: itemTotal,
           toWarehouse: item.toWarehouse !== undefined ? item.toWarehouse : true,
         });
+
+        // Apply stock increment based on destination
+        if (item.toWarehouse !== false) {
+          await prisma.product.update({
+            where: { id: product.id },
+            data: { warehouseQuantity: { increment: item.quantity } },
+          });
+        } else {
+          await prisma.product.update({
+            where: { id: product.id },
+            data: { shopQuantity: { increment: item.quantity } },
+          });
+        }
       }
 
       updateData.items = {
@@ -344,6 +422,9 @@ class PurchaseService {
       // Recalculate remaining balance
       const totalPaid = data.payments.reduce((sum, payment) => sum + payment.amount, 0);
       const purchaseTotal = data.total !== undefined ? Number(data.total) : Number(purchase.total);
+      if (totalPaid > purchaseTotal) {
+        throw new Error("Total paid amount cannot exceed total amount");
+      }
       updateData.remainingBalance = purchaseTotal - totalPaid;
     }
     if (data.date) updateData.date = new Date(data.date);
@@ -373,7 +454,8 @@ class PurchaseService {
       bankAccountId?: string;
       date?: string;
     },
-    userId: string
+    userId: string,
+    userType?: "user" | "admin"
   ) {
     const purchase = await prisma.purchase.findUnique({
       where: { id: purchaseId },
@@ -383,20 +465,37 @@ class PurchaseService {
       throw new Error("Purchase not found");
     }
 
+    if (purchase.status === "cancelled") {
+      throw new Error("Cannot add payment to a cancelled purchase");
+    }
+    if (purchase.status === "completed") {
+      throw new Error("Cannot add payment to a completed purchase");
+    }
+
     const currentPayments = (purchase.payments as any) || [];
-    const newPayments = [...currentPayments, payment];
-    const totalPaid = newPayments.reduce((sum, p: any) => sum + p.amount, 0);
+    const newPayments = [...currentPayments, { ...payment, date: payment.date ? new Date(payment.date) : new Date() }];
+    const totalPaid = newPayments.reduce((sum, p: any) => sum + Number(p.amount), 0);
     const remainingBalance = Number(purchase.total) - totalPaid;
+
+    if (totalPaid > Number(purchase.total)) {
+      throw new Error("Total paid amount cannot exceed total amount");
+    }
 
     if (remainingBalance < 0) {
       throw new Error("Payment amount exceeds remaining balance");
     }
+
+    // Update status based on remaining balance
+    const newStatus = remainingBalance <= 0 ? "completed" : "pending";
 
     const updatedPurchase = await prisma.purchase.update({
       where: { id: purchaseId },
       data: {
         payments: newPayments as any,
         remainingBalance: remainingBalance,
+        status: newStatus as any,
+        updatedBy: userId,
+        updatedByType: userType || null,
       },
       include: {
         items: {
@@ -408,22 +507,7 @@ class PurchaseService {
       },
     });
 
-    // Update supplier due amount
-    if (purchase.supplierId) {
-      const supplier = await prisma.supplier.findUnique({
-        where: { id: purchase.supplierId },
-      });
-      if (supplier) {
-        const oldDue = Number(supplier.dueAmount);
-        const newDue = oldDue - payment.amount;
-        await prisma.supplier.update({
-          where: { id: purchase.supplierId },
-          data: {
-            dueAmount: Math.max(0, newDue),
-          },
-        });
-      }
-    }
+    // Supplier table is maintained for listing only, not linked to purchases via ID
 
     return updatedPurchase;
   }

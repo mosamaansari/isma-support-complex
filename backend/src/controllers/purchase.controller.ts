@@ -6,36 +6,59 @@ import { AuthRequest } from "../middleware/auth";
 class PurchaseController {
   async getPurchases(req: AuthRequest, res: Response) {
     try {
-      const { startDate, endDate, supplierId } = req.query;
+      const { startDate, endDate, supplierId, page, pageSize } = req.query;
       const filters = {
         startDate: startDate as string | undefined,
         endDate: endDate as string | undefined,
         supplierId: supplierId as string | undefined,
+        page: page ? parseInt(page as string) : undefined,
+        pageSize: pageSize ? parseInt(pageSize as string) : undefined,
       };
-      const purchases = await purchaseService.getPurchases(filters);
-      res.json(purchases);
-    } catch (error: any) {
+      const result = await purchaseService.getPurchases(filters);
+      return res.status(200).json({
+        message: "Purchases retrieved successfully",
+        response: result,
+        error: null,
+      });
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
       logger.error("Get purchases error:", error);
-      const errorMessage = error?.message || "Internal server error";
-      res.status(500).json({ 
-        error: "Internal server error",
-        details: process.env.NODE_ENV === "development" ? errorMessage : undefined
+      return res.status(500).json({
+        message: errorMessage,
+        response: null,
+        error: errorMessage,
       });
     }
   }
 
   async createPurchase(req: AuthRequest, res: Response) {
     try {
-      const purchase = await purchaseService.createPurchase(req.body, req.user!.id);
+      const purchase = await purchaseService.createPurchase(req.body, req.user!.id, req.user?.userType);
       logger.info(`Purchase created: ${purchase.id} by ${req.user?.username}`);
-      res.status(201).json(purchase);
-    } catch (error: any) {
+      return res.status(201).json({
+        message: "Purchase created successfully",
+        response: {
+          data: purchase,
+        },
+        error: null,
+      });
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
       logger.error("Create purchase error:", error);
-      if (error.message.includes("not found")) {
-        res.status(404).json({ error: error.message });
-      } else {
-        res.status(500).json({ error: "Internal server error" });
+      if (error instanceof Error && error.message.includes("not found")) {
+        return res.status(404).json({
+          message: error.message,
+          response: null,
+          error: error.message,
+        });
       }
+      return res.status(500).json({
+        message: errorMessage,
+        response: null,
+        error: errorMessage,
+      });
     }
   }
 
@@ -43,14 +66,29 @@ class PurchaseController {
     try {
       const { id } = req.params;
       const purchase = await purchaseService.getPurchase(id);
-      res.json(purchase);
-    } catch (error: any) {
+      return res.status(200).json({
+        message: "Purchase retrieved successfully",
+        response: {
+          data: purchase,
+        },
+        error: null,
+      });
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
       logger.error("Get purchase error:", error);
-      if (error.message.includes("not found")) {
-        res.status(404).json({ error: error.message });
-      } else {
-        res.status(500).json({ error: "Internal server error" });
+      if (error instanceof Error && error.message.includes("not found")) {
+        return res.status(404).json({
+          message: error.message,
+          response: null,
+          error: error.message,
+        });
       }
+      return res.status(500).json({
+        message: errorMessage,
+        response: null,
+        error: errorMessage,
+      });
     }
   }
 
@@ -59,32 +97,69 @@ class PurchaseController {
       const { id } = req.params;
       const purchase = await purchaseService.updatePurchase(id, req.body, req.user!.id);
       logger.info(`Purchase updated: ${purchase.id} by ${req.user?.username}`);
-      res.json(purchase);
-    } catch (error: any) {
+      return res.status(200).json({
+        message: "Purchase updated successfully",
+        response: {
+          data: purchase,
+        },
+        error: null,
+      });
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
       logger.error("Update purchase error:", error);
-      if (error.message.includes("not found")) {
-        res.status(404).json({ error: error.message });
-      } else {
-        res.status(500).json({ error: "Internal server error" });
+      if (error instanceof Error && error.message.includes("not found")) {
+        return res.status(404).json({
+          message: error.message,
+          response: null,
+          error: error.message,
+        });
       }
+      return res.status(500).json({
+        message: errorMessage,
+        response: null,
+        error: errorMessage,
+      });
     }
   }
 
   async addPayment(req: AuthRequest, res: Response) {
     try {
       const { id } = req.params;
-      const purchase = await purchaseService.addPaymentToPurchase(id, req.body, req.user!.id);
+      const purchase = await purchaseService.addPaymentToPurchase(id, req.body, req.user!.id, req.user?.userType);
       logger.info(`Payment added to purchase: ${purchase.id} by ${req.user?.username}`);
-      res.json(purchase);
-    } catch (error: any) {
+      return res.status(200).json({
+        message: "Payment added successfully",
+        response: {
+          data: purchase,
+        },
+        error: null,
+      });
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
       logger.error("Add payment error:", error);
-      if (error.message.includes("not found")) {
-        res.status(404).json({ error: error.message });
-      } else if (error.message.includes("exceeds")) {
-        res.status(400).json({ error: error.message });
-      } else {
-        res.status(500).json({ error: "Internal server error" });
+      if (error instanceof Error) {
+        if (error.message.includes("not found")) {
+          return res.status(404).json({
+            message: error.message,
+            response: null,
+            error: error.message,
+          });
+        }
+        if (error.message.includes("exceeds")) {
+          return res.status(400).json({
+            message: error.message,
+            response: null,
+            error: error.message,
+          });
+        }
       }
+      return res.status(500).json({
+        message: errorMessage,
+        response: null,
+        error: errorMessage,
+      });
     }
   }
 }

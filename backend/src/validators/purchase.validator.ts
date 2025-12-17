@@ -22,11 +22,13 @@ export const createPurchaseSchema = Joi.object({
     .items(
       Joi.object({
         productId: Joi.string()
-          .uuid()
           .required()
+          .trim()
+          .min(1)
           .messages({
-            "string.uuid": "Product ID must be a valid UUID",
             "any.required": "Product ID is required",
+            "string.empty": "Product ID cannot be empty",
+            "string.min": "Product ID cannot be empty",
           }),
         quantity: Joi.number()
           .integer()
@@ -95,18 +97,18 @@ export const createPurchaseSchema = Joi.object({
     .items(
       Joi.object({
         type: Joi.string()
-          .valid("cash", "card")
+          .valid("cash", "bank_transfer")
           .required()
           .messages({
-            "any.only": "Payment type must be cash or card",
+            "any.only": "Payment type must be cash or bank_transfer",
             "any.required": "Payment type is required",
           }),
         amount: Joi.number()
-          .min(0)
+          .min(0.01)
           .required()
           .messages({
             "number.base": "Payment amount must be a number",
-            "number.min": "Payment amount cannot be negative",
+            "number.min": "Payment amount must be greater than 0",
             "any.required": "Payment amount is required",
           }),
         cardId: Joi.string()
@@ -116,7 +118,7 @@ export const createPurchaseSchema = Joi.object({
           .when("type", {
             is: "card",
             then: Joi.required().messages({
-              "any.required": "Card ID is required when payment type is card",
+              "any.required": "Bank account ID is required when payment type is bank_transfer",
             }),
             otherwise: Joi.optional(),
           })
@@ -125,10 +127,16 @@ export const createPurchaseSchema = Joi.object({
           }),
         bankAccountId: Joi.string()
           .optional()
-          .uuid()
           .allow("", null)
+          .custom((value, helpers) => {
+            if (value === "" || value === null || value === undefined) return null;
+            if (typeof value === "string" && value.length > 0 && !value.startsWith("c")) {
+              return helpers.error("string.pattern.base", { message: "Bank account ID must be a valid ID" });
+            }
+            return value;
+          })
           .messages({
-            "string.uuid": "Bank account ID must be a valid UUID",
+            "string.pattern.base": "Bank account ID must be a valid ID",
           }),
       })
     )
@@ -165,9 +173,21 @@ export const updatePurchaseSchema = Joi.object({
   items: Joi.array()
     .items(
       Joi.object({
-        productId: Joi.string().uuid().required(),
+        productId: Joi.string()
+          .required()
+          .trim()
+          .min(1)
+          .messages({
+            "any.required": "Product ID is required",
+            "string.empty": "Product ID cannot be empty",
+            "string.min": "Product ID cannot be empty",
+          }),
         quantity: Joi.number().integer().min(1).required(),
-        cost: Joi.number().min(0).required(),
+        cost: Joi.number().min(0.01).required().messages({
+          "number.base": "Cost must be a number",
+          "number.min": "Cost must be greater than 0",
+          "any.required": "Cost is required",
+        }),
         discount: Joi.number().optional().min(0).max(100).default(0),
         toWarehouse: Joi.boolean().optional().default(true),
       })
@@ -202,35 +222,28 @@ export const addPaymentSchema = Joi.object({
     .valid("cash", "card")
     .required()
     .messages({
-      "any.only": "Payment type must be cash or card",
+      "any.only": "Payment type must be cash or bank_transfer",
       "any.required": "Payment type is required",
     }),
   amount: Joi.number()
-    .min(0)
+    .min(0.01)
     .required()
     .messages({
       "number.base": "Payment amount must be a number",
-      "number.min": "Payment amount cannot be negative",
+      "number.min": "Payment amount must be greater than 0",
       "any.required": "Payment amount is required",
-    }),
-  cardId: Joi.string()
-    .optional()
-    .uuid()
-    .allow("", null)
-    .when("type", {
-      is: "card",
-      then: Joi.required().messages({
-        "any.required": "Card ID is required when payment type is card",
-      }),
-      otherwise: Joi.optional(),
-    })
-    .messages({
-      "string.uuid": "Card ID must be a valid UUID",
     }),
   bankAccountId: Joi.string()
     .optional()
     .uuid()
     .allow("", null)
+    .when("type", {
+      is: "bank_transfer",
+      then: Joi.required().messages({
+        "any.required": "Bank account ID is required when payment type is bank_transfer",
+      }),
+      otherwise: Joi.optional(),
+    })
     .messages({
       "string.uuid": "Bank account ID must be a valid UUID",
     }),
@@ -257,9 +270,29 @@ export const getPurchasesQuerySchema = Joi.object({
     }),
   supplierId: Joi.string()
     .optional()
-    .uuid()
+    .allow("", null)
     .messages({
-      "string.uuid": "Supplier ID must be a valid UUID",
+      "string.base": "Supplier ID must be a string",
+    }),
+  page: Joi.number()
+    .integer()
+    .min(1)
+    .optional()
+    .messages({
+      "number.base": "Page must be a number",
+      "number.integer": "Page must be an integer",
+      "number.min": "Page must be at least 1",
+    }),
+  pageSize: Joi.number()
+    .integer()
+    .min(1)
+    .max(100)
+    .optional()
+    .messages({
+      "number.base": "Page size must be a number",
+      "number.integer": "Page size must be an integer",
+      "number.min": "Page size must be at least 1",
+      "number.max": "Page size cannot exceed 100",
     }),
 });
 

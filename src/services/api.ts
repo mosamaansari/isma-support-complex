@@ -1,5 +1,5 @@
 import axios, { AxiosInstance, AxiosError } from "axios";
-import { normalizeProduct, normalizeSale, normalizeExpense } from "../utils/apiHelpers";
+import { normalizeProduct, normalizeSale, normalizeExpense, normalizePurchase } from "../utils/apiHelpers";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
@@ -18,26 +18,62 @@ class ApiClient {
     // Add request interceptor to include auth token
     this.client.interceptors.request.use(
       (config) => {
+        try {
         const token = localStorage.getItem("authToken");
         if (token) {
           config.headers.Authorization = `Bearer ${token}`;
         }
+          // console.log("API Request:", config.method?.toUpperCase(), config.url, config.params || config.data || "");
+          return config;
+        } catch (err) {
+          console.error("Error in request interceptor:", err);
         return config;
+        }
       },
       (error) => {
+        console.error("Request interceptor error:", error);
         return Promise.reject(error);
       }
     );
 
     // Add response interceptor for error handling
     this.client.interceptors.response.use(
-      (response) => response,
+      (response) => {
+        try {
+          // Transform response to handle new format { message, response, error }
+          // Only transform if response has the new format structure
+          if (response.data && 
+              typeof response.data === 'object' && 
+              response.data.response !== undefined &&
+              response.data.response !== null &&
+              (response.data.message !== undefined || response.data.error !== undefined)) {
+            // For list endpoints, response.response contains { data: [...], pagination: {...} }
+            // For single item endpoints, response.response contains { data: item }
+            // Extract the response object which contains the actual data
+            // console.log("Transforming response:", response.config?.url, response.data);
+            return { ...response, data: response.data.response };
+        }
+          // For old format or auth endpoints, return as is
+          // console.log("Returning response as is:", response.config?.url);
+          return response;
+        } catch (err) {
+          console.error("Error in response interceptor:", err, response.config?.url);
+          return response;
+        }
+      },
       (error: AxiosError) => {
+        // console.error("API Error:", error.response?.status, error.config?.url, error.message);
         if (error.response?.status === 401) {
-          // Unauthorized - clear token and redirect to login
-          localStorage.removeItem("authToken");
-          localStorage.removeItem("currentUser");
-          window.location.href = "/signin";
+          // Don't redirect if it's a login endpoint or password update endpoint (let the form handle the error)
+          const url = error.config?.url || "";
+          if (!url.includes("/auth/login") && 
+              !url.includes("/auth/superadmin/login") &&
+              !url.includes("/users/profile/password")) {
+            // Unauthorized - clear token and redirect to login
+            localStorage.removeItem("authToken");
+            localStorage.removeItem("currentUser");
+            window.location.href = "/login";
+          }
         }
         return Promise.reject(error);
       }
@@ -64,11 +100,13 @@ class ApiClient {
   // Auth endpoints
   async login(username: string, password: string) {
     const response = await this.client.post("/auth/login", { username, password });
-    if (response.data.token) {
-      localStorage.setItem("authToken", response.data.token);
-      localStorage.setItem("currentUser", JSON.stringify(response.data.user));
+    // Auth endpoints return { token, user } directly, not wrapped in { message, response, error }
+    const data = response.data?.response?.data || response.data;
+    if (data?.token) {
+      localStorage.setItem("authToken", data.token);
+      localStorage.setItem("currentUser", JSON.stringify(data.user));
     }
-    return response.data;
+    return data || response.data;
   }
 
   async superAdminLogin(username: string, password: string) {
@@ -76,28 +114,61 @@ class ApiClient {
       username,
       password,
     });
-    if (response.data.token) {
-      localStorage.setItem("authToken", response.data.token);
-      localStorage.setItem("currentUser", JSON.stringify(response.data.user));
+    // Auth endpoints return { token, user } directly, not wrapped in { message, response, error }
+    const data = response.data?.response?.data || response.data;
+    if (data?.token) {
+      localStorage.setItem("authToken", data.token);
+      localStorage.setItem("currentUser", JSON.stringify(data.user));
     }
-    return response.data;
+    return data || response.data;
   }
 
   async logout() {
+    try {
     await this.client.post("/auth/logout");
+    } catch (err) {
+      console.error("Logout error:", err);
+    } finally {
     localStorage.removeItem("authToken");
     localStorage.removeItem("currentUser");
+    }
+  }
+
+  async forgotPassword(email: string, userType: "user" | "admin" = "user") {
+    const response = await this.client.post("/auth/forgot-password", { email, userType });
+    return response.data;
+  }
+
+  async resetPassword(token: string, newPassword: string, userType: "user" | "admin" = "user") {
+    const response = await this.client.post("/auth/reset-password", { token, newPassword, userType });
+    return response.data;
   }
 
   // Products endpoints
-  async getProducts(params?: { search?: string; category?: string; lowStock?: boolean }) {
+  async getProducts(params?: { search?: string; category?: string; lowStock?: boolean; page?: number; pageSize?: number }) {
     const key = `getProducts-${JSON.stringify(params)}`;
     return this.deduplicateRequest(key, async () => {
       const response = await this.client.get("/products", { params });
-      // Convert backend Decimal types to numbers
-      return Array.isArray(response.data) 
-        ? response.data.map(normalizeProduct)
-        : [];
+      if (response.data && response.data.data && response.data.pagination) {
+        return {
+          data: Array.isArray(response.data.data)
+            ? response.data.data.map(normalizeProduct)
+            : [],
+          pagination: response.data.pagination,
+        };
+      }
+      // Fallback for old format
+      return {
+        data: Array.isArray(response.data)
+          ? response.data.map(normalizeProduct)
+          : [],
+        pagination: {
+          page: 1,
+          pageSize: response.data.length || 10,
+          total: response.data.length || 0,
+          totalPages: 1,
+        },
+      };
     });
   }
 
@@ -108,12 +179,16 @@ class ApiClient {
 
   async createProduct(data: any) {
     const response = await this.client.post("/products", data);
-    return normalizeProduct(response.data);
+    // Response is already transformed by interceptor
+    const product = response.data?.data || response.data;
+    return normalizeProduct(product);
   }
 
   async updateProduct(id: string, data: any) {
     const response = await this.client.put(`/products/${id}`, data);
-    return normalizeProduct(response.data);
+    // Response is already transformed by interceptor
+    const product = response.data?.data || response.data;
+    return normalizeProduct(product);
   }
 
   async deleteProduct(id: string) {
@@ -125,19 +200,47 @@ class ApiClient {
     return response.data;
   }
 
+  // Search endpoints
+  async globalSearch(query: string) {
+    if (!query || query.trim().length < 2) {
+      return { results: [] };
+    }
+    const response = await this.client.get("/search", { params: { q: query.trim() } });
+    return response.data;
+  }
+
   // Sales endpoints
   async getSales(params?: {
     startDate?: string;
     endDate?: string;
     status?: string;
     search?: string;
+    page?: number;
+    pageSize?: number;
   }) {
     const key = `getSales-${JSON.stringify(params)}`;
     return this.deduplicateRequest(key, async () => {
       const response = await this.client.get("/sales", { params });
-      return Array.isArray(response.data)
-        ? response.data.map(normalizeSale)
-        : [];
+      if (response.data && response.data.data && response.data.pagination) {
+        return {
+          data: Array.isArray(response.data.data)
+            ? response.data.data.map(normalizeSale)
+            : [],
+          pagination: response.data.pagination,
+        };
+      }
+      // Fallback for old format
+      return {
+        data: Array.isArray(response.data)
+          ? response.data.map(normalizeSale)
+          : [],
+        pagination: {
+          page: 1,
+          pageSize: response.data.length || 10,
+          total: response.data.length || 0,
+          totalPages: 1,
+        },
+      };
     });
   }
 
@@ -148,22 +251,30 @@ class ApiClient {
 
   async getSaleByBillNumber(billNumber: string) {
     const response = await this.client.get(`/sales/bill/${billNumber}`);
-    return normalizeSale(response.data);
+    // Response is already transformed by interceptor
+    const sale = response.data?.data || response.data;
+    return normalizeSale(sale);
   }
 
   async createSale(data: any) {
     const response = await this.client.post("/sales", data);
-    return normalizeSale(response.data);
+    // Response is already transformed by interceptor
+    const sale = response.data?.data || response.data;
+    return normalizeSale(sale);
   }
 
   async cancelSale(id: string) {
     const response = await this.client.patch(`/sales/${id}/cancel`);
-    return normalizeSale(response.data);
+    // Response is already transformed by interceptor
+    const sale = response.data?.data || response.data;
+    return normalizeSale(sale);
   }
 
   async addPaymentToSale(saleId: string, payment: { type: string; amount: number; cardId?: string; bankAccountId?: string }) {
     const response = await this.client.post(`/sales/${saleId}/payments`, payment);
-    return normalizeSale(response.data);
+    // Response is already transformed by interceptor
+    const sale = response.data?.data || response.data;
+    return normalizeSale(sale);
   }
 
   // Expenses endpoints
@@ -172,33 +283,69 @@ class ApiClient {
     endDate?: string;
     category?: string;
     search?: string;
+    page?: number;
+    pageSize?: number;
   }) {
     const key = `getExpenses-${JSON.stringify(params)}`;
     return this.deduplicateRequest(key, async () => {
       const response = await this.client.get("/expenses", { params });
-      return Array.isArray(response.data)
-        ? response.data.map(normalizeExpense)
-        : [];
+      if (response.data && response.data.data && response.data.pagination) {
+        return {
+          data: Array.isArray(response.data.data)
+            ? response.data.data.map(normalizeExpense)
+            : [],
+          pagination: response.data.pagination,
+          summary: response.data.summary || null,
+        };
+      }
+      // Fallback for old format
+      return {
+        data: Array.isArray(response.data)
+          ? response.data.map(normalizeExpense)
+          : [],
+        pagination: {
+          page: 1,
+          pageSize: response.data.length || 10,
+          total: response.data.length || 0,
+          totalPages: 1,
+        },
+        summary: null,
+      };
     });
   }
 
   async getExpense(id: string) {
     const response = await this.client.get(`/expenses/${id}`);
-    return normalizeExpense(response.data);
+    // Response is already transformed by interceptor
+    const expense = response.data?.data || response.data;
+    return normalizeExpense(expense);
   }
 
   async createExpense(data: any) {
     const response = await this.client.post("/expenses", data);
-    return normalizeExpense(response.data);
+    // Response is already transformed by interceptor
+    const expense = response.data?.data || response.data;
+    return normalizeExpense(expense);
   }
 
   async updateExpense(id: string, data: any) {
     const response = await this.client.put(`/expenses/${id}`, data);
-    return normalizeExpense(response.data);
+    // Response is already transformed by interceptor
+    const expense = response.data?.data || response.data;
+    return normalizeExpense(expense);
   }
 
   async deleteExpense(id: string) {
     await this.client.delete(`/expenses/${id}`);
+  }
+
+  async getExpenseStatistics() {
+    const response = await this.client.get("/expenses/statistics/all-time");
+    // Response is already transformed by interceptor
+    if (response.data?.data) {
+      return response.data.data;
+    }
+    return response.data;
   }
 
   // Purchases endpoints
@@ -206,29 +353,58 @@ class ApiClient {
     startDate?: string;
     endDate?: string;
     supplierId?: string;
+    page?: number;
+    pageSize?: number;
   }) {
     const response = await this.client.get("/purchases", { params });
-    return response.data;
+    if (response.data && response.data.data && response.data.pagination) {
+      return {
+        data: Array.isArray(response.data.data)
+          ? response.data.data.map(normalizePurchase)
+          : [],
+        pagination: response.data.pagination,
+      };
+    }
+    // Fallback for old format
+    return {
+      data: Array.isArray(response.data)
+        ? response.data.map(normalizePurchase)
+        : [],
+      pagination: {
+        page: 1,
+        pageSize: response.data.length || 10,
+        total: response.data.length || 0,
+        totalPages: 1,
+      },
+    };
   }
 
   async createPurchase(data: any) {
     const response = await this.client.post("/purchases", data);
-    return response.data;
+    // Response is already transformed by interceptor
+    const purchase = response.data?.data || response.data;
+    return normalizePurchase(purchase);
   }
 
   async getPurchase(id: string) {
     const response = await this.client.get(`/purchases/${id}`);
-    return response.data;
+    // Response is already transformed by interceptor
+    const purchase = response.data?.data || response.data;
+    return normalizePurchase(purchase);
   }
 
   async updatePurchase(id: string, data: any) {
     const response = await this.client.put(`/purchases/${id}`, data);
-    return response.data;
+    // Response is already transformed by interceptor
+    const purchase = response.data?.data || response.data;
+    return normalizePurchase(purchase);
   }
 
   async addPaymentToPurchase(id: string, payment: any) {
     const response = await this.client.post(`/purchases/${id}/payments`, payment);
-    return response.data;
+    // Response is already transformed by interceptor
+    const purchase = response.data?.data || response.data;
+    return normalizePurchase(purchase);
   }
 
   // Opening Balance endpoints
@@ -256,6 +432,15 @@ class ApiClient {
     await this.client.delete(`/opening-balances/${id}`);
   }
 
+  // Suppliers endpoints
+  async getSuppliers(search?: string) {
+    const response = await this.client.get("/suppliers", { params: { search } });
+    // Support both {response:{data}} and {data}
+    if (response.data?.response?.data) return response.data.response.data;
+    if (response.data?.data) return response.data.data;
+    return response.data || [];
+  }
+
   // Reports endpoints
   async getDailyReport(date: string) {
     const response = await this.client.get("/reports/daily", { params: { date } });
@@ -264,6 +449,11 @@ class ApiClient {
 
   async getDateRangeReport(startDate: string, endDate: string) {
     const response = await this.client.get("/reports/range", { params: { startDate, endDate } });
+    return response.data;
+  }
+
+  async getDashboardStats() {
+    const response = await this.client.get("/dashboard");
     return response.data;
   }
 
@@ -283,19 +473,51 @@ class ApiClient {
   }
 
   // Users endpoints
-  async getUsers() {
-    const response = await this.client.get("/users");
-    return response.data;
+  async getUsers(params?: { page?: number; pageSize?: number }) {
+    const response = await this.client.get("/users", { params });
+    // Response is already transformed by interceptor
+    // For list endpoints, it's { data: [...], pagination: {...} }
+    if (response.data && response.data.data && response.data.pagination) {
+      return {
+        data: Array.isArray(response.data.data) ? response.data.data : [],
+        pagination: response.data.pagination,
+      };
+    }
+    // Fallback for old format
+    if (Array.isArray(response.data)) {
+      return {
+        data: response.data,
+        pagination: {
+          page: 1,
+          pageSize: response.data.length || 10,
+          total: response.data.length || 0,
+          totalPages: 1,
+        },
+      };
+    }
+    return {
+      data: response.data?.data || [],
+      pagination: response.data?.pagination || {
+        page: 1,
+        pageSize: 10,
+        total: 0,
+        totalPages: 1,
+      },
+    };
   }
 
   async getUser(id: string) {
     const response = await this.client.get(`/users/${id}`);
-    return response.data;
+    // Response is already transformed by interceptor
+    const user = response.data?.data || response.data;
+    return user;
   }
 
   async createUser(data: any) {
     const response = await this.client.post("/users", data);
-    return response.data;
+    // Response is already transformed by interceptor
+    const user = response.data?.data || response.data;
+    return user;
   }
 
   async updateUser(id: string, data: any) {
@@ -303,15 +525,34 @@ class ApiClient {
     const currentUser = JSON.parse(localStorage.getItem("currentUser") || "{}");
     if (id === currentUser.id) {
       const response = await this.client.put("/users/profile", data);
+      // Response is already transformed by interceptor
+      const user = response.data?.data || response.data;
       // Update currentUser in localStorage
-      if (response.data) {
-        localStorage.setItem("currentUser", JSON.stringify(response.data));
+      if (user) {
+        localStorage.setItem("currentUser", JSON.stringify(user));
       }
-      return response.data;
+      return user;
     }
     // Otherwise use admin endpoint
     const response = await this.client.put(`/users/${id}`, data);
-    return response.data;
+    // Response is already transformed by interceptor
+    const user = response.data?.data || response.data;
+    return user;
+  }
+
+  async updateProfile(data: { name: string; email?: string; profilePicture?: string }) {
+    const response = await this.client.put("/users/profile", data);
+    const user = response.data?.response?.data || response.data?.data || response.data;
+    // Update currentUser in localStorage
+    if (user) {
+      localStorage.setItem("currentUser", JSON.stringify(user));
+    }
+    return user;
+  }
+
+  async updatePassword(data: { currentPassword: string; newPassword: string; confirmPassword: string }) {
+    const response = await this.client.put("/users/profile/password", data);
+    return response.data?.response?.data || response.data;
   }
 
   async deleteUser(id: string) {
@@ -321,73 +562,77 @@ class ApiClient {
   // Categories endpoints
   async getCategories() {
     const response = await this.client.get("/categories");
-    return response.data;
+    // Response is already transformed by interceptor
+    return response.data?.data || response.data;
   }
 
   async getCategory(id: string) {
     const response = await this.client.get(`/categories/${id}`);
-    return response.data;
+    // Response is already transformed by interceptor
+    return response.data?.data || response.data;
   }
 
   async createCategory(data: { name: string; description?: string }) {
     const response = await this.client.post("/categories", data);
-    return response.data;
+    // Response is already transformed by interceptor
+    return response.data?.data || response.data;
   }
 
   async updateCategory(id: string, data: { name: string; description?: string }) {
     const response = await this.client.put(`/categories/${id}`, data);
-    return response.data;
+    // Response is already transformed by interceptor
+    return response.data?.data || response.data;
   }
 
   async deleteCategory(id: string) {
     await this.client.delete(`/categories/${id}`);
   }
 
-  // Roles endpoints
-  async getRoles() {
-    const response = await this.client.get("/roles");
-    return response.data;
-  }
 
   // Settings endpoints
   async getSettings() {
     return this.deduplicateRequest("getSettings", async () => {
       const response = await this.client.get("/settings");
-      return response.data;
+      return response.data?.response?.data || response.data?.data || response.data;
     });
   }
 
   async updateSettings(data: any) {
-    const response = await this.client.put("/settings", data);
-    return response.data;
+    const response = await this.client.put("/settings", { data });
+    return response.data?.response?.data || response.data;
   }
 
   // Bank Accounts endpoints
   async getBankAccounts() {
     return this.deduplicateRequest("getBankAccounts", async () => {
       const response = await this.client.get("/bank-accounts");
-      return response.data;
+      // Response is already transformed by interceptor
+      return response.data?.data || response.data;
     });
   }
 
   async getBankAccount(id: string) {
     const response = await this.client.get(`/bank-accounts/${id}`);
-    return response.data;
+    // Response is already transformed by interceptor
+    return response.data?.data || response.data;
   }
 
   async getDefaultBankAccount() {
     const response = await this.client.get("/bank-accounts/default");
-    return response.data;
+    // Response is already transformed by interceptor
+    return response.data?.data || response.data;
   }
 
   async createBankAccount(data: any) {
     const response = await this.client.post("/bank-accounts", data);
-    return response.data;
+    // Response is already transformed by interceptor
+    return response.data?.data || response.data;
   }
 
   async updateBankAccount(id: string, data: any) {
     const response = await this.client.put(`/bank-accounts/${id}`, data);
-    return response.data;
+    // Response is already transformed by interceptor
+    return response.data?.data || response.data;
   }
 
   async deleteBankAccount(id: string) {
@@ -398,28 +643,33 @@ class ApiClient {
   async getCards() {
     return this.deduplicateRequest("getCards", async () => {
       const response = await this.client.get("/cards");
-      return response.data;
+      // Response is already transformed by interceptor
+      return response.data?.data || response.data;
     });
   }
 
   async getCard(id: string) {
     const response = await this.client.get(`/cards/${id}`);
-    return response.data;
+    // Response is already transformed by interceptor
+    return response.data?.data || response.data;
   }
 
   async getDefaultCard() {
     const response = await this.client.get("/cards/default");
-    return response.data;
+    // Response is already transformed by interceptor
+    return response.data?.data || response.data;
   }
 
   async createCard(data: any) {
     const response = await this.client.post("/cards", data);
-    return response.data;
+    // Response is already transformed by interceptor
+    return response.data?.data || response.data;
   }
 
   async updateCard(id: string, data: any) {
     const response = await this.client.put(`/cards/${id}`, data);
-    return response.data;
+    // Response is already transformed by interceptor
+    return response.data?.data || response.data;
   }
 
   async deleteCard(id: string) {
@@ -449,6 +699,53 @@ class ApiClient {
       responseType: "blob",
     });
     return response.data;
+  }
+
+  async exportReportToExcel(reportData: any) {
+    const response = await this.client.post("/backup/report/excel", reportData, {
+      responseType: "blob",
+    });
+    return response.data;
+  }
+
+  async exportAllData() {
+    const response = await this.client.get("/backup/export-all-excel", {
+      responseType: "text",
+    });
+    return response.data;
+  }
+
+  async importAllData(data: any) {
+    const response = await this.client.post("/backup/import-all", data);
+    return response.data?.response?.data || response.data;
+  }
+
+  // Roles endpoints
+  async getRoles() {
+    const response = await this.client.get("/roles");
+    return response.data?.response?.data || response.data || [];
+  }
+
+  async createRole(data: { name: string; label: string; description?: string }) {
+    const response = await this.client.post("/roles", data);
+    // Handle nested response structure
+    if (response.data?.response?.data) {
+      return response.data.response.data;
+    }
+    if (response.data?.data) {
+      return response.data.data;
+    }
+    return response.data;
+  }
+
+  async updateRole(id: string, data: { label?: string; description?: string; isActive?: boolean }) {
+    const response = await this.client.put(`/roles/${id}`, data);
+    return response.data?.response?.data || response.data;
+  }
+
+  async deleteRole(id: string) {
+    const response = await this.client.delete(`/roles/${id}`);
+    return response.data?.response?.data || response.data;
   }
 }
 

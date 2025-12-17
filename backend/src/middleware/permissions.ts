@@ -38,33 +38,42 @@ export const hasPermission = (
 export const requirePermission = (permission: string) => {
   return async (req: AuthRequest, res: Response, next: NextFunction) => {
     if (!req.user) {
-      return res.status(401).json({ error: "Authentication required" });
+      return res.status(401).json({
+        message: "Authentication required",
+        response: null,
+        error: "Authentication required",
+      });
     }
 
-    // Superadmin and admin have all permissions
+    // If user is from AdminUser table (userType === "admin"), they have all permissions
+    if (req.user.userType === "admin") {
+      return next();
+    }
+
+    // For users from User table, check their role and permissions
+    // Superadmin and admin roles from User table also have all permissions
     if (req.user.role === "superadmin" || req.user.role === "admin") {
       return next();
     }
 
     // Fetch user with permissions if not already loaded
     if (!req.user.permissions) {
-      if (req.user.userType === "admin") {
-        // Admin users don't have permissions array
-        return next();
-      } else {
-        const user = await prisma.user.findUnique({
-          where: { id: req.user.id },
-          select: { permissions: true },
-        });
-        if (user) {
-          req.user.permissions = user.permissions || [];
-        }
+      const user = await prisma.user.findUnique({
+        where: { id: req.user.id },
+        select: { permissions: true },
+      });
+      if (user) {
+        req.user.permissions = user.permissions || [];
       }
     }
 
     // Check if user has the required permission
     if (!hasPermission(req, permission)) {
-      return res.status(403).json({ error: "Insufficient permissions" });
+      return res.status(403).json({
+        message: "Insufficient permissions",
+        response: null,
+        error: "Insufficient permissions",
+      });
     }
 
     next();

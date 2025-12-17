@@ -26,12 +26,12 @@ export const createProductSchema = Joi.object({
       "string.uuid": "Category ID must be a valid UUID",
     }),
   salePrice: Joi.number()
-    .optional()
-    .min(0)
-    .allow(null)
+    .required()
+    .min(0.01)
     .messages({
       "number.base": "Sale price must be a number",
-      "number.min": "Sale price cannot be negative",
+      "number.min": "Sale price must be greater than 0",
+      "any.required": "Sale price is required",
     }),
   shopQuantity: Joi.number()
     .required()
@@ -126,11 +126,10 @@ export const updateProductSchema = Joi.object({
     }),
   salePrice: Joi.number()
     .optional()
-    .min(0)
-    .allow(null)
+    .min(0.01)
     .messages({
       "number.base": "Sale price must be a number",
-      "number.min": "Sale price cannot be negative",
+      "number.min": "Sale price must be greater than 0",
     }),
   shopQuantity: Joi.number()
     .optional()
@@ -213,6 +212,26 @@ export const getProductsQuerySchema = Joi.object({
     .valid("true", "false")
     .messages({
       "any.only": "Low stock must be 'true' or 'false'",
+    }),
+  page: Joi.number()
+    .integer()
+    .min(1)
+    .optional()
+    .messages({
+      "number.base": "Page must be a number",
+      "number.integer": "Page must be an integer",
+      "number.min": "Page must be at least 1",
+    }),
+  pageSize: Joi.number()
+    .integer()
+    .min(1)
+    .max(100)
+    .optional()
+    .messages({
+      "number.base": "Page size must be a number",
+      "number.integer": "Page size must be an integer",
+      "number.min": "Page size must be at least 1",
+      "number.max": "Page size cannot exceed 100",
     }),
 });
 

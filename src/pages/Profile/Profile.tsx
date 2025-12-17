@@ -1,44 +1,135 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
+import { useForm } from "react-hook-form";
+import { yupResolver } from "@hookform/resolvers/yup";
+import * as yup from "yup";
 import { useDropzone } from "react-dropzone";
 import PageMeta from "../../components/common/PageMeta";
 import { useData } from "../../context/DataContext";
+import { useAlert } from "../../context/AlertContext";
 import Input from "../../components/form/input/InputField";
 import Label from "../../components/form/Label";
 import Button from "../../components/ui/button/Button";
 import { UserRole } from "../../types";
+import api from "../../services/api";
+
+// Profile information schema
+const profileFormSchema = yup.object().shape({
+  name: yup
+    .string()
+    .required("Name is required")
+    .trim()
+    .min(1, "Name must be at least 1 character")
+    .max(255, "Name must be less than 255 characters"),
+  email: yup
+    .string()
+    .optional()
+    .email("Please enter a valid email address")
+    .max(255, "Email must be less than 255 characters"),
+});
+
+// Strict password validation pattern
+// Must have: minimum 6 characters, at least one uppercase, one lowercase, one number, and one special character
+const strictPasswordPattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#^()_+\-=\[\]{};':"\\|,.<>\/])[A-Za-z\d@$!%*?&#^()_+\-=\[\]{};':"\\|,.<>\/]{6,}$/;
+
+// Password change schema
+const passwordFormSchema = yup.object().shape({
+  currentPassword: yup
+    .string()
+    .required("Current password is required"),
+  newPassword: yup
+    .string()
+    .required("New password is required")
+    .min(6, "Password must be at least 6 characters")
+    .max(100, "Password must be less than 100 characters")
+    .matches(
+      strictPasswordPattern,
+      "Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character"
+    ),
+  confirmPassword: yup
+    .string()
+    .required("Please confirm your new password")
+    .oneOf([yup.ref("newPassword")], "Passwords must match"),
+});
+
 export default function Profile() {
-  const { currentUser, updateUser, error } = useData();
+  const { currentUser, error, refreshCurrentUser } = useData();
+  const { showSuccess, showError } = useAlert();
   const navigate = useNavigate();
 
-  const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-    username: "",
-    role: "" as UserRole | "",
-    profilePicture: "",
-    currentPassword: "",
-    newPassword: "",
-    confirmPassword: "",
-  });
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [passwordError, setPasswordError] = useState("");
+  const [isSubmittingProfile, setIsSubmittingProfile] = useState(false);
+  const [isSubmittingPassword, setIsSubmittingPassword] = useState(false);
   const [imagePreview, setImagePreview] = useState<string>("");
+
+  // Profile form
+  const {
+    register: registerProfile,
+    handleSubmit: handleProfileSubmit,
+    formState: { errors: profileErrors },
+    setValue: setProfileValue,
+    watch: watchProfile,
+    reset: resetProfile,
+  } = useForm({
+    resolver: yupResolver(profileFormSchema),
+    defaultValues: {
+      name: "",
+      email: "",
+    },
+  });
+
+  // Password form
+  const {
+    register: registerPassword,
+    handleSubmit: handlePasswordSubmit,
+    formState: { errors: passwordErrors },
+    setValue: setPasswordValue,
+    setError: setPasswordError,
+    watch: watchPassword,
+    reset: resetPassword,
+  } = useForm({
+    resolver: yupResolver(passwordFormSchema),
+    defaultValues: {
+      currentPassword: "",
+      newPassword: "",
+      confirmPassword: "",
+    },
+  });
+
+  const profileData = {
+    name: watchProfile("name"),
+    email: watchProfile("email"),
+  };
+
+  const passwordData = {
+    currentPassword: watchPassword("currentPassword"),
+    newPassword: watchPassword("newPassword"),
+    confirmPassword: watchPassword("confirmPassword"),
+  };
 
   useEffect(() => {
     if (currentUser) {
-      setFormData({
+      resetProfile({
         name: currentUser.name || "",
         email: currentUser.email || "",
-        username: currentUser.username || "",
-        role: currentUser.role || "",
-        profilePicture: currentUser.profilePicture || "",
-        currentPassword: "",
-        newPassword: "",
-        confirmPassword: "",
       });
+      if (currentUser.profilePicture) {
+        setImagePreview(currentUser.profilePicture);
+      }
     }
-  }, [currentUser]);
+  }, [currentUser, resetProfile]);
+
+  if (!currentUser) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <p className="text-gray-500 mb-4">Please login to continue</p>
+          <Button onClick={() => navigate("/login")} size="sm">
+            Go to Login
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   const onDrop = (acceptedFiles: File[]) => {
     if (acceptedFiles.length > 0) {
@@ -46,7 +137,7 @@ export default function Profile() {
       const reader = new FileReader();
       reader.onload = () => {
         const result = reader.result as string;
-        setFormData({ ...formData, profilePicture: result });
+        setImagePreview(result);
       };
       reader.readAsDataURL(file);
     }
@@ -63,72 +154,83 @@ export default function Profile() {
     maxSize: 5 * 1024 * 1024, // 5MB
   });
 
-  if (!currentUser) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <p className="text-gray-500 mb-4">Please login to continue</p>
-          <Button onClick={() => navigate("/signin")} size="sm">
-            Go to Login
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setPasswordError("");
-
-    // Validate password if changing
-    if (formData.newPassword || formData.confirmPassword) {
-      if (formData.newPassword !== formData.confirmPassword) {
-        setPasswordError("New passwords do not match");
-        return;
-      }
-      if (formData.newPassword.length < 6) {
-        setPasswordError("Password must be at least 6 characters");
-        return;
-      }
-      if (!formData.currentPassword) {
-        setPasswordError("Please enter current password to change password");
-        return;
-      }
-    }
-
-    setIsSubmitting(true);
+  const onSubmitProfile = async (data: any) => {
+    setIsSubmittingProfile(true);
     try {
-      const updateData: any = {
-        name: formData.name,
-        email: formData.email || undefined,
-        profilePicture: formData.profilePicture || undefined,
+      const updateData = {
+        name: data.name.trim(),
+        email: data.email || undefined,
+        profilePicture: imagePreview || undefined,
       };
 
-      // Only update password if new password is provided
-      if (formData.newPassword && formData.currentPassword) {
-        updateData.password = formData.newPassword;
-        updateData.currentPassword = formData.currentPassword;
+      const updatedUser = await api.updateProfile(updateData);
+      showSuccess("Profile information updated successfully!");
+      
+      // Update currentUser in context from localStorage
+      refreshCurrentUser();
+      
+      // Update form with new data
+      resetProfile({
+        name: updatedUser.name || "",
+        email: updatedUser.email || "",
+      });
+      
+      // Update image preview if profile picture was updated
+      if (updatedUser.profilePicture) {
+        setImagePreview(updatedUser.profilePicture);
       }
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.error || err.response?.data?.message || "Failed to update profile. Please try again.";
+      showError(errorMsg);
+      console.error("Error updating profile:", err);
+    } finally {
+      setIsSubmittingProfile(false);
+    }
+  };
 
-      await updateUser(currentUser.id, updateData);
-      alert("Profile updated successfully!");
+  const onSubmitPassword = async (data: any) => {
+    setIsSubmittingPassword(true);
+    try {
+      await api.updatePassword({
+        currentPassword: data.currentPassword,
+        newPassword: data.newPassword,
+        confirmPassword: data.confirmPassword,
+      });
+      
+      showSuccess("Password updated successfully!");
       
       // Clear password fields
-      setFormData(prev => ({
-        ...prev,
+      resetPassword({
         currentPassword: "",
         newPassword: "",
         confirmPassword: "",
-      }));
-      
-      // Refresh user data to get updated profile picture
-      window.location.reload();
+      });
     } catch (err: any) {
-      const errorMsg = err.response?.data?.error || "Failed to update profile. Please try again.";
-      alert(errorMsg);
-      console.error("Error updating profile:", err);
+      const errorMsg = err.response?.data?.error || err.response?.data?.message || "Failed to update password. Please try again.";
+      
+      // Check if it's a current password error
+      if (errorMsg.toLowerCase().includes("current password") || 
+          errorMsg.toLowerCase().includes("incorrect") ||
+          err.response?.status === 401) {
+        // Set error on currentPassword field
+        setPasswordError("currentPassword", {
+          type: "manual",
+          message: errorMsg,
+        });
+      } else if (errorMsg.toLowerCase().includes("passwords must match")) {
+        // Set error on confirmPassword field
+        setPasswordError("confirmPassword", {
+          type: "manual",
+          message: errorMsg,
+        });
+      } else {
+        // Generic error - show in alert
+        showError(errorMsg);
+      }
+      
+      console.error("Error updating password:", err);
     } finally {
-      setIsSubmitting(false);
+      setIsSubmittingPassword(false);
     }
   };
 
@@ -143,7 +245,7 @@ export default function Profile() {
       case "warehouse_manager":
         return "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400";
       default:
-        return "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300";
+        return "bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400";
     }
   };
 
@@ -151,265 +253,234 @@ export default function Profile() {
     <>
       <PageMeta
         title="Profile | Isma Sports Complex"
-        description="User profile and settings"
+        description="View and edit your profile"
       />
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-800 dark:text-white">
-          My Profile
+      <div className="max-w-4xl p-6 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+        <h1 className="mb-6 text-2xl font-bold text-gray-800 dark:text-white">
+          Profile Settings
         </h1>
-        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-          Manage your account information and password
-        </p>
-      </div>
 
-      {error && (
-        <div className="mb-4 p-4 bg-red-50 rounded-lg dark:bg-red-900/20">
-          <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        {/* Profile Information Card */}
-        <div className="lg:col-span-2">
-          <div className="p-6 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-            <h2 className="mb-6 text-lg font-semibold text-gray-800 dark:text-white">
-              Profile Information
-            </h2>
-
-            <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Username (Read-only) */}
-              <div>
-                <Label>Username</Label>
-                <Input
-                  value={formData.username}
-                  disabled
-                  className="bg-gray-50 dark:bg-gray-900 cursor-not-allowed"
-                />
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  Username cannot be changed
-                </p>
-              </div>
-
-              {/* Full Name */}
-              <div>
-                <Label>
-                  Full Name <span className="text-error-500">*</span>
-                </Label>
-                <Input
-                  value={formData.name}
-                  onChange={(e) =>
-                    setFormData({ ...formData, name: e.target.value })
-                  }
-                  placeholder="Enter your full name"
-                  required
-                />
-              </div>
-
-              {/* Email */}
-              <div>
-                <Label>Email</Label>
-                <Input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) =>
-                    setFormData({ ...formData, email: e.target.value })
-                  }
-                  placeholder="Enter your email (optional)"
-                />
-              </div>
-
-              {/* Profile Picture */}
-              <div>
-                <Label>Profile Picture</Label>
-                <div className="mt-2">
-                  {imagePreview || formData.profilePicture ? (
-                    <div className="relative inline-block">
-                      <img
-                        src={imagePreview || formData.profilePicture}
-                        alt="Profile"
-                        className="w-24 h-24 rounded-full object-cover border-2 border-gray-200 dark:border-gray-700"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setImagePreview("");
-                          setFormData({ ...formData, profilePicture: "" });
-                        }}
-                        className="absolute top-0 right-0 p-1 bg-red-500 text-white rounded-full hover:bg-red-600 text-xs w-6 h-6 flex items-center justify-center"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ) : (
-                    <div
-                      {...getRootProps()}
-                      className="w-24 h-24 border-2 border-dashed border-gray-300 rounded-full flex items-center justify-center cursor-pointer hover:border-brand-500 dark:border-gray-700"
-                    >
-                      <input {...getInputProps()} />
-                      <span className="text-xs text-gray-500">Upload</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Role (Read-only) */}
-              <div>
-                <Label>Role</Label>
-                <div className="mt-2">
-                  <span
-                    className={`inline-block px-3 py-1 text-sm font-medium rounded ${getRoleBadgeColor(
-                      formData.role as UserRole
-                    )}`}
-                  >
-                    {formData.role.replace("_", " ")}
-                  </span>
-                </div>
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  Role cannot be changed. Contact administrator for role changes.
-                </p>
-              </div>
-
-              {/* Password Section */}
-              <div className="pt-6 border-t border-gray-200 dark:border-gray-700">
-                <h3 className="mb-4 text-lg font-semibold text-gray-800 dark:text-white">
-                  Change Password
-                </h3>
-                <p className="mb-4 text-sm text-gray-600 dark:text-gray-400">
-                  Leave blank if you don't want to change your password
-                </p>
-
-                {passwordError && (
-                  <div className="mb-4 p-3 bg-red-50 rounded-lg dark:bg-red-900/20">
-                    <p className="text-sm text-red-600 dark:text-red-400">
-                      {passwordError}
-                    </p>
-                  </div>
-                )}
-
-                {/* Current Password */}
-                <div className="mb-4">
-                  <Label>Current Password</Label>
-                  <Input
-                    type="password"
-                    value={formData.currentPassword}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        currentPassword: e.target.value,
-                      })
-                    }
-                    placeholder="Enter current password"
-                  />
-                </div>
-
-                {/* New Password */}
-                <div className="mb-4">
-                  <Label>New Password</Label>
-                  <Input
-                    type="password"
-                    value={formData.newPassword}
-                    onChange={(e) => {
-                      setFormData({
-                        ...formData,
-                        newPassword: e.target.value,
-                      });
-                      setPasswordError("");
-                    }}
-                    placeholder="Enter new password (min 6 characters)"
-                  />
-                </div>
-
-                {/* Confirm Password */}
-                <div>
-                  <Label>Confirm New Password</Label>
-                  <Input
-                    type="password"
-                    value={formData.confirmPassword}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        confirmPassword: e.target.value,
-                      })
-                    }
-                    placeholder="Confirm new password"
-                  />
-                </div>
-              </div>
-
-              {/* Submit Button */}
-              <div className="flex gap-4 pt-4">
-                <Button type="submit" size="sm" disabled={isSubmitting}>
-                  {isSubmitting ? "Saving..." : "Save Changes"}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setFormData({
-                      name: currentUser.name || "",
-                      email: currentUser.email || "",
-                      username: currentUser.username || "",
-                      role: currentUser.role || "",
-                      profilePicture: currentUser.profilePicture || "",
-                      currentPassword: "",
-                      newPassword: "",
-                      confirmPassword: "",
-                    });
-                    setPasswordError("");
-                  }}
-                  disabled={isSubmitting}
-                >
-                  Reset
-                </Button>
-              </div>
-            </form>
+        {error && (
+          <div className="mb-4 p-4 bg-red-50 rounded-lg dark:bg-red-900/20">
+            <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
           </div>
-        </div>
+        )}
 
-        {/* Account Summary Card */}
-        <div>
-          <div className="p-6 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-            <h2 className="mb-4 text-lg font-semibold text-gray-800 dark:text-white">
-              Account Summary
-            </h2>
+        {/* Profile Information Form */}
+        <form onSubmit={handleProfileSubmit(onSubmitProfile)} className="space-y-6">
+          <h2 className="mb-4 text-xl font-semibold text-gray-800 dark:text-white">
+            Profile Information
+          </h2>
 
-            <div className="space-y-4">
-              <div>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Account Created
-                </p>
-                <p className="mt-1 text-sm font-medium text-gray-800 dark:text-white">
-                  {currentUser.createdAt
-                    ? new Date(currentUser.createdAt).toLocaleDateString()
-                    : "N/A"}
-                </p>
+          {/* Profile Picture */}
+          <div>
+            <Label>Profile Picture</Label>
+            {imagePreview ? (
+              <div className="mt-2">
+                <div className="relative inline-block">
+                  <img
+                    src={imagePreview}
+                    alt="Profile preview"
+                    className="h-32 w-32 object-cover rounded-full border-4 border-gray-200 dark:border-gray-700"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setImagePreview("")}
+                    className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600"
+                  >
+                    ×
+                  </button>
+                </div>
               </div>
-
-              <div>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  User ID
-                </p>
-                <p className="mt-1 text-sm font-medium text-gray-800 dark:text-white font-mono">
-                  {currentUser.id.substring(0, 8)}...
-                </p>
+            ) : (
+              <div
+                {...getRootProps()}
+                className="mt-2 border-2 border-dashed rounded-lg p-6 cursor-pointer hover:border-brand-400 transition-colors border-gray-300 dark:border-gray-700"
+              >
+                <input {...getInputProps()} />
+                <div className="text-center">
+                  <svg
+                    className="mx-auto h-12 w-12 text-gray-400"
+                    stroke="currentColor"
+                    fill="none"
+                    viewBox="0 0 48 48"
+                  >
+                    <path
+                      d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02"
+                      strokeWidth={2}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                  <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                    Click to upload or drag and drop
+                  </p>
+                  <p className="mt-1 text-xs text-gray-500">PNG, JPG, WEBP up to 5MB</p>
+                </div>
               </div>
+            )}
+          </div>
 
-              <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
-                <p className="mb-2 text-xs text-gray-500 dark:text-gray-400">
-                  Permissions
-                </p>
-                <p className="text-sm font-medium text-gray-800 dark:text-white">
-                  {currentUser.permissions && currentUser.permissions.length > 0
-                    ? `${currentUser.permissions.length} custom permission(s)`
-                    : "Default role permissions"}
-                </p>
+          {/* User Info */}
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div>
+              <Label>
+                Full Name <span className="text-error-500">*</span>
+              </Label>
+              <Input
+                name="name"
+                value={profileData.name}
+                onChange={(e) => {
+                  setProfileValue("name", e.target.value);
+                }}
+                onBlur={registerProfile("name").onBlur}
+                placeholder="Enter your full name"
+                required
+                error={!!profileErrors.name}
+                hint={profileErrors.name?.message}
+              />
+            </div>
+            <div>
+              <Label>Email</Label>
+              <Input
+                type="email"
+                name="email"
+                value={profileData.email}
+                onChange={(e) => {
+                  setProfileValue("email", e.target.value);
+                }}
+                onBlur={registerProfile("email").onBlur}
+                placeholder="Enter your email (optional)"
+                error={!!profileErrors.email}
+                hint={profileErrors.email?.message}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div>
+              <Label>Username</Label>
+              <Input
+                value={currentUser?.username || ""}
+                disabled
+                placeholder="Username (cannot be changed)"
+                className="bg-gray-100 dark:bg-gray-700"
+              />
+            </div>
+            <div>
+              <Label>Role</Label>
+              <div className="mt-2">
+                <span
+                  className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${getRoleBadgeColor(
+                    currentUser.role
+                  )}`}
+                >
+                  {currentUser.role}
+                </span>
               </div>
             </div>
           </div>
-        </div>
+
+          <div className="flex gap-4 pt-6 border-t border-gray-200 dark:border-gray-700">
+            <Button type="submit" size="sm" disabled={isSubmittingProfile}>
+              {isSubmittingProfile ? "Updating..." : "Update Profile Information"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => navigate("/")}
+              disabled={isSubmittingProfile}
+            >
+              Cancel
+            </Button>
+          </div>
+        </form>
+
+        {/* Password Change Form */}
+        <form onSubmit={handlePasswordSubmit(onSubmitPassword)} className="space-y-6 mt-8 pt-8 border-t border-gray-200 dark:border-gray-700">
+          <h2 className="mb-4 text-xl font-semibold text-gray-800 dark:text-white">
+            Change Password
+          </h2>
+          <div className="space-y-4">
+            <div>
+              <Label>
+                Current Password <span className="text-error-500">*</span>
+              </Label>
+              <Input
+                type="password"
+                name="currentPassword"
+                value={passwordData.currentPassword}
+                onChange={(e) => {
+                  setPasswordValue("currentPassword", e.target.value);
+                }}
+                onBlur={registerPassword("currentPassword").onBlur}
+                placeholder="Enter current password"
+                required
+                error={!!passwordErrors.currentPassword}
+                hint={passwordErrors.currentPassword?.message}
+              />
+            </div>
+            <div>
+              <Label>
+                New Password <span className="text-error-500">*</span>
+              </Label>
+              <Input
+                type="password"
+                name="newPassword"
+                value={passwordData.newPassword}
+                onChange={(e) => {
+                  setPasswordValue("newPassword", e.target.value);
+                }}
+                onBlur={registerPassword("newPassword").onBlur}
+                placeholder="Enter new password (min 6 characters)"
+                required
+                error={!!passwordErrors.newPassword}
+                hint={passwordErrors.newPassword?.message}
+              />
+            </div>
+            <div>
+              <Label>
+                Confirm New Password <span className="text-error-500">*</span>
+              </Label>
+              <Input
+                type="password"
+                name="confirmPassword"
+                value={passwordData.confirmPassword}
+                onChange={(e) => {
+                  setPasswordValue("confirmPassword", e.target.value);
+                }}
+                onBlur={registerPassword("confirmPassword").onBlur}
+                placeholder="Confirm new password"
+                required
+                error={!!passwordErrors.confirmPassword}
+                hint={passwordErrors.confirmPassword?.message}
+              />
+            </div>
+          </div>
+
+          <div className="flex gap-4 pt-4">
+            <Button type="submit" size="sm" disabled={isSubmittingPassword}>
+              {isSubmittingPassword ? "Updating..." : "Update Password"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                resetPassword({
+                  currentPassword: "",
+                  newPassword: "",
+                  confirmPassword: "",
+                });
+              }}
+              disabled={isSubmittingPassword}
+            >
+              Clear
+            </Button>
+          </div>
+        </form>
       </div>
     </>
   );
 }
-

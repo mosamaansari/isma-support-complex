@@ -301,8 +301,7 @@ class ReportService {
     // Calculate sales totals
     const salesTotal = sales.reduce((sum, sale) => sum + Number(sale.total), 0);
     const salesCash = sales.filter((s) => s.paymentType === "cash").reduce((sum, sale) => sum + Number(sale.total), 0);
-    const salesCard = sales.filter((s) => s.paymentType === "card").reduce((sum, sale) => sum + Number(sale.total), 0);
-    const salesCredit = sales.filter((s) => s.paymentType === "credit").reduce((sum, sale) => sum + Number(sale.total), 0);
+    const salesBankTransfer = sales.filter((s) => s.paymentType === "bank_transfer").reduce((sum, sale) => sum + Number(sale.total), 0);
 
     // Get purchases for the day
     const purchases = await prisma.purchase.findMany({
@@ -329,15 +328,15 @@ class ReportService {
         const cashPayments = payments.filter((pay) => pay.type === "cash").reduce((s, pay) => s + pay.amount, 0);
         return sum + cashPayments;
       }, 0);
-    const purchasesCard = purchases
+    const purchasesBankTransfer = purchases
       .filter((p) => {
         const payments = (p.payments as Array<{ type: string; amount: number }> | null) || [];
-        return payments.some((pay) => pay.type === "card");
+        return payments.some((pay) => pay.type === "bank_transfer");
       })
       .reduce((sum, p) => {
         const payments = (p.payments as Array<{ type: string; amount: number }> | null) || [];
-        const cardPayments = payments.filter((pay) => pay.type === "card").reduce((s, pay) => s + pay.amount, 0);
-        return sum + cardPayments;
+        const bankTransferPayments = payments.filter((pay) => pay.type === "bank_transfer").reduce((s, pay) => s + pay.amount, 0);
+        return sum + bankTransferPayments;
       }, 0);
 
     // Get expenses for the day
@@ -353,7 +352,7 @@ class ReportService {
     // Calculate expense totals
     const expensesTotal = expenses.reduce((sum, exp) => sum + Number(exp.amount), 0);
     const expensesCash = expenses.filter((e) => e.paymentType === "cash").reduce((sum, exp) => sum + Number(exp.amount), 0);
-    const expensesCard = expenses.filter((e) => e.paymentType === "card").reduce((sum, exp) => sum + Number(exp.amount), 0);
+    const expensesBankTransfer = expenses.filter((e) => e.paymentType === "bank_transfer").reduce((sum, exp) => sum + Number(exp.amount), 0);
 
     // Calculate closing balance
     const closingCash = openingCash + salesCash - purchasesCash - expensesCash;
@@ -396,22 +395,21 @@ class ReportService {
       sales: {
         total: salesTotal,
         cash: salesCash,
-        card: salesCard,
-        credit: salesCredit,
+        bank_transfer: salesBankTransfer,
         count: sales.length,
         items: sales,
       },
       purchases: {
         total: purchasesTotal,
         cash: purchasesCash,
-        card: purchasesCard,
+        bank_transfer: purchasesBankTransfer,
         count: purchases.length,
         items: purchases,
       },
       expenses: {
         total: expensesTotal,
         cash: expensesCash,
-        card: expensesCard,
+        bank_transfer: expensesBankTransfer,
         count: expenses.length,
         items: expenses,
       },
@@ -492,8 +490,7 @@ class ReportService {
     // Calculate summary totals
     const salesTotal = sales.reduce((sum, sale) => sum + Number(sale.total), 0);
     const salesCash = sales.filter((s) => s.paymentType === "cash").reduce((sum, sale) => sum + Number(sale.total), 0);
-    const salesCard = sales.filter((s) => s.paymentType === "card").reduce((sum, sale) => sum + Number(sale.total), 0);
-    const salesCredit = sales.filter((s) => s.paymentType === "credit").reduce((sum, sale) => sum + Number(sale.total), 0);
+    const salesBankTransfer = sales.filter((s) => s.paymentType === "bank_transfer").reduce((sum, sale) => sum + Number(sale.total), 0);
 
     const purchasesTotal = purchases.reduce((sum, p) => sum + Number(p.total), 0);
     const purchasesCash = purchases
@@ -506,20 +503,20 @@ class ReportService {
         const cashPayments = payments.filter((pay) => pay.type === "cash").reduce((s, pay) => s + pay.amount, 0);
         return sum + cashPayments;
       }, 0);
-    const purchasesCard = purchases
+    const purchasesBankTransfer = purchases
       .filter((p) => {
         const payments = (p.payments as Array<{ type: string; amount: number }> | null) || [];
-        return payments.some((pay) => pay.type === "card");
+        return payments.some((pay) => pay.type === "bank_transfer");
       })
       .reduce((sum, p) => {
         const payments = (p.payments as Array<{ type: string; amount: number }> | null) || [];
-        const cardPayments = payments.filter((pay) => pay.type === "card").reduce((s, pay) => s + pay.amount, 0);
-        return sum + cardPayments;
+        const bankTransferPayments = payments.filter((pay) => pay.type === "bank_transfer").reduce((s, pay) => s + pay.amount, 0);
+        return sum + bankTransferPayments;
       }, 0);
 
     const expensesTotal = expenses.reduce((sum, exp) => sum + Number(exp.amount), 0);
     const expensesCash = expenses.filter((e) => e.paymentType === "cash").reduce((sum, exp) => sum + Number(exp.amount), 0);
-    const expensesCard = expenses.filter((e) => e.paymentType === "card").reduce((sum, exp) => sum + Number(exp.amount), 0);
+    const expensesBankTransfer = expenses.filter((e) => e.paymentType === "bank_transfer").reduce((sum, exp) => sum + Number(exp.amount), 0);
 
     // Calculate closing balance
     const closingCash = openingCash + salesCash - purchasesCash - expensesCash;
@@ -577,20 +574,19 @@ class ReportService {
         sales: {
           total: salesTotal,
           cash: salesCash,
-          card: salesCard,
-          credit: salesCredit,
+          bank_transfer: salesBankTransfer,
           count: sales.length,
         },
         purchases: {
           total: purchasesTotal,
           cash: purchasesCash,
-          card: purchasesCard,
+          bank_transfer: purchasesBankTransfer,
           count: purchases.length,
         },
         expenses: {
           total: expensesTotal,
           cash: expensesCash,
-          card: expensesCard,
+          bank_transfer: expensesBankTransfer,
           count: expenses.length,
         },
         closingBalance: {

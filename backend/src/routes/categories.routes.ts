@@ -1,7 +1,7 @@
 import express, { Router } from "express";
 import categoryController from "../controllers/category.controller";
 import { authenticate } from "../middleware/auth";
-import { validate, validateParams } from "../middleware/validate";
+import { bodyValidator, paramsValidator } from "../middleware/joiValidator";
 import { createCategorySchema, updateCategorySchema } from "../validators/category.validator";
 import Joi from "joi";
 
@@ -14,10 +14,10 @@ router.get("/", authenticate, categoryController.getCategories.bind(categoryCont
 router.get(
   "/:id",
   authenticate,
-  validateParams(
+  paramsValidator(
     Joi.object({
-      id: Joi.string().uuid().required().messages({
-        "string.uuid": "Category ID must be a valid UUID",
+      id: Joi.string().required().trim().min(1).messages({
+        "string.empty": "Category ID is required",
         "any.required": "Category ID is required",
       }),
     })
@@ -29,7 +29,7 @@ router.get(
 router.post(
   "/",
   authenticate,
-  validate(createCategorySchema),
+  bodyValidator(createCategorySchema),
   categoryController.createCategory.bind(categoryController)
 );
 
@@ -37,15 +37,15 @@ router.post(
 router.put(
   "/:id",
   authenticate,
-  validateParams(
+  paramsValidator(
     Joi.object({
-      id: Joi.string().uuid().required().messages({
-        "string.uuid": "Category ID must be a valid UUID",
+      id: Joi.string().required().trim().min(1).messages({
+        "string.empty": "Category ID is required",
         "any.required": "Category ID is required",
       }),
     })
   ),
-  validate(updateCategorySchema),
+  bodyValidator(updateCategorySchema),
   categoryController.updateCategory.bind(categoryController)
 );
 
@@ -53,10 +53,10 @@ router.put(
 router.delete(
   "/:id",
   authenticate,
-  validateParams(
+  paramsValidator(
     Joi.object({
-      id: Joi.string().uuid().required().messages({
-        "string.uuid": "Category ID must be a valid UUID",
+      id: Joi.string().required().trim().min(1).messages({
+        "string.empty": "Category ID is required",
         "any.required": "Category ID is required",
       }),
     })

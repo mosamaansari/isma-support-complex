@@ -1,8 +1,10 @@
 import express, { Router } from "express";
 import reportsController from "../controllers/reports.controller";
 import { authenticate } from "../middleware/auth";
-import { validateQuery } from "../middleware/validate";
+import { requirePermission } from "../middleware/permissions";
+import { queryValidator } from "../middleware/joiValidator";
 import { getReportQuerySchema } from "../validators/openingBalance.validator";
+import { PERMISSIONS } from "../utils/permissions";
 
 const router = Router();
 
@@ -10,7 +12,8 @@ const router = Router();
 router.get(
   "/daily",
   authenticate,
-  validateQuery(getReportQuerySchema),
+  requirePermission(PERMISSIONS.REPORTS_VIEW),
+  queryValidator(getReportQuerySchema),
   reportsController.getDailyReport.bind(reportsController)
 );
 
@@ -18,7 +21,8 @@ router.get(
 router.get(
   "/range",
   authenticate,
-  validateQuery(getReportQuerySchema),
+  requirePermission(PERMISSIONS.REPORTS_VIEW),
+  queryValidator(getReportQuerySchema),
   reportsController.getDateRangeReport.bind(reportsController)
 );
 

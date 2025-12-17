@@ -1,38 +1,171 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router";
 import PageMeta from "../../components/common/PageMeta";
 import { useData } from "../../context/DataContext";
+import { useAlert } from "../../context/AlertContext";
 import { ExpenseCategory } from "../../types";
 import Button from "../../components/ui/button/Button";
 import Input from "../../components/form/input/InputField";
+import DatePicker from "../../components/form/DatePicker";
+import Pagination from "../../components/ui/Pagination";
+import PageSizeSelector from "../../components/ui/PageSizeSelector";
 import { PencilIcon, TrashBinIcon } from "../../icons";
+import { Modal } from "../../components/ui/modal";
+import api from "../../services/api";
 
 export default function ExpenseList() {
-  const { expenses, deleteExpense, currentUser } = useData();
+  const { expenses, expensesPagination, deleteExpense, currentUser, loading, error, refreshExpenses } = useData();
+  const { showSuccess, showError } = useAlert();
   const [searchTerm, setSearchTerm] = useState("");
   const [filterCategory, setFilterCategory] = useState<ExpenseCategory | "all">("all");
   const [filterDate, setFilterDate] = useState("");
+  const [expenseSummary, setExpenseSummary] = useState<{
+    totalAmount: number;
+    totalCount: number;
+    categoryTotals: Record<string, { total: number; count: number }>;
+  } | null>(null);
+  const expensesLoadedRef = useRef(false);
 
-  const filteredExpenses = expenses.filter((expense) => {
+  // Load expenses on mount if empty
+  useEffect(() => {
+    if (!expensesLoadedRef.current) {
+      expensesLoadedRef.current = true;
+      if (!loading && (!expenses || expenses.length === 0)) {
+        refreshExpenses(expensesPagination?.page || 1, expensesPagination?.pageSize || 10).catch(err => {
+          console.error("ExpenseList - Error refreshing expenses:", err);
+        });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Load expense summary from API response when expenses are loaded
+  useEffect(() => {
+    const loadExpenseSummary = async () => {
+      try {
+        const result = await api.getExpenses({ page: 1, pageSize: 10 });
+        if (result.summary) {
+          setExpenseSummary(result.summary);
+        }
+      } catch (err) {
+        console.error("Error loading expense summary:", err);
+      }
+    };
+    loadExpenseSummary();
+  }, []);
+
+  // Refresh summary when expenses list changes (after add/update/delete)
+  useEffect(() => {
+    const refreshSummary = async () => {
+      try {
+        const result = await api.getExpenses({ page: 1, pageSize: 10 });
+        if (result.summary) {
+          setExpenseSummary(result.summary);
+        }
+      } catch (err) {
+        console.error("Error refreshing expense summary:", err);
+      }
+    };
+    // Only refresh if we have expenses loaded
+    if (expenses && expenses.length > 0) {
+      refreshSummary();
+    }
+  }, [expenses]);
+
+  const handlePageChange = (page: number) => {
+    refreshExpenses(page, expensesPagination?.pageSize || 10);
+  };
+
+  const handlePageSizeChange = (pageSize: number) => {
+    refreshExpenses(1, pageSize);
+  };
+
+  if (!currentUser) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <p className="text-gray-500 mb-4">Please login to continue</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error only if there's an error and no expenses at all
+  if (error && (!expenses || expenses.length === 0) && !loading) {
+    return (
+      <>
+        <PageMeta title="Expenses | Isma Sports Complex" description="Manage expenses" />
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="text-center">
+            <p className="text-red-600 dark:text-red-400 mb-4">Error: {error}</p>
+            <Button onClick={() => refreshExpenses(expensesPagination?.page || 1, expensesPagination?.pageSize || 10)} size="sm">
+              Retry
+            </Button>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  const filteredExpenses = (expenses || []).filter((expense) => {
+    if (!expense) return false;
     const matchesSearch =
-      expense.description.toLowerCase().includes(searchTerm.toLowerCase());
+      !searchTerm ||
+      (expense.description && expense.description.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      expense.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      expense.userName.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = filterCategory === "all" || expense.category === filterCategory;
-    const matchesDate = !filterDate || expense.date === filterDate;
+    // Compare date part only (YYYY-MM-DD)
+    const expenseDateStr = expense.date ? new Date(expense.date).toISOString().split('T')[0] : '';
+    const matchesDate = !filterDate || expenseDateStr === filterDate;
     return matchesSearch && matchesCategory && matchesDate;
   });
 
-  const handleDelete = (id: string) => {
-    if (window.confirm("Are you sure you want to delete this expense?")) {
-      deleteExpense(id);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [expenseToDelete, setExpenseToDelete] = useState<string | null>(null);
+
+  const handleDeleteClick = (id: string) => {
+    setExpenseToDelete(id);
+    setDeleteModalOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!expenseToDelete) return;
+    try {
+      await deleteExpense(expenseToDelete);
+      setDeleteModalOpen(false);
+      setExpenseToDelete(null);
+      showSuccess("Expense deleted successfully!");
+      // Refresh summary from backend after delete
+      try {
+        const result = await api.getExpenses({ page: 1, pageSize: 10 });
+        if (result.summary) {
+          setExpenseSummary(result.summary);
+        }
+      } catch (err) {
+        console.error("Error refreshing expense summary:", err);
+      }
+      // Also refresh the paginated list
+      await refreshExpenses(expensesPagination?.page || 1, expensesPagination?.pageSize || 10);
+    } catch (err) {
+      console.error("Error deleting expense:", err);
+      showError("Failed to delete expense. Please try again.");
     }
   };
 
-  const totalExpenses = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
+  // Use summary from API response (all-time totals from start to today)
+  const totalExpenses = expenseSummary?.totalAmount 
+    ? (typeof expenseSummary.totalAmount === 'number' 
+        ? expenseSummary.totalAmount 
+        : parseFloat(String(expenseSummary.totalAmount)) || 0)
+    : 0;
 
-  const categoryTotals = expenses.reduce((acc, expense) => {
-    acc[expense.category] = (acc[expense.category] || 0) + expense.amount;
-    return acc;
-  }, {} as Record<ExpenseCategory, number>);
+  const categoryTotals = expenseSummary?.categoryTotals
+    ? Object.entries(expenseSummary.categoryTotals).reduce((acc, [category, data]) => {
+        acc[category] = typeof data.total === 'number' ? data.total : parseFloat(String(data.total)) || 0;
+        return acc;
+      }, {} as Record<string, number>)
+    : {};
 
   return (
     <>
@@ -50,134 +183,232 @@ export default function ExpenseList() {
           </Link>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 mb-6 md:grid-cols-4">
-          <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-            <p className="text-sm text-gray-600 dark:text-gray-400">Total Expenses</p>
-            <p className="text-2xl font-bold text-gray-800 dark:text-white">
-              Rs. {totalExpenses.toFixed(2)}
-            </p>
+        {/* Loading overlay - only show when loading and no data */}
+        {loading && (!expenses || expenses.length === 0) ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+              <p className="text-gray-600 dark:text-gray-400">Loading expenses...</p>
+            </div>
           </div>
-          {Object.entries(categoryTotals).slice(0, 3).map(([category, amount]) => (
-            <div key={category} className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-              <p className="text-sm text-gray-600 dark:text-gray-400 capitalize">
-                {category}
-              </p>
-              <p className="text-2xl font-bold text-gray-800 dark:text-white">
-                Rs. {amount.toFixed(2)}
+        ) : (
+          <>
+            <div className="grid grid-cols-1 gap-4 mb-6 md:grid-cols-4">
+              <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+                <p className="text-sm text-gray-600 dark:text-gray-400">Total Expenses</p>
+                <p className="text-2xl font-bold text-gray-800 dark:text-white">
+                  Rs. {totalExpenses.toFixed(2)}
+                </p>
+              </div>
+              {Object.entries(categoryTotals)
+                .sort(([, a], [, b]) => {
+                  const amountA = typeof a === 'number' ? a : parseFloat(String(a)) || 0;
+                  const amountB = typeof b === 'number' ? b : parseFloat(String(b)) || 0;
+                  return amountB - amountA;
+                })
+                .slice(0, 3)
+                .map(([category, amount]) => {
+                  const amountValue = typeof amount === 'number' ? amount : parseFloat(String(amount)) || 0;
+                  return (
+                    <div key={category} className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+                      <p className="text-sm text-gray-600 dark:text-gray-400 capitalize">
+                        {category}
+                      </p>
+                      <p className="text-2xl font-bold text-gray-800 dark:text-white">
+                        Rs. {amountValue.toFixed(2)}
+                      </p>
+                    </div>
+                  );
+                })}
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 mb-6 md:grid-cols-3">
+              <Input
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search expenses..."
+              />
+              <select
+                value={filterCategory}
+                onChange={(e) =>
+                  setFilterCategory(e.target.value as ExpenseCategory | "all")
+                }
+                className="px-4 py-2 border border-gray-300 rounded-lg dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+              >
+                <option value="all">All Categories</option>
+                <option value="rent">Rent</option>
+                <option value="bills">Bills</option>
+                <option value="transport">Transport</option>
+                <option value="salaries">Salaries</option>
+                <option value="maintenance">Maintenance</option>
+                <option value="marketing">Marketing</option>
+                <option value="other">Other</option>
+              </select>
+              <DatePicker
+                value={filterDate}
+                onChange={(e) => {
+                  const dateValue = e.target.value;
+                  setFilterDate(dateValue || "");
+                }}
+                placeholder="Filter by date"
+              />
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Content section - always show table, even when loading or empty */}
+      {!loading ? (
+        <>
+          <div className="overflow-x-auto bg-white rounded-lg shadow-sm dark:bg-gray-800">
+            <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-200 dark:border-gray-700">
+                    <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Date
+                    </th>
+                    <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Category
+                    </th>
+                    <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Description
+                    </th>
+                    <th className="p-4 text-right text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Amount
+                    </th>
+                    <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Added By
+                    </th>
+                    <th className="p-4 text-center text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredExpenses.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="p-8 text-center text-gray-500">
+                        No expenses found
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredExpenses.map((expense) => (
+                      <tr
+                        key={expense.id}
+                        className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                      >
+                        <td className="p-4 text-gray-700 dark:text-gray-300">
+                          {new Date(expense.date).toLocaleDateString()}
+                        </td>
+                        <td className="p-4">
+                          <span className="px-2 py-1 text-xs font-medium rounded bg-gray-100 dark:bg-gray-700 capitalize">
+                            {expense.category}
+                          </span>
+                        </td>
+                        <td className="p-4 text-gray-700 dark:text-gray-300">
+                          {expense.description || <span className="text-gray-400 italic">No description</span>}
+                        </td>
+                        <td className="p-4 text-right font-semibold text-gray-800 dark:text-white">
+                          Rs. {(typeof expense.amount === 'number' ? expense.amount : parseFloat(String(expense.amount)) || 0).toFixed(2)}
+                        </td>
+                        <td className="p-4 text-gray-700 dark:text-gray-300">
+                          {expense.userName}
+                        </td>
+                        <td className="p-4">
+                          <div className="flex items-center justify-center gap-2">
+                            <Link to={`/expenses/edit/${expense.id}`}>
+                              <button className="p-2 text-blue-600 hover:bg-blue-50 rounded dark:hover:bg-blue-900/20">
+                                <PencilIcon className="w-4 h-4" />
+                              </button>
+                            </Link>
+                            {(currentUser?.role === "admin" ||
+                              currentUser?.id === expense.userId) && (
+                              <button
+                                onClick={() => handleDeleteClick(expense.id)}
+                                className="p-2 text-red-600 hover:bg-red-50 rounded dark:hover:bg-red-900/20"
+                              >
+                                <TrashBinIcon className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+            </table>
+          </div>
+
+          {/* Pagination Controls */}
+          <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-4 bg-white rounded-lg shadow-sm p-4 dark:bg-gray-800">
+            <div className="flex items-center gap-4">
+              <PageSizeSelector
+                pageSize={expensesPagination?.pageSize || 10}
+                onPageSizeChange={handlePageSizeChange}
+              />
+              <span className="text-sm text-gray-600 dark:text-gray-400">
+                Showing {((expensesPagination?.page || 1) - 1) * (expensesPagination?.pageSize || 10) + 1} to{" "}
+                {Math.min((expensesPagination?.page || 1) * (expensesPagination?.pageSize || 10), expensesPagination?.total || 0)} of{" "}
+                {expensesPagination?.total || 0} expenses
+              </span>
+            </div>
+            <Pagination
+              currentPage={expensesPagination?.page || 1}
+              totalPages={expensesPagination?.totalPages || 1}
+              onPageChange={handlePageChange}
+            />
+          </div>
+        </>
+      ) : null}
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        isOpen={deleteModalOpen}
+        onClose={() => {
+          setDeleteModalOpen(false);
+          setExpenseToDelete(null);
+        }}
+        className="max-w-md mx-4"
+        showCloseButton={true}
+      >
+        <div className="p-6">
+          <div className="flex items-center gap-4 mb-4">
+            <div className="flex items-center justify-center w-12 h-12 bg-red-100 rounded-full dark:bg-red-900/20">
+              <TrashBinIcon className="w-6 h-6 text-red-600 dark:text-red-400" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-gray-800 dark:text-white">
+                Delete Expense
+              </h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                This action cannot be undone
               </p>
             </div>
-          ))}
+          </div>
+          <p className="mb-6 text-gray-700 dark:text-gray-300">
+            Are you sure you want to delete this expense? This will permanently remove the expense record.
+          </p>
+          <div className="flex gap-3 justify-end">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setDeleteModalOpen(false);
+                setExpenseToDelete(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              onClick={confirmDelete}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              Delete Expense
+            </Button>
+          </div>
         </div>
-
-        <div className="grid grid-cols-1 gap-4 mb-6 md:grid-cols-3">
-          <Input
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search expenses..."
-          />
-          <select
-            value={filterCategory}
-            onChange={(e) =>
-              setFilterCategory(e.target.value as ExpenseCategory | "all")
-            }
-            className="px-4 py-2 border border-gray-300 rounded-lg dark:bg-gray-800 dark:border-gray-700 dark:text-white"
-          >
-            <option value="all">All Categories</option>
-            <option value="rent">Rent</option>
-            <option value="bills">Bills</option>
-            <option value="transport">Transport</option>
-            <option value="salaries">Salaries</option>
-            <option value="maintenance">Maintenance</option>
-            <option value="marketing">Marketing</option>
-            <option value="other">Other</option>
-          </select>
-          <Input
-            type="date"
-            value={filterDate}
-            onChange={(e) => setFilterDate(e.target.value)}
-            placeholder="Filter by date"
-          />
-        </div>
-      </div>
-
-      <div className="overflow-x-auto bg-white rounded-lg shadow-sm dark:bg-gray-800">
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-gray-200 dark:border-gray-700">
-              <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
-                Date
-              </th>
-              <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
-                Category
-              </th>
-              <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
-                Description
-              </th>
-              <th className="p-4 text-right text-sm font-medium text-gray-700 dark:text-gray-300">
-                Amount
-              </th>
-              <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
-                Added By
-              </th>
-              <th className="p-4 text-center text-sm font-medium text-gray-700 dark:text-gray-300">
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredExpenses.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="p-8 text-center text-gray-500">
-                  No expenses found
-                </td>
-              </tr>
-            ) : (
-              filteredExpenses.map((expense) => (
-                <tr
-                  key={expense.id}
-                  className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50"
-                >
-                  <td className="p-4 text-gray-700 dark:text-gray-300">
-                    {new Date(expense.date).toLocaleDateString()}
-                  </td>
-                  <td className="p-4">
-                    <span className="px-2 py-1 text-xs font-medium rounded bg-gray-100 dark:bg-gray-700 capitalize">
-                      {expense.category}
-                    </span>
-                  </td>
-                  <td className="p-4 text-gray-700 dark:text-gray-300">
-                    {expense.description}
-                  </td>
-                  <td className="p-4 text-right font-semibold text-gray-800 dark:text-white">
-                    Rs. {expense.amount.toFixed(2)}
-                  </td>
-                  <td className="p-4 text-gray-700 dark:text-gray-300">
-                    {expense.userName}
-                  </td>
-                  <td className="p-4">
-                    <div className="flex items-center justify-center gap-2">
-                      <Link to={`/expenses/edit/${expense.id}`}>
-                        <button className="p-2 text-blue-600 hover:bg-blue-50 rounded dark:hover:bg-blue-900/20">
-                          <PencilIcon className="w-4 h-4" />
-                        </button>
-                      </Link>
-                      {(currentUser?.role === "admin" ||
-                        currentUser?.id === expense.userId) && (
-                        <button
-                          onClick={() => handleDelete(expense.id)}
-                          className="p-2 text-red-600 hover:bg-red-50 rounded dark:hover:bg-red-900/20"
-                        >
-                          <TrashBinIcon className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+      </Modal>
     </>
   );
 }

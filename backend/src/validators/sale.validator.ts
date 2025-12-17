@@ -5,11 +5,13 @@ export const createSaleSchema = Joi.object({
     .items(
       Joi.object({
         productId: Joi.string()
-          .uuid()
           .required()
+          .trim()
+          .min(1)
           .messages({
-            "string.uuid": "Product ID must be a valid UUID",
             "any.required": "Product ID is required",
+            "string.empty": "Product ID cannot be empty",
+            "string.min": "Product ID cannot be empty",
           }),
         quantity: Joi.number()
           .integer()
@@ -21,14 +23,62 @@ export const createSaleSchema = Joi.object({
             "number.min": "Quantity must be at least 1",
             "any.required": "Quantity is required",
           }),
+        unitPrice: Joi.number()
+          .min(0)
+          .required()
+          .messages({
+            "number.base": "Unit price must be a number",
+            "number.min": "Unit price cannot be negative",
+            "any.required": "Unit price is required",
+          }),
+        customPrice: Joi.number()
+          .optional()
+          .min(0)
+          .allow(null)
+          .messages({
+            "number.base": "Custom price must be a number",
+            "number.min": "Custom price cannot be negative",
+          }),
         discount: Joi.number()
           .optional()
           .min(0)
-          .max(100)
           .messages({
             "number.base": "Discount must be a number",
             "number.min": "Discount cannot be negative",
-            "number.max": "Discount cannot exceed 100%",
+          }),
+        discountType: Joi.string()
+          .optional()
+          .valid("percent", "value")
+          .default("percent")
+          .messages({
+            "any.only": "Discount type must be 'percent' or 'value'",
+          }),
+        tax: Joi.number()
+          .optional()
+          .min(0)
+          .default(0)
+          .messages({
+            "number.base": "Tax must be a number",
+            "number.min": "Tax cannot be negative",
+          }),
+        taxType: Joi.string()
+          .optional()
+          .valid("percent", "value")
+          .default("percent")
+          .messages({
+            "any.only": "Tax type must be 'percent' or 'value'",
+          }),
+        productName: Joi.string()
+          .optional()
+          .messages({
+            "string.base": "Product name must be a string",
+          }),
+        total: Joi.number()
+          .optional()
+          .min(0)
+          .messages({
+            "number.base": "Total must be a number",
+            "number.min": "Total cannot be negative",
           }),
       })
     )
@@ -39,10 +89,14 @@ export const createSaleSchema = Joi.object({
       "any.required": "Items are required",
     }),
   customerName: Joi.string()
-    .optional()
-    .allow("", null)
+    .required()
+    .trim()
+    .min(1)
     .max(255)
     .messages({
+      "string.empty": "Customer name is required",
+      "any.required": "Customer name is required",
+      "string.min": "Customer name cannot be empty",
       "string.max": "Customer name cannot exceed 255 characters",
     }),
   customerPhone: Joi.string()
@@ -54,19 +108,19 @@ export const createSaleSchema = Joi.object({
     }),
   paymentType: Joi.string()
     .optional()
-    .valid("cash", "credit", "card", "bank_transfer")
+    .valid("cash", "bank_transfer")
     .default("cash")
     .messages({
-      "any.only": "Payment type must be one of: cash, credit, card, bank_transfer",
+      "any.only": "Payment type must be one of: cash, bank_transfer",
     }),
   payments: Joi.array()
     .items(
       Joi.object({
         type: Joi.string()
-          .valid("cash", "card", "credit", "bank_transfer")
+          .valid("cash", "bank_transfer")
           .required()
           .messages({
-            "any.only": "Payment type must be one of: cash, card, credit, bank_transfer",
+            "any.only": "Payment type must be one of: cash, bank_transfer",
             "any.required": "Payment type is required",
           }),
         amount: Joi.number()
@@ -79,17 +133,29 @@ export const createSaleSchema = Joi.object({
           }),
         cardId: Joi.string()
           .optional()
-          .uuid()
           .allow("", null)
+          .custom((value, helpers) => {
+            if (value === "" || value === null || value === undefined) return null;
+            if (typeof value === "string" && value.length > 0 && !value.startsWith("c")) {
+              return helpers.error("string.pattern.base", { message: "Card ID must be a valid ID" });
+            }
+            return value;
+          })
           .messages({
-            "string.uuid": "Card ID must be a valid UUID",
+            "string.pattern.base": "Card ID must be a valid ID",
           }),
         bankAccountId: Joi.string()
           .optional()
-          .uuid()
           .allow("", null)
+          .custom((value, helpers) => {
+            if (value === "" || value === null || value === undefined) return null;
+            if (typeof value === "string" && value.length > 0 && !value.startsWith("c")) {
+              return helpers.error("string.pattern.base", { message: "Bank account ID must be a valid ID" });
+            }
+            return value;
+          })
           .messages({
-            "string.uuid": "Bank account ID must be a valid UUID",
+            "string.pattern.base": "Bank account ID must be a valid ID",
           }),
       })
     )
@@ -99,17 +165,22 @@ export const createSaleSchema = Joi.object({
     }),
   cardId: Joi.string()
     .optional()
-    .uuid()
     .allow("", null)
     .messages({
-      "string.uuid": "Card ID must be a valid UUID",
+      "string.pattern.base": "Card ID must be a valid ID",
     }),
   bankAccountId: Joi.string()
     .optional()
-    .uuid()
     .allow("", null)
+    .custom((value, helpers) => {
+      if (value === "" || value === null || value === undefined) return null;
+      if (typeof value === "string" && value.length > 0 && !value.startsWith("c")) {
+        return helpers.error("string.pattern.base", { message: "Bank account ID must be a valid ID" });
+      }
+      return value;
+    })
     .messages({
-      "string.uuid": "Bank account ID must be a valid UUID",
+      "string.pattern.base": "Bank account ID must be a valid ID",
     }),
   date: Joi.string()
     .optional()
@@ -169,6 +240,26 @@ export const getSalesQuerySchema = Joi.object({
     .allow("")
     .messages({
       "string.base": "Search must be a string",
+    }),
+  page: Joi.number()
+    .integer()
+    .min(1)
+    .optional()
+    .messages({
+      "number.base": "Page must be a number",
+      "number.integer": "Page must be an integer",
+      "number.min": "Page must be at least 1",
+    }),
+  pageSize: Joi.number()
+    .integer()
+    .min(1)
+    .max(100)
+    .optional()
+    .messages({
+      "number.base": "Page size must be a number",
+      "number.integer": "Page size must be an integer",
+      "number.min": "Page size must be at least 1",
+      "number.max": "Page size cannot exceed 100",
     }),
 });
 

@@ -61,7 +61,7 @@ const LayoutContent: React.FC = () => {
     // Clear invalid data
     localStorage.removeItem("authToken");
     localStorage.removeItem("currentUser");
-    return <Navigate to="/signin" replace />;
+    return <Navigate to="/login" replace />;
   }
 
   // Check permissions

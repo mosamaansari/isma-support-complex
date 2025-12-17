@@ -23,6 +23,7 @@ export interface Product {
   shopQuantity: number;
   warehouseQuantity: number;
   minStockLevel: number;
+  lowStockNotifiedAt?: string | null;
   model?: string;
   manufacturer?: string;
   barcode?: string;
@@ -32,22 +33,24 @@ export interface Product {
 }
 
 // Sales Types
-export type PaymentType = "cash" | "credit" | "card" | "bank_transfer";
+export type PaymentType = "cash" | "bank_transfer";
 
 export interface SaleItem {
   productId: string;
   productName: string;
   quantity: number;
   unitPrice: number;
+  customPrice?: number; // Custom price for this customer
   discount: number;
+  discountType?: "percent" | "value"; // Discount type: percent or direct value
   tax: number;
+  taxType?: "percent" | "value"; // Tax type: percent or direct value
   total: number;
 }
 
 export interface SalePayment {
-  type: "cash" | "card" | "credit" | "bank_transfer";
+  type: "cash" | "bank_transfer";
   amount: number;
-  cardId?: string;
   bankAccountId?: string;
 }
 
@@ -62,16 +65,16 @@ export interface Sale {
   paymentType: PaymentType;
   payments?: SalePayment[];
   remainingBalance?: number;
-  cardId?: string;
   bankAccountId?: string;
   customerId?: string;
   customerName?: string;
   customerPhone?: string;
+  customerCity?: string;
   date?: string;
   userId: string;
   userName: string;
   createdAt: string;
-  status: "completed" | "cancelled";
+  status: "completed" | "pending" | "cancelled";
 }
 
 // Expense Types
@@ -88,9 +91,8 @@ export interface Expense {
   id: string;
   amount: number;
   category: ExpenseCategory;
-  description: string;
+  description: string | null;
   paymentType?: PaymentType;
-  cardId?: string;
   bankAccountId?: string;
   date: string;
   userId: string;
@@ -110,10 +112,10 @@ export interface PurchaseItem {
 }
 
 export interface PurchasePayment {
-  type: "cash" | "card";
+  type: "cash" | "bank_transfer";
   amount: number;
-  cardId?: string;
   bankAccountId?: string;
+  date?: string;
 }
 
 export interface Purchase {
@@ -126,6 +128,7 @@ export interface Purchase {
   total: number;
   payments: PurchasePayment[];
   remainingBalance: number;
+  status: "completed" | "pending" | "cancelled";
   date: string;
   userId: string;
   userName: string;
@@ -267,9 +270,6 @@ export interface ShopSettings {
   contactNumber: string;
   email: string;
   address: string;
-  bankAccountNumber: string;
-  bankName: string;
-  ifscCode: string;
   gstNumber?: string;
 }
 

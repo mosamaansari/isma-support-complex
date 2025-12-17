@@ -1,13 +1,14 @@
 import express, { Router } from "express";
 import productController from "../controllers/product.controller";
-import { authenticate, authorize } from "../middleware/auth";
-import { validate, validateQuery } from "../middleware/validate";
+import { authenticate } from "../middleware/auth";
+import { requirePermission } from "../middleware/permissions";
+import { bodyValidator, queryValidator, paramsValidator } from "../middleware/joiValidator";
 import {
   createProductSchema,
   updateProductSchema,
   getProductsQuerySchema,
 } from "../validators/product.validator";
-import { validateParams } from "../middleware/validate";
+import { PERMISSIONS } from "../utils/permissions";
 import Joi from "joi";
 
 const router = Router();
@@ -16,7 +17,7 @@ const router = Router();
 router.get(
   "/",
   authenticate,
-  validateQuery(getProductsQuerySchema),
+  queryValidator(getProductsQuerySchema),
   productController.getProducts.bind(productController)
 );
 
@@ -31,10 +32,10 @@ router.get(
 router.get(
   "/:id",
   authenticate,
-  validateParams(
+  paramsValidator(
     Joi.object({
-      id: Joi.string().uuid().required().messages({
-        "string.uuid": "Product ID must be a valid UUID",
+      id: Joi.string().required().trim().min(1).messages({
+        "string.empty": "Product ID is required",
         "any.required": "Product ID is required",
       }),
     })
@@ -46,8 +47,8 @@ router.get(
 router.post(
   "/",
   authenticate,
-  authorize("superadmin", "admin", "warehouse_manager"),
-  validate(createProductSchema),
+  requirePermission(PERMISSIONS.PRODUCTS_CREATE),
+  bodyValidator(createProductSchema),
   productController.createProduct.bind(productController)
 );
 
@@ -55,16 +56,16 @@ router.post(
 router.put(
   "/:id",
   authenticate,
-  authorize("superadmin", "admin", "warehouse_manager"),
-  validateParams(
+  requirePermission(PERMISSIONS.PRODUCTS_UPDATE),
+  paramsValidator(
     Joi.object({
-      id: Joi.string().uuid().required().messages({
-        "string.uuid": "Product ID must be a valid UUID",
+      id: Joi.string().required().trim().min(1).messages({
+        "string.empty": "Product ID is required",
         "any.required": "Product ID is required",
       }),
     })
   ),
-  validate(updateProductSchema),
+  bodyValidator(updateProductSchema),
   productController.updateProduct.bind(productController)
 );
 
@@ -72,11 +73,11 @@ router.put(
 router.delete(
   "/:id",
   authenticate,
-  authorize("superadmin", "admin", "warehouse_manager"),
-  validateParams(
+  requirePermission(PERMISSIONS.PRODUCTS_DELETE),
+  paramsValidator(
     Joi.object({
-      id: Joi.string().uuid().required().messages({
-        "string.uuid": "Product ID must be a valid UUID",
+      id: Joi.string().required().trim().min(1).messages({
+        "string.empty": "Product ID is required",
         "any.required": "Product ID is required",
       }),
     })

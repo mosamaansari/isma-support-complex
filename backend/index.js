@@ -19,6 +19,9 @@ const categoriesRoutes = getRoute(require("./dist/routes/categories.routes"));
 const rolesRoutes = getRoute(require("./dist/routes/roles.routes"));
 const cardsRoutes = getRoute(require("./dist/routes/cards.routes"));
 const bankAccountsRoutes = getRoute(require("./dist/routes/bankAccounts.routes"));
+const searchRoutes = getRoute(require("./dist/routes/search.routes"));
+const dashboardRoutes = getRoute(require("./dist/routes/dashboard.routes"));
+const backupRoutes = getRoute(require("./dist/routes/backup.routes"));
 
 const app = express();
 
@@ -30,8 +33,8 @@ app.use(
     credentials: true,
   })
 );
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: "20mb" }));
+app.use(express.urlencoded({ extended: true, limit: "20mb" }));
 
 // Logging middleware (skip in production for Vercel)
 if (process.env.NODE_ENV !== "production") {
@@ -103,6 +106,9 @@ app.get("/", (req, res) => {
       roles: "/api/roles",
       cards: "/api/cards",
       bankAccounts: "/api/bank-accounts",
+      search: "/api/search",
+      dashboard: "/api/dashboard",
+      backup: "/api/backup",
     },
   });
 });
@@ -120,6 +126,9 @@ app.use("/api/categories", categoriesRoutes);
 app.use("/api/roles", rolesRoutes);
 app.use("/api/cards", cardsRoutes);
 app.use("/api/bank-accounts", bankAccountsRoutes);
+app.use("/api/search", searchRoutes);
+app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/backup", backupRoutes);
 
 // 404 handler
 app.use((req, res) => {

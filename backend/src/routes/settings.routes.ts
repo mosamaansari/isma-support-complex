@@ -1,8 +1,10 @@
 import express, { Router } from "express";
 import settingsController from "../controllers/settings.controller";
-import { authenticate, authorize } from "../middleware/auth";
-import { validate } from "../middleware/validate";
+import { authenticate } from "../middleware/auth";
+import { requirePermission } from "../middleware/permissions";
+import { bodyValidator } from "../middleware/joiValidator";
 import { updateSettingsSchema } from "../validators/settings.validator";
+import { PERMISSIONS } from "../utils/permissions";
 
 const router = Router();
 
@@ -13,8 +15,8 @@ router.get("/", authenticate, settingsController.getSettings.bind(settingsContro
 router.put(
   "/",
   authenticate,
-  authorize("superadmin", "admin"),
-  validate(updateSettingsSchema),
+  requirePermission(PERMISSIONS.SETTINGS_UPDATE),
+  bodyValidator(updateSettingsSchema),
   settingsController.updateSettings.bind(settingsController)
 );
 

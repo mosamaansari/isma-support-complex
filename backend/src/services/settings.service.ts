@@ -14,9 +14,9 @@ class SettingsService {
           contactNumber: "+92 300 1234567",
           email: "info@ismasports.com",
           address: "Karachi, Pakistan",
-          bankAccountNumber: "1234567890123456",
-          bankName: "Bank Name",
-          ifscCode: "IFSC123456",
+          bankAccountNumber: "",
+          bankName: "",
+          ifscCode: "",
         },
       });
     }
@@ -28,11 +28,8 @@ class SettingsService {
     shopName: string;
     logo?: string;
     contactNumber: string;
-    email: string;
-    address: string;
-    bankAccountNumber: string;
-    bankName: string;
-    ifscCode: string;
+    email?: string;
+    address?: string;
     gstNumber?: string;
   }) {
     let settings = await prisma.shopSettings.findFirst();
@@ -42,27 +39,27 @@ class SettingsService {
         where: { id: settings.id },
         data: {
           shopName: data.shopName,
-          logo: data.logo || null,
+          logo: data.logo || settings.logo || null,
           contactNumber: data.contactNumber,
-          email: data.email,
-          address: data.address,
-          bankAccountNumber: data.bankAccountNumber,
-          bankName: data.bankName,
-          ifscCode: data.ifscCode,
-          gstNumber: data.gstNumber || null,
+          email: data.email || settings.email || "",
+          address: data.address || settings.address || "",
+          bankAccountNumber: "",
+          bankName: "",
+          ifscCode: "",
+          gstNumber: data.gstNumber || settings.gstNumber || null,
         },
       });
     } else {
       settings = await prisma.shopSettings.create({
         data: {
           shopName: data.shopName,
-          logo: data.logo || null,
+          logo: data.logo || "/images/logo/logo.png",
           contactNumber: data.contactNumber,
-          email: data.email,
-          address: data.address,
-          bankAccountNumber: data.bankAccountNumber,
-          bankName: data.bankName,
-          ifscCode: data.ifscCode,
+          email: data.email || "",
+          address: data.address || "",
+          bankAccountNumber: "",
+          bankName: "",
+          ifscCode: "",
           gstNumber: data.gstNumber || null,
         },
       });

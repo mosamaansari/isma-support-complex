@@ -42,6 +42,29 @@ class AuthController {
       res.status(500).json({ error: "Internal server error" });
     }
   }
+
+  async forgotPassword(req: Request, res: Response) {
+    try {
+      const { email, userType } = req.body;
+      const result = await authService.forgotPassword(email, userType || "user");
+      res.json(result);
+    } catch (error: any) {
+      logger.error("Forgot password error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+
+  async resetPassword(req: Request, res: Response) {
+    try {
+      const { token, newPassword, userType } = req.body;
+      const result = await authService.resetPassword(token, newPassword, userType || "user");
+      res.json(result);
+    } catch (error: any) {
+      logger.error("Reset password error:", error);
+      const statusCode = error.message.includes("Invalid") || error.message.includes("expired") ? 400 : 500;
+      res.status(statusCode).json({ error: error.message || "Internal server error" });
+    }
+  }
 }
 
 export default new AuthController();

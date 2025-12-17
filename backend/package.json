@@ -35,6 +35,7 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/morgan": "^1.9.10",
     "@types/node": "^22.19.2",
+    "@types/nodemailer": "^7.0.4",
     "@types/pdfkit": "^0.17.4",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
@@ -47,13 +48,19 @@
     "joi": "^17.13.3",
     "jsonwebtoken": "^9.0.3",
     "morgan": "^1.10.1",
+    "nodemailer": "^7.0.11",
     "pdfkit": "^0.15.2",
+    "puppeteer": "^24.33.0",
     "ts-node": "^10.9.2",
+    "twilio": "^5.10.7",
     "typescript": "^5.9.3",
     "winston": "^3.19.0",
-    "winston-daily-rotate-file": "^5.0.0"
+    "winston-daily-rotate-file": "^5.0.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@types/twilio": "^3.19.2",
+    "@types/xlsx": "^0.0.35",
     "nodemon": "^3.1.11",
     "prisma": "^5.22.0",
     "tsx": "^4.21.0"
