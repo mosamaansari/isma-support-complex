@@ -104,6 +104,8 @@ app.get("/", (req, res) => {
       bankAccounts: "/api/bank-accounts",
       search: "/api/search",
       dashboard: "/api/dashboard",
+      backup: "/api/backup",
+      suppliers: "/api/suppliers",
       openingBalances: "/api/opening-balances",
     },
   });

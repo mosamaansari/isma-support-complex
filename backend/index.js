@@ -16,12 +16,15 @@ const reportsRoutes = getRoute(require("./dist/routes/reports.routes"));
 const usersRoutes = getRoute(require("./dist/routes/users.routes"));
 const settingsRoutes = getRoute(require("./dist/routes/settings.routes"));
 const categoriesRoutes = getRoute(require("./dist/routes/categories.routes"));
+const brandsRoutes = getRoute(require("./dist/routes/brands.routes"));
 const rolesRoutes = getRoute(require("./dist/routes/roles.routes"));
 const cardsRoutes = getRoute(require("./dist/routes/cards.routes"));
 const bankAccountsRoutes = getRoute(require("./dist/routes/bankAccounts.routes"));
 const searchRoutes = getRoute(require("./dist/routes/search.routes"));
 const dashboardRoutes = getRoute(require("./dist/routes/dashboard.routes"));
 const backupRoutes = getRoute(require("./dist/routes/backup.routes"));
+const suppliersRoutes = getRoute(require("./dist/routes/suppliers.routes"));
+const openingBalanceRoutes = getRoute(require("./dist/routes/openingBalance.routes"));
 
 const app = express();
 
@@ -103,12 +106,15 @@ app.get("/", (req, res) => {
       users: "/api/users",
       settings: "/api/settings",
       categories: "/api/categories",
+      brands: "/api/brands",
       roles: "/api/roles",
       cards: "/api/cards",
       bankAccounts: "/api/bank-accounts",
       search: "/api/search",
       dashboard: "/api/dashboard",
       backup: "/api/backup",
+      suppliers: "/api/suppliers",
+      openingBalances: "/api/opening-balances",
     },
   });
 });
@@ -123,12 +129,15 @@ app.use("/api/reports", reportsRoutes);
 app.use("/api/users", usersRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/categories", categoriesRoutes);
+app.use("/api/brands", brandsRoutes);
 app.use("/api/roles", rolesRoutes);
 app.use("/api/cards", cardsRoutes);
 app.use("/api/bank-accounts", bankAccountsRoutes);
 app.use("/api/search", searchRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/backup", backupRoutes);
+app.use("/api/suppliers", suppliersRoutes);
+app.use("/api/opening-balances", openingBalanceRoutes);
 
 // 404 handler
 app.use((req, res) => {
