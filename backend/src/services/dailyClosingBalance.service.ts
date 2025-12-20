@@ -182,9 +182,9 @@ class DailyClosingBalanceService {
       }
     }
 
-    // Process expense card payments
+    // Process expense card payments (if cardId exists, it's a card payment)
     for (const expense of expenses) {
-      if (expense.paymentType === "card" && expense.cardId) {
+      if (expense.cardId) {
         const amount = Number(expense.amount || 0);
         if (!closingCardBalances[expense.cardId]) {
           closingCardBalances[expense.cardId] = 0;
@@ -374,7 +374,7 @@ class DailyClosingBalanceService {
     }
 
     for (const expense of expenses) {
-      if (expense.paymentType === "card" && expense.cardId) {
+      if (expense.cardId) {
         const amount = Number(expense.amount || 0);
         if (!cardBalances[expense.cardId]) cardBalances[expense.cardId] = 0;
         cardBalances[expense.cardId] -= amount;

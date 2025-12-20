@@ -529,7 +529,7 @@ class ReportService {
         endDate: date,
       });
       openingBalanceAdditions = transactions
-        .filter((t) => t.source === "add_opening_balance" || t.source === "opening_balance" || t.transactionType === "add_opening_balance")
+        .filter((t) => t.source === "add_opening_balance" || t.source === "opening_balance")
         .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
     } catch (e) {
       logger.error("Error fetching opening balance additions:", e);
@@ -787,10 +787,10 @@ class ReportService {
     doc.text(`Closing Balance: Rs. ${report.closingBalance.total.toFixed(2)}`);
     
     const netChange = report.closingBalance.total - report.openingBalance.total;
-    doc.fontSize(12).text(
-      `Net Change: ${netChange >= 0 ? "+" : ""}Rs. ${netChange.toFixed(2)}`,
-      { color: netChange >= 0 ? "green" : "red" }
-    );
+    doc.fontSize(12);
+    doc.fillColor(netChange >= 0 ? "green" : "red");
+    doc.text(`Net Change: ${netChange >= 0 ? "+" : ""}Rs. ${netChange.toFixed(2)}`);
+    doc.fillColor("black"); // Reset to black
 
     doc.end();
   }

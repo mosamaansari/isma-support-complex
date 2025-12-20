@@ -273,6 +273,15 @@ class OpeningBalanceService {
           userName = user?.name || user?.username || "";
         }
 
+        // Get the opening balance date
+        const openingBalance = await prisma.dailyOpeningBalance.findUnique({
+          where: { id },
+        });
+        if (!openingBalance) {
+          throw new Error("Opening balance not found");
+        }
+        const dateObj = openingBalance.date;
+
         // Use current date and time for transactions
         const transactionDate = new Date(); // Always use current date and time
         const balanceManagementService = (await import("./balanceManagement.service")).default;
