@@ -38,7 +38,7 @@ class ExpenseService {
           card: true,
           bankAccount: true,
         },
-        orderBy: { date: "desc" },
+        orderBy: { createdAt: "desc" },
         skip,
         take: pageSize,
       }),
@@ -242,6 +242,7 @@ class ExpenseService {
         category: true,
         amount: true,
       },
+      orderBy: { createdAt: "desc" },
     });
 
     const categoryTotals: Record<string, { total: number; count: number }> = {};

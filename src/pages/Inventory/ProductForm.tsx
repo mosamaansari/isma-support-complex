@@ -11,6 +11,7 @@ import Input from "../../components/form/input/InputField";
 import Label from "../../components/form/Label";
 import Button from "../../components/ui/button/Button";
 import CategorySelect from "../../components/form/CategorySelect";
+import BrandSelect from "../../components/form/BrandSelect";
 import { ChevronLeftIcon, TrashBinIcon } from "../../icons";
 
 const productFormSchema = yup.object().shape({
@@ -23,6 +24,9 @@ const productFormSchema = yup.object().shape({
   category: yup
     .string()
     .optional(),
+  brand: yup
+    .string()
+    .required("Brand is required"),
   salePrice: yup
     .number()
     .required("Sale price is required")
@@ -83,11 +87,12 @@ export default function ProductForm() {
     defaultValues: {
       name: "",
       category: "",
-      salePrice: 0,
-      shopQuantity: 0,
-      warehouseQuantity: 0,
-      shopMinStockLevel: 0,
-      warehouseMinStockLevel: 0,
+      brand: "",
+      salePrice: undefined,
+      shopQuantity: undefined,
+      warehouseQuantity: undefined,
+      shopMinStockLevel: undefined,
+      warehouseMinStockLevel: undefined,
       model: "",
       manufacturer: "",
       barcode: "",
@@ -97,6 +102,7 @@ export default function ProductForm() {
   const formData = {
     name: watch("name"),
     category: watch("category") || "",
+    brand: watch("brand") || "",
     salePrice: watch("salePrice"),
     shopQuantity: watch("shopQuantity"),
     warehouseQuantity: watch("warehouseQuantity"),
@@ -114,11 +120,12 @@ export default function ProductForm() {
         reset({
           name: product.name,
           category: product.category || "",
-          salePrice: product.salePrice || 0,
-          shopQuantity: product.shopQuantity || 0,
-          warehouseQuantity: product.warehouseQuantity || 0,
-          shopMinStockLevel: (product as any).shopMinStockLevel ?? product.minStockLevel ?? 0,
-          warehouseMinStockLevel: (product as any).warehouseMinStockLevel ?? product.minStockLevel ?? 0,
+          brand: product.brand || "",
+          salePrice: product.salePrice ?? undefined,
+          shopQuantity: product.shopQuantity ?? undefined,
+          warehouseQuantity: product.warehouseQuantity ?? undefined,
+          shopMinStockLevel: (product as any).shopMinStockLevel ?? product.minStockLevel ?? undefined,
+          warehouseMinStockLevel: (product as any).warehouseMinStockLevel ?? product.minStockLevel ?? undefined,
           model: product.model || "",
           manufacturer: product.manufacturer || "",
           barcode: product.barcode || "",
@@ -160,6 +167,7 @@ export default function ProductForm() {
     const productData = {
       name: data.name.trim(),
       category: data.category || undefined,
+      brand: data.brand || undefined,
       salePrice: data.salePrice || undefined,
       shopQuantity: data.shopQuantity,
       warehouseQuantity: data.warehouseQuantity,
@@ -238,6 +246,22 @@ export default function ProductForm() {
 
           <div>
             <Label>
+              Brand <span className="text-error-500">*</span>
+            </Label>
+            <BrandSelect
+              value={formData.brand || ""}
+              onChange={(value) => {
+                setValue("brand", value);
+              }}
+              required
+            />
+            {errors.brand && (
+              <p className="mt-1 text-sm text-error-500">{errors.brand.message}</p>
+            )}
+          </div>
+
+          <div>
+            <Label>
               Sale Price <span className="text-error-500">*</span>
             </Label>
             <Input
@@ -245,10 +269,10 @@ export default function ProductForm() {
               name="salePrice"
               step={0.01}
               min="0.01"
-              value={formData.salePrice}
+              value={formData.salePrice ?? ""}
               onChange={(e) => {
-                const value = parseFloat(e.target.value) || 0;
-                setValue("salePrice", value);
+                const value = e.target.value === "" ? undefined : parseFloat(e.target.value);
+                setValue("salePrice", isNaN(value as any) ? undefined : value);
               }}
               onBlur={register("salePrice").onBlur}
               placeholder="0.00"
@@ -267,10 +291,10 @@ export default function ProductForm() {
                 type="number"
                 name="shopQuantity"
                 min="0"
-                value={formData.shopQuantity}
+                value={formData.shopQuantity ?? ""}
                 onChange={(e) => {
-                  const value = parseInt(e.target.value) || 0;
-                  setValue("shopQuantity", value);
+                  const value = e.target.value === "" ? undefined : parseInt(e.target.value);
+                  setValue("shopQuantity", isNaN(value as any) ? undefined : value);
                 }}
                 onBlur={register("shopQuantity").onBlur}
                 placeholder="0"
@@ -287,10 +311,10 @@ export default function ProductForm() {
                 type="number"
                 name="warehouseQuantity"
                 min="0"
-                value={formData.warehouseQuantity}
+                value={formData.warehouseQuantity ?? ""}
                 onChange={(e) => {
-                  const value = parseInt(e.target.value) || 0;
-                  setValue("warehouseQuantity", value);
+                  const value = e.target.value === "" ? undefined : parseInt(e.target.value);
+                  setValue("warehouseQuantity", isNaN(value as any) ? undefined : value);
                 }}
                 onBlur={register("warehouseQuantity").onBlur}
                 placeholder="0"
@@ -341,10 +365,10 @@ export default function ProductForm() {
                 type="number"
                 name="shopMinStockLevel"
                 min="0"
-                value={formData.shopMinStockLevel}
+                value={formData.shopMinStockLevel ?? ""}
                 onChange={(e) => {
-                  const value = parseInt(e.target.value) || 0;
-                  setValue("shopMinStockLevel", value);
+                  const value = e.target.value === "" ? undefined : parseInt(e.target.value);
+                  setValue("shopMinStockLevel", isNaN(value as any) ? undefined : value);
                 }}
                 onBlur={register("shopMinStockLevel").onBlur}
                 placeholder="0"
@@ -361,10 +385,10 @@ export default function ProductForm() {
                 type="number"
                 name="warehouseMinStockLevel"
                 min="0"
-                value={formData.warehouseMinStockLevel}
+                value={formData.warehouseMinStockLevel ?? ""}
                 onChange={(e) => {
-                  const value = parseInt(e.target.value) || 0;
-                  setValue("warehouseMinStockLevel", value);
+                  const value = e.target.value === "" ? undefined : parseInt(e.target.value);
+                  setValue("warehouseMinStockLevel", isNaN(value as any) ? undefined : value);
                 }}
                 onBlur={register("warehouseMinStockLevel").onBlur}
                 placeholder="0"

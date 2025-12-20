@@ -18,6 +18,7 @@ import reportsRoutes from "./src/routes/reports.routes";
 import usersRoutes from "./src/routes/users.routes";
 import settingsRoutes from "./src/routes/settings.routes";
 import categoriesRoutes from "./src/routes/categories.routes";
+import brandsRoutes from "./src/routes/brands.routes";
 import rolesRoutes from "./src/routes/roles.routes";
 import cardsRoutes from "./src/routes/cards.routes";
 import bankAccountsRoutes from "./src/routes/bankAccounts.routes";
@@ -25,6 +26,8 @@ import searchRoutes from "./src/routes/search.routes";
 import dashboardRoutes from "./src/routes/dashboard.routes";
 import backupRoutes from "./src/routes/backup.routes";
 import suppliersRoutes from "./src/routes/suppliers.routes";
+import openingBalanceRoutes from "./src/routes/openingBalance.routes";
+
 
 // Load environment variables
 dotenv.config();
@@ -95,11 +98,13 @@ app.get("/", (req, res) => {
       users: "/api/users",
       settings: "/api/settings",
       categories: "/api/categories",
+      brands: "/api/brands",
       roles: "/api/roles",
       cards: "/api/cards",
       bankAccounts: "/api/bank-accounts",
       search: "/api/search",
       dashboard: "/api/dashboard",
+      openingBalances: "/api/opening-balances",
     },
   });
 });
@@ -114,6 +119,7 @@ app.use("/api/reports", reportsRoutes);
 app.use("/api/users", usersRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/categories", categoriesRoutes);
+app.use("/api/brands", brandsRoutes);
 app.use("/api/roles", rolesRoutes);
 app.use("/api/cards", cardsRoutes);
 app.use("/api/bank-accounts", bankAccountsRoutes);
@@ -121,6 +127,7 @@ app.use("/api/search", searchRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/backup", backupRoutes);
 app.use("/api/suppliers", suppliersRoutes);
+app.use("/api/opening-balances", openingBalanceRoutes);
 
 // 404 handler
 app.use((req, res) => {

@@ -242,6 +242,11 @@ export default function ExpenseList() {
                 <option value="salaries">Salaries</option>
                 <option value="maintenance">Maintenance</option>
                 <option value="marketing">Marketing</option>
+                <option value="tea">Tea</option>
+                <option value="breakfast">Breakfast</option>
+                <option value="lunch">Lunch</option>
+                <option value="dinner">Dinner</option>
+                <option value="refreshment">Refreshment</option>
                 <option value="other">Other</option>
               </select>
               <DatePicker
@@ -261,7 +266,7 @@ export default function ExpenseList() {
       {!loading ? (
         <>
           <div className="overflow-x-auto bg-white rounded-lg shadow-sm dark:bg-gray-800">
-            <table className="w-full">
+            <table className="w-full min-w-[700px]">
                 <thead>
                   <tr className="border-b border-gray-200 dark:border-gray-700">
                     <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -297,27 +302,29 @@ export default function ExpenseList() {
                         key={expense.id}
                         className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50"
                       >
-                        <td className="p-4 text-gray-700 dark:text-gray-300">
+                        <td className="p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap">
                           {new Date(expense.date).toLocaleDateString()}
                         </td>
-                        <td className="p-4">
+                        <td className="p-4 whitespace-nowrap">
                           <span className="px-2 py-1 text-xs font-medium rounded bg-gray-100 dark:bg-gray-700 capitalize">
                             {expense.category}
                           </span>
                         </td>
-                        <td className="p-4 text-gray-700 dark:text-gray-300">
-                          {expense.description || <span className="text-gray-400 italic">No description</span>}
+                        <td className="p-4 text-gray-700 dark:text-gray-300 max-w-[300px]">
+                          <div className="line-clamp-3 truncate">
+                            {expense.description || <span className="text-gray-400 italic">No description</span>}
+                          </div>
                         </td>
-                        <td className="p-4 text-right font-semibold text-gray-800 dark:text-white">
+                        <td className="p-4 text-right font-semibold text-gray-800 dark:text-white whitespace-nowrap">
                           Rs. {(typeof expense.amount === 'number' ? expense.amount : parseFloat(String(expense.amount)) || 0).toFixed(2)}
                         </td>
-                        <td className="p-4 text-gray-700 dark:text-gray-300">
+                        <td className="p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap">
                           {expense.userName}
                         </td>
-                        <td className="p-4">
-                          <div className="flex items-center justify-center gap-2">
+                        <td className="p-4 whitespace-nowrap">
+                          <div className="flex items-center justify-center gap-2 flex-nowrap">
                             <Link to={`/expenses/edit/${expense.id}`}>
-                              <button className="p-2 text-blue-600 hover:bg-blue-50 rounded dark:hover:bg-blue-900/20">
+                              <button className="p-2 text-blue-600 hover:bg-blue-50 rounded dark:hover:bg-blue-900/20 flex-shrink-0">
                                 <PencilIcon className="w-4 h-4" />
                               </button>
                             </Link>
@@ -325,7 +332,7 @@ export default function ExpenseList() {
                               currentUser?.id === expense.userId) && (
                               <button
                                 onClick={() => handleDeleteClick(expense.id)}
-                                className="p-2 text-red-600 hover:bg-red-50 rounded dark:hover:bg-red-900/20"
+                                className="p-2 text-red-600 hover:bg-red-50 rounded dark:hover:bg-red-900/20 flex-shrink-0"
                               >
                                 <TrashBinIcon className="w-4 h-4" />
                               </button>
@@ -340,8 +347,8 @@ export default function ExpenseList() {
           </div>
 
           {/* Pagination Controls */}
-          <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-4 bg-white rounded-lg shadow-sm p-4 dark:bg-gray-800">
-            <div className="flex items-center gap-4">
+          <div className="mt-6 flex flex-col gap-4 bg-white rounded-lg shadow-sm p-4 dark:bg-gray-800">
+            <div className="flex items-center justify-between">
               <PageSizeSelector
                 pageSize={expensesPagination?.pageSize || 10}
                 onPageSizeChange={handlePageSizeChange}
@@ -352,11 +359,13 @@ export default function ExpenseList() {
                 {expensesPagination?.total || 0} expenses
               </span>
             </div>
-            <Pagination
-              currentPage={expensesPagination?.page || 1}
-              totalPages={expensesPagination?.totalPages || 1}
-              onPageChange={handlePageChange}
-            />
+            <div className="flex justify-center">
+              <Pagination
+                currentPage={expensesPagination?.page || 1}
+                totalPages={expensesPagination?.totalPages || 1}
+                onPageChange={handlePageChange}
+              />
+            </div>
           </div>
         </>
       ) : null}

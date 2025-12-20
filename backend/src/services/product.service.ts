@@ -44,6 +44,7 @@ class ProductService {
       where,
       include: {
         categoryRef: true,
+        brandRef: true,
       },
       orderBy: { createdAt: "desc" },
       skip,
@@ -72,6 +73,7 @@ class ProductService {
       where: { id },
       include: {
         categoryRef: true,
+        brandRef: true,
       },
     });
 
@@ -86,9 +88,13 @@ class ProductService {
     name: string;
     category?: string;
     categoryId?: string;
+    brand?: string;
+    brandId?: string;
     salePrice?: number;
     shopQuantity: number;
     warehouseQuantity: number;
+    shopMinStockLevel?: number;
+    warehouseMinStockLevel?: number;
     minStockLevel?: number;
     model?: string;
     manufacturer?: string;
@@ -109,15 +115,32 @@ class ProductService {
       }
     }
 
+    // Try to find brand by name or use brandId
+    let brandId = null;
+    if (data.brandId) {
+      brandId = data.brandId;
+    } else if (data.brand) {
+      const brand = await prisma.brand.findFirst({
+        where: { name: { equals: data.brand, mode: "insensitive" } },
+      });
+      if (brand) {
+        brandId = brand.id;
+      }
+    }
+
     const product = await prisma.product.create({
       data: {
         name: data.name,
         category: data.category || null,
         categoryId: categoryId,
+        brand: data.brand || null,
+        brandId: brandId,
         salePrice: data.salePrice || null,
         shopQuantity: data.shopQuantity,
         warehouseQuantity: data.warehouseQuantity,
-        minStockLevel: data.minStockLevel || 10,
+        shopMinStockLevel: data.shopMinStockLevel ?? 0,
+        warehouseMinStockLevel: data.warehouseMinStockLevel ?? 0,
+        minStockLevel: data.minStockLevel || (data.shopMinStockLevel && data.warehouseMinStockLevel ? Math.min(data.shopMinStockLevel, data.warehouseMinStockLevel) : 10),
         model: data.model || null,
         manufacturer: data.manufacturer || null,
         barcode: data.barcode || null,
@@ -126,6 +149,7 @@ class ProductService {
       },
       include: {
         categoryRef: true,
+        brandRef: true,
       },
     });
 
@@ -141,6 +165,8 @@ class ProductService {
       salePrice?: number;
       shopQuantity?: number;
       warehouseQuantity?: number;
+      shopMinStockLevel?: number;
+      warehouseMinStockLevel?: number;
       minStockLevel?: number;
       model?: string;
       manufacturer?: string;
@@ -150,19 +176,32 @@ class ProductService {
     }
   ) {
     // Try to find category by name or use categoryId
-    let categoryId = undefined;
-    if (data.categoryId) {
-      categoryId = data.categoryId;
+    let categoryId: string | null | undefined = undefined;
+    if (data.categoryId !== undefined) {
+      categoryId = data.categoryId || null;
     } else if (data.category !== undefined) {
       if (data.category) {
         const category = await prisma.category.findFirst({
           where: { name: { equals: data.category, mode: "insensitive" } },
         });
-        if (category) {
-          categoryId = category.id;
-        }
+        categoryId = category ? category.id : null;
       } else {
         categoryId = null;
+      }
+    }
+
+    // Try to find brand by name or use brandId
+    let brandId: string | null | undefined = undefined;
+    if (data.brandId !== undefined) {
+      brandId = data.brandId || null;
+    } else if (data.brand !== undefined) {
+      if (data.brand) {
+        const brand = await prisma.brand.findFirst({
+          where: { name: { equals: data.brand, mode: "insensitive" } },
+        });
+        brandId = brand ? brand.id : null;
+      } else {
+        brandId = null;
       }
     }
 
@@ -170,10 +209,22 @@ class ProductService {
     if (data.name !== undefined) updateData.name = data.name;
     if (data.category !== undefined) updateData.category = data.category || null;
     if (categoryId !== undefined) updateData.categoryId = categoryId;
+    if (data.brand !== undefined) updateData.brand = data.brand || null;
+    if (brandId !== undefined) updateData.brandId = brandId;
     if (data.salePrice !== undefined) updateData.salePrice = data.salePrice || null;
     if (data.shopQuantity !== undefined) updateData.shopQuantity = data.shopQuantity;
     if (data.warehouseQuantity !== undefined) updateData.warehouseQuantity = data.warehouseQuantity;
-    if (data.minStockLevel !== undefined) updateData.minStockLevel = data.minStockLevel;
+    if (data.shopMinStockLevel !== undefined) updateData.shopMinStockLevel = data.shopMinStockLevel;
+    if (data.warehouseMinStockLevel !== undefined) updateData.warehouseMinStockLevel = data.warehouseMinStockLevel;
+    if (data.minStockLevel !== undefined) {
+      updateData.minStockLevel = data.minStockLevel;
+    } else if (data.shopMinStockLevel !== undefined || data.warehouseMinStockLevel !== undefined) {
+      // If shop or warehouse min stock is updated, update minStockLevel to the minimum
+      const currentProduct = await prisma.product.findUnique({ where: { id } });
+      const shopMin = data.shopMinStockLevel ?? currentProduct?.shopMinStockLevel ?? 0;
+      const warehouseMin = data.warehouseMinStockLevel ?? currentProduct?.warehouseMinStockLevel ?? 0;
+      updateData.minStockLevel = Math.min(shopMin, warehouseMin);
+    }
     if (data.model !== undefined) updateData.model = data.model || null;
     if (data.manufacturer !== undefined) updateData.manufacturer = data.manufacturer || null;
     if (data.barcode !== undefined) updateData.barcode = data.barcode || null;
@@ -185,6 +236,7 @@ class ProductService {
       data: updateData,
       include: {
         categoryRef: true,
+        brandRef: true,
       },
     });
 
@@ -204,7 +256,9 @@ class ProductService {
     const products = await prisma.product.findMany({
       include: {
         categoryRef: true,
+        brandRef: true,
       },
+      orderBy: { createdAt: "desc" },
     });
 
     // Filter products where either shop or warehouse is at/below its threshold

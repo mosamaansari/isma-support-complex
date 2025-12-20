@@ -346,6 +346,7 @@ class BackupService {
     reportData: {
       sales?: any[];
       expenses?: any[];
+      purchases?: any[];
       summary?: any;
       dateRange?: { start: string; end: string };
     }
@@ -396,6 +397,22 @@ class BackupService {
         }));
         const expensesSheet = XLSX.utils.json_to_sheet(expensesData);
         XLSX.utils.book_append_sheet(workbook, expensesSheet, "Expenses");
+      }
+
+      // Purchases sheet
+      if (reportData.purchases && reportData.purchases.length > 0) {
+        const purchasesData = reportData.purchases.map((purchase) => ({
+          Date: purchase.date ? new Date(purchase.date).toLocaleDateString() : "",
+          "Supplier Name": purchase.supplierName || "",
+          "Supplier Phone": purchase.supplierPhone || "",
+          Subtotal: Number(purchase.subtotal || 0).toFixed(2),
+          Tax: Number(purchase.tax || 0).toFixed(2),
+          Total: Number(purchase.total || 0).toFixed(2),
+          "Remaining Balance": Number(purchase.remainingBalance || 0).toFixed(2),
+          Status: purchase.status || "",
+        }));
+        const purchasesSheet = XLSX.utils.json_to_sheet(purchasesData);
+        XLSX.utils.book_append_sheet(workbook, purchasesSheet, "Purchases");
       }
 
       const excelBuffer = XLSX.write(workbook, {

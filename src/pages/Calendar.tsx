@@ -8,6 +8,7 @@ import DatePicker from "../components/form/DatePicker";
 import { Modal } from "../components/ui/modal";
 import { useModal } from "../hooks/useModal";
 import PageMeta from "../components/common/PageMeta";
+import { getTodayDate } from "../utils/dateHelpers";
 
 interface CalendarEvent extends EventInput {
   extendedProps: {
@@ -40,7 +41,7 @@ const Calendar: React.FC = () => {
       {
         id: "1",
         title: "Event Conf.",
-        start: new Date().toISOString().split("T")[0],
+        start: getTodayDate(),
         extendedProps: { calendar: "Danger" },
       },
       {

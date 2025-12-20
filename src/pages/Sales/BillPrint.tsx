@@ -296,14 +296,14 @@ export default function BillPrint() {
               </div>
               ${sale.discount > 0 ? `
                 <div class="totals-row">
-                  <span>Discount:</span>
+                  <span>Discount${((sale as any).discountType === "percent" ? " (%)" : " (Rs)")}:</span>
                   <span>-${sale.discount.toFixed(2)}</span>
                 </div>
               ` : ""}
               ${sale.tax > 0 ? `
                 <div class="totals-row">
-                  <span>Tax:</span>
-                  <span>${sale.tax.toFixed(2)}</span>
+                  <span>Tax${((sale as any).taxType === "percent" ? " (%)" : " (Rs)")}:</span>
+                  <span>+${sale.tax.toFixed(2)}</span>
                 </div>
               ` : ""}
               <div class="totals-row total-row">
@@ -558,7 +558,7 @@ export default function BillPrint() {
           {sale.discount > 0 && (
             <div className="flex justify-end mb-2">
               <span className="w-40 text-gray-600 dark:text-gray-400">
-                Discount:
+                Discount{((sale as any).discountType === "percent" ? " (%)" : " (Rs)")}:
               </span>
               <span className="w-32 text-gray-800 dark:text-white">
                 - Rs. {sale.discount.toFixed(2)}
@@ -567,9 +567,11 @@ export default function BillPrint() {
           )}
           {sale.tax > 0 && (
             <div className="flex justify-end mb-2">
-              <span className="w-40 text-gray-600 dark:text-gray-400">Tax:</span>
+              <span className="w-40 text-gray-600 dark:text-gray-400">
+                Tax{((sale as any).taxType === "percent" ? " (%)" : " (Rs)")}:
+              </span>
               <span className="w-32 text-gray-800 dark:text-white">
-                Rs. {sale.tax.toFixed(2)}
+                + Rs. {sale.tax.toFixed(2)}
               </span>
             </div>
           )}
@@ -710,14 +712,14 @@ export default function BillPrint() {
           </div>
           {sale.discount > 0 && (
             <div className="totals-row">
-              <span>Discount:</span>
+              <span>Discount{((sale as any).discountType === "percent" ? " (%)" : " (Rs)")}:</span>
               <span>-{sale.discount.toFixed(2)}</span>
             </div>
           )}
           {sale.tax > 0 && (
             <div className="totals-row">
-              <span>Tax:</span>
-              <span>{sale.tax.toFixed(2)}</span>
+              <span>Tax{((sale as any).taxType === "percent" ? " (%)" : " (Rs)")}:</span>
+              <span>+{sale.tax.toFixed(2)}</span>
             </div>
           )}
           <div className="totals-row total-row">

@@ -10,11 +10,13 @@ import Input from "../../components/form/input/InputField";
 import DatePicker from "../../components/form/DatePicker";
 import Label from "../../components/form/Label";
 import Select from "../../components/form/Select";
+import TaxDiscountInput from "../../components/form/TaxDiscountInput";
 import Button from "../../components/ui/button/Button";
 import { TrashBinIcon, ChevronLeftIcon, PlusIcon } from "../../icons";
 import api from "../../services/api";
 import { hasPermission } from "../../utils/permissions";
 import { AVAILABLE_PERMISSIONS } from "../../utils/availablePermissions";
+import { getTodayDate } from "../../utils/dateHelpers";
 
 const purchaseEntrySchema = yup.object().shape({
   supplierName: yup
@@ -47,8 +49,11 @@ export default function PurchaseEntry() {
     (PurchaseItem & { product: Product })[]
   >([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
-  const [tax, setTax] = useState(0);
+  const [date, setDate] = useState(getTodayDate());
+  const [discount, setDiscount] = useState<number | null>(null);
+  const [discountType, setDiscountType] = useState<"percent" | "value">("percent");
+  const [tax, setTax] = useState<number | null>(null);
+  const [taxType, setTaxType] = useState<"percent" | "value">("percent");
   const [payments, setPayments] = useState<PurchasePayment[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -64,8 +69,9 @@ export default function PurchaseEntry() {
     initialValues: {
       supplierName: "",
       supplierPhone: "",
-      date: new Date().toISOString().split("T")[0],
-      tax: 0,
+      date: getTodayDate(),
+      tax: undefined,
+      discount: undefined,
     },
     validationSchema: purchaseEntrySchema,
     onSubmit: (values: any) => onSubmit(values),
@@ -85,7 +91,7 @@ export default function PurchaseEntry() {
     }
     // Add default cash payment
     if (payments.length === 0 && !isEdit) {
-      setPayments([{ type: "cash", amount: 0 }]);
+      setPayments([{ type: "cash", amount: undefined }]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -137,10 +143,14 @@ export default function PurchaseEntry() {
             supplierName: purchase.supplierName,
             supplierPhone: purchase.supplierPhone || "",
             date: new Date(purchase.date).toISOString().split("T")[0],
-            tax: Number(purchase.tax) || 0,
+            tax: Number(purchase.tax) || undefined,
+            discount: Number((purchase as any).discount) || undefined,
           });
           setDate(new Date(purchase.date).toISOString().split("T")[0]);
-          setTax(Number(purchase.tax) || 0);
+          setTax(Number(purchase.tax) || null);
+          setTaxType(((purchase as any).taxType || "percent") as "percent" | "value");
+          setDiscount(Number((purchase as any).discount) || null);
+          setDiscountType(((purchase as any).discountType || "percent") as "percent" | "value");
           setPayments((purchase.payments || []) as PurchasePayment[]);
           
           // Load products for items
@@ -193,10 +203,12 @@ export default function PurchaseEntry() {
           item.productId === product.id
             ? {
                 ...item,
-                warehouseQuantity: (item.warehouseQuantity || 0) + 1,
-                shopQuantity: item.shopQuantity || 0,
-                quantity: (item.shopQuantity || 0) + (item.warehouseQuantity || 0) + 1,
-                total: item.cost * ((item.shopQuantity || 0) + (item.warehouseQuantity || 0) + 1),
+                warehouseQuantity: item.warehouseQuantity !== undefined && item.warehouseQuantity !== null 
+                  ? item.warehouseQuantity + 1 
+                  : 1,
+                shopQuantity: item.shopQuantity !== undefined && item.shopQuantity !== null ? item.shopQuantity : undefined,
+                quantity: (item.shopQuantity || 0) + ((item.warehouseQuantity !== undefined && item.warehouseQuantity !== null ? item.warehouseQuantity : 0) + 1),
+                total: (item.cost || 0) * ((item.shopQuantity || 0) + ((item.warehouseQuantity !== undefined && item.warehouseQuantity !== null ? item.warehouseQuantity : 0) + 1)),
               }
             : item
         )
@@ -207,10 +219,10 @@ export default function PurchaseEntry() {
         {
           productId: product.id.trim(),
           productName: product.name,
-          quantity: 1,
-          shopQuantity: 0,
-          warehouseQuantity: 1,
-          cost: 0,
+          quantity: 0,
+          shopQuantity: undefined,
+          warehouseQuantity: undefined,
+          cost: undefined,
           total: 0,
           toWarehouse: true,
           product,
@@ -225,21 +237,21 @@ export default function PurchaseEntry() {
     location: "shop" | "warehouse",
     rawQuantity: string
   ) => {
-    const parsed = rawQuantity === "" ? 0 : parseInt(rawQuantity, 10);
-    const safeQuantity = Number.isNaN(parsed) ? 0 : parsed;
+    const parsed = rawQuantity === "" ? null : parseInt(rawQuantity, 10);
+    const safeQuantity = Number.isNaN(parsed) || parsed === null ? undefined : parsed;
     setSelectedProducts(
       selectedProducts.map((item) => {
         if (item.productId === productId) {
-          const shopQty = location === "shop" ? safeQuantity : item.shopQuantity || 0;
-          const warehouseQty = location === "warehouse" ? safeQuantity : item.warehouseQuantity || 0;
-          const totalQty = shopQty + warehouseQty;
+          const shopQty = location === "shop" ? safeQuantity : (item.shopQuantity !== undefined && item.shopQuantity !== null ? item.shopQuantity : undefined);
+          const warehouseQty = location === "warehouse" ? safeQuantity : (item.warehouseQuantity !== undefined && item.warehouseQuantity !== null ? item.warehouseQuantity : undefined);
+          const totalQty = (shopQty || 0) + (warehouseQty || 0);
           return {
             ...item,
             shopQuantity: shopQty,
             warehouseQuantity: warehouseQty,
             quantity: totalQty,
-            total: item.cost * totalQty,
-            toWarehouse: warehouseQty > 0 && shopQty === 0,
+            total: (item.cost || 0) * totalQty,
+            toWarehouse: (warehouseQty || 0) > 0 && (shopQty || 0) === 0,
           };
         }
         return item;
@@ -247,17 +259,17 @@ export default function PurchaseEntry() {
     );
   };
 
-  const updateItemCost = (productId: string, cost: number) => {
-    // Validate cost is greater than 0
-    if (cost < 0) {
-      cost = 0;
+  const updateItemCost = (productId: string, cost: number | undefined) => {
+    // Validate cost is greater than 0 or undefined
+    if (cost !== undefined && cost < 0) {
+      cost = undefined;
     }
     setSelectedProducts(
       selectedProducts.map((item) => {
         if (item.productId === productId) {
           const totalQty = (item.shopQuantity || 0) + (item.warehouseQuantity || 0);
           const safeTotal = totalQty || item.quantity;
-          return { ...item, cost, total: cost * safeTotal, quantity: safeTotal };
+          return { ...item, cost: cost ?? 0, total: (cost ?? 0) * safeTotal, quantity: safeTotal };
         }
         return item;
       })
@@ -271,8 +283,30 @@ export default function PurchaseEntry() {
   };
 
   const subtotal = selectedProducts.reduce((sum, item) => sum + item.total, 0);
-  const total = subtotal + tax;
-  const totalPaid = payments.reduce((sum, payment) => sum + payment.amount, 0);
+  
+  // Calculate discount based on type
+  let discountAmount = 0;
+  if (discount !== null && discount !== undefined) {
+    if (discountType === "value") {
+      discountAmount = discount;
+    } else {
+      discountAmount = (subtotal * discount) / 100;
+    }
+  }
+  
+  // Calculate tax based on type
+  let taxAmount = 0;
+  if (tax !== null && tax !== undefined) {
+    if (taxType === "value") {
+      taxAmount = tax;
+    } else {
+      const afterDiscount = subtotal - discountAmount;
+      taxAmount = (afterDiscount * tax) / 100;
+    }
+  }
+  
+  const total = subtotal - discountAmount + taxAmount;
+  const totalPaid = payments.reduce((sum, payment) => sum + (payment.amount ?? 0), 0);
   const remainingBalance = total - totalPaid;
 
   const addPayment = () => {
@@ -280,7 +314,7 @@ export default function PurchaseEntry() {
       ...payments,
       {
         type: "cash",
-        amount: 0,
+        amount: undefined,
       },
     ]);
   };
@@ -360,7 +394,7 @@ export default function PurchaseEntry() {
     setFormError("");
     // Validate payment amounts are greater than 0
     for (const payment of payments) {
-      if (!payment.amount || payment.amount <= 0) {
+      if (payment.amount === undefined || payment.amount === null || payment.amount <= 0) {
         showError("Payment amount must be greater than 0");
         return;
       }
@@ -393,7 +427,7 @@ export default function PurchaseEntry() {
         quantity: (item.shopQuantity || 0) + (item.warehouseQuantity || 0),
         shopQuantity: item.shopQuantity || 0,
         warehouseQuantity: item.warehouseQuantity || 0,
-        cost: item.cost,
+        cost: item.cost || 0,
         discount: item.discount || 0,
         total: item.total,
         toWarehouse: item.toWarehouse !== undefined ? item.toWarehouse : true,
@@ -404,7 +438,10 @@ export default function PurchaseEntry() {
         supplierPhone: data.supplierPhone || undefined,
         items: purchaseItems,
         subtotal,
-        tax: data.tax,
+        discount: discountAmount,
+        discountType,
+        tax: taxAmount,
+        taxType,
         total,
         payments,
         remainingBalance,
@@ -620,15 +657,15 @@ export default function PurchaseEntry() {
                             type="number"
                             step={0.01}
                             min="0.01"
-                            value={String(item.cost)}
+                            value={(item.cost !== null && item.cost !== undefined && item.cost !== 0) ? String(item.cost) : ""}
                             onChange={(e) => {
-                              const value = parseFloat(e.target.value) || 0;
-                              updateItemCost(item.productId, value);
+                              const value = e.target.value === "" ? null : parseFloat(e.target.value);
+                              updateItemCost(item.productId, isNaN(value as any) || value === null ? undefined : value);
                             }}
                             className="w-24"
-                    error={showErrors && (!item.cost || item.cost <= 0)}
+                    error={showErrors && (item.cost === undefined || item.cost === null || item.cost <= 0)}
                     hint={
-                      showErrors && (!item.cost || item.cost <= 0)
+                      showErrors && (item.cost === undefined || item.cost === null || item.cost <= 0)
                         ? "Cost must be greater than 0"
                         : ""
                     }
@@ -638,7 +675,7 @@ export default function PurchaseEntry() {
                           <Input
                             type="number"
                             min="0"
-                            value={item.shopQuantity === 0 ? "" : item.shopQuantity}
+                            value={item.shopQuantity ?? ""}
                             onChange={(e) => updateItemLocationQuantity(item.productId, "shop", e.target.value)}
                             className="w-20"
                           />
@@ -647,7 +684,7 @@ export default function PurchaseEntry() {
                           <Input
                             type="number"
                             min="0"
-                            value={item.warehouseQuantity === 0 ? "" : item.warehouseQuantity}
+                            value={item.warehouseQuantity ?? ""}
                             onChange={(e) => updateItemLocationQuantity(item.productId, "warehouse", e.target.value)}
                             className="w-20"
                           />
@@ -793,31 +830,39 @@ export default function PurchaseEntry() {
                 <span className="text-gray-600 dark:text-gray-400">Subtotal:</span>
                 <span className="text-gray-800 dark:text-white">Rs. {subtotal.toFixed(2)}</span>
               </div>
-              <div className="flex flex-col">
-                <div className="flex justify-between items-center mb-2">
-                  <Label className="mb-0">Tax:</Label>
-                  <Input
-                    type="number"
-                    name="tax"
-                    step={0.01}
-                    min="0"
-                    value={tax}
-                    onChange={(e) => {
-                      const taxValue = parseFloat(e.target.value) || 0;
-                      setTax(taxValue);
-                      formik.setFieldValue("tax", taxValue);
+              <div className="flex items-center justify-between gap-4">
+                <Label className="mb-0 whitespace-nowrap">Discount:</Label>
+                <div className="">
+                  <TaxDiscountInput
+                    value={discount}
+                    type={discountType}
+                    onValueChange={(value) => {
+                      setDiscount(value ?? null);
+                      formik.setFieldValue("discount", value ?? 0);
                     }}
-                    onBlur={() => formik.handleBlur("tax")}
-                    className="w-20"
-                    error={(showErrors && !!formik.errors.tax) || !!backendErrors.tax}
-                    hint={
-                      (showErrors &&
-                        (typeof formik.errors.tax === "string" ? formik.errors.tax : undefined)) ||
-                      backendErrors.tax
-                    }
+                    onTypeChange={(type) => setDiscountType(type)}
+                    placeholder="0"
+                    min={0}
+                    step={0.01}
                   />
                 </div>
-              
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <Label className="mb-0 whitespace-nowrap">Tax:</Label>
+                <div className="">
+                  <TaxDiscountInput
+                    value={tax}
+                    type={taxType}
+                    onValueChange={(value) => {
+                      setTax(value ?? null);
+                      formik.setFieldValue("tax", value ?? 0);
+                    }}
+                    onTypeChange={(type) => setTaxType(type)}
+                    placeholder="0"
+                    min={0}
+                    step={0.01}
+                  />
+                </div>
               </div>
               <div className="flex justify-between pt-2 border-t border-gray-200 dark:border-gray-700">
                 <span className="text-lg font-semibold text-gray-800 dark:text-white">
@@ -850,7 +895,7 @@ export default function PurchaseEntry() {
                   </div>
                   <div className="space-y-2">
                     <div>
-                      <Label>Payment Type</Label>
+                      <Label>Payment Type  <span className="text-error-500">*</span></Label> 
                       <Select
                         value={payment.type}
                         onChange={(value) => updatePayment(index, "type", value)}
@@ -875,7 +920,7 @@ export default function PurchaseEntry() {
                               value={payment.bankAccountId || ""}
                               onChange={(value) => updatePayment(index, "bankAccountId", value)}
                               options={[
-                                { value: "", label: "Select a bank account" },
+
                                 ...bankAccounts
                                   .filter((acc) => acc.isActive)
                                   .map((acc) => ({
@@ -909,16 +954,19 @@ export default function PurchaseEntry() {
                         step={0.01}
                         min="0.01"
                         max={String(total - totalPaid + payment.amount)}
-                        value={payment.amount}
-                        onChange={(e) => updatePayment(index, "amount", parseFloat(e.target.value) || 0)}
+                        value={(payment.amount !== null && payment.amount !== undefined && payment.amount !== 0) ? String(payment.amount) : ""}
+                        onChange={(e) => {
+                          const value = e.target.value === "" ? undefined : parseFloat(e.target.value);
+                          updatePayment(index, "amount", isNaN(value as any) || value === null ? undefined : value);
+                        }}
                         placeholder="Enter amount"
                         required
                         error={
-                          (showErrors && (!payment.amount || payment.amount <= 0)) ||
+                          (showErrors && (payment.amount === undefined || payment.amount === null || payment.amount <= 0)) ||
                           !!backendErrors[`payments.${index}.amount`]
                         }
                         hint={
-                          (showErrors && (!payment.amount || payment.amount <= 0)
+                          (showErrors && (payment.amount === undefined || payment.amount === null || payment.amount <= 0)
                             ? "Amount must be greater than 0"
                             : undefined) ||
                           backendErrors[`payments.${index}.amount`]

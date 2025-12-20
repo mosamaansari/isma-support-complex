@@ -1,35 +1,80 @@
 import { useEffect, useState, useMemo } from "react";
 import Chart from "react-apexcharts";
 import { ApexOptions } from "apexcharts";
-import ChartTab from "../common/ChartTab";
 import api from "../../services/api";
 
-export default function StatisticsChart() {
-  const [monthlyData, setMonthlyData] = useState<{
+type TrendData = {
+  categories: string[];
+  sales: number[];
+  expenses: number[];
+  purchases: number[];
+  quarterly?: {
+    categories: string[];
     sales: number[];
     expenses: number[];
-  } | null>(null);
+    purchases: number[];
+  };
+  annual?: {
+    categories: string[];
+    sales: number[];
+    expenses: number[];
+    purchases: number[];
+  };
+};
+
+export default function StatisticsChart() {
+  const [trendData, setTrendData] = useState<TrendData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [view, setView] = useState<"monthly" | "quarterly" | "annual">("monthly");
 
   useEffect(() => {
     const loadData = async () => {
       try {
         setLoading(true);
         const stats = await api.getDashboardStats();
-        
-        // Get monthly sales and expenses from backend
-        const monthlySales = stats?.monthlySales?.data || [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-        const monthlyExpenses = stats?.monthlySales?.expenses || [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-        
-        setMonthlyData({
+        const ms = stats?.monthlySales;
+
+        const monthlySales = ms?.sales ?? ms?.data ?? new Array(12).fill(0);
+        const monthlyExpenses = ms?.expenses ?? new Array(12).fill(0);
+        const monthlyPurchases = ms?.purchases ?? new Array(12).fill(0);
+
+        const quarterlySales = ms?.quarterly?.sales ?? ms?.quarterly?.data ?? new Array(4).fill(0);
+        const quarterlyExpenses = ms?.quarterly?.expenses ?? new Array(4).fill(0);
+        const quarterlyPurchases = ms?.quarterly?.purchases ?? new Array(4).fill(0);
+
+        const annualSales = ms?.annual?.sales ?? ms?.annual?.data ?? [];
+        const annualExpenses = ms?.annual?.expenses ?? [];
+        const annualPurchases = ms?.annual?.purchases ?? [];
+
+        setTrendData({
+          categories: ms?.categories || ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
           sales: monthlySales,
           expenses: monthlyExpenses,
+          purchases: monthlyPurchases,
+          quarterly: ms?.quarterly
+            ? {
+                categories: ms.quarterly.categories || ["Q1", "Q2", "Q3", "Q4"],
+                sales: quarterlySales,
+                expenses: quarterlyExpenses,
+                purchases: quarterlyPurchases,
+              }
+            : undefined,
+          annual: ms?.annual
+            ? {
+                categories: ms.annual.categories || [],
+                sales: annualSales,
+                expenses: annualExpenses,
+                purchases: annualPurchases,
+              }
+            : undefined,
         });
       } catch (error: any) {
         console.error("Error loading statistics:", error);
-        setMonthlyData({
-          sales: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-          expenses: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        setTrendData({
+          categories: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+          sales: new Array(12).fill(0),
+          expenses: new Array(12).fill(0),
+          purchases: new Array(12).fill(0),
         });
       } finally {
         setLoading(false);
@@ -40,6 +85,39 @@ export default function StatisticsChart() {
   }, []);
 
   const defaultCategories = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const normalize = (arr: number[] | undefined, len: number) => {
+    const base = Array.isArray(arr) ? arr.slice(0, len) : [];
+    while (base.length < len) base.push(0);
+    return base;
+  };
+
+  const activeCategories =
+    view === "quarterly"
+      ? trendData?.quarterly?.categories || ["Q1", "Q2", "Q3", "Q4"]
+      : view === "annual"
+      ? trendData?.annual?.categories || []
+      : trendData?.categories || defaultCategories;
+
+  const activeSales =
+    view === "quarterly"
+      ? normalize(trendData?.quarterly?.sales, (trendData?.quarterly?.categories || ["Q1", "Q2", "Q3", "Q4"]).length)
+      : view === "annual"
+      ? normalize(trendData?.annual?.sales, (trendData?.annual?.categories || []).length || 12)
+      : normalize(trendData?.sales, (trendData?.categories || defaultCategories).length);
+
+  const activeExpenses =
+    view === "quarterly"
+      ? normalize(trendData?.quarterly?.expenses, (trendData?.quarterly?.categories || ["Q1", "Q2", "Q3", "Q4"]).length)
+      : view === "annual"
+      ? normalize(trendData?.annual?.expenses, (trendData?.annual?.categories || []).length || 12)
+      : normalize(trendData?.expenses, (trendData?.categories || defaultCategories).length);
+
+  const activePurchases =
+    view === "quarterly"
+      ? normalize(trendData?.quarterly?.purchases, (trendData?.quarterly?.categories || ["Q1", "Q2", "Q3", "Q4"]).length)
+      : view === "annual"
+      ? normalize(trendData?.annual?.purchases, (trendData?.annual?.categories || []).length || 12)
+      : normalize(trendData?.purchases, (trendData?.categories || defaultCategories).length);
 
   const options: ApexOptions = useMemo(() => ({
     legend: {
@@ -47,7 +125,7 @@ export default function StatisticsChart() {
       position: "top",
       horizontalAlign: "left",
     },
-    colors: ["#465FFF", "#EF4444"], // Sales (blue) and Expenses (red)
+    colors: ["#465FFF", "#EF4444", "#8b5cf6"], // Sales, Expenses, Purchases
     chart: {
       fontFamily: "Outfit, sans-serif",
       height: 310,
@@ -98,7 +176,7 @@ export default function StatisticsChart() {
     },
     xaxis: {
       type: "category",
-      categories: monthlyData?.sales ? defaultCategories : defaultCategories,
+      categories: activeCategories,
       axisBorder: {
         show: false,
       },
@@ -124,18 +202,23 @@ export default function StatisticsChart() {
         },
       },
     },
-  }), [monthlyData]);
+
+  }), [activeCategories]);
 
   const series = useMemo(() => [
     {
       name: "Sales",
-      data: monthlyData?.sales || [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      data: activeSales,
     },
     {
       name: "Expenses",
-      data: monthlyData?.expenses || [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      data: activeExpenses,
     },
-  ], [monthlyData]);
+    {
+      name: "Purchases",
+      data: activePurchases,
+    },
+  ], [activeSales, activeExpenses, activePurchases]);
 
   if (loading) {
     return (
@@ -148,7 +231,7 @@ export default function StatisticsChart() {
     );
   }
 
-  if (!monthlyData) {
+  if (!trendData) {
     return (
       <div className="rounded-2xl border border-gray-200 bg-white px-5 pb-5 pt-5 dark:border-gray-800 dark:bg-white/[0.03] sm:px-6 sm:pt-6">
         <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90 mb-4">
@@ -166,14 +249,45 @@ export default function StatisticsChart() {
       <div className="flex flex-col gap-5 mb-6 sm:flex-row sm:justify-between">
         <div className="w-full">
           <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-            Sales vs Expenses
+            Sales vs Expenses vs Purchases
           </h3>
           <p className="mt-1 text-gray-500 text-theme-sm dark:text-gray-400">
-            Monthly comparison of sales and expenses
+            Monthly / Quarterly / Annual comparison
           </p>
         </div>
         <div className="flex items-start w-full gap-3 sm:justify-end">
-          <ChartTab />
+          <div className="flex items-center gap-0.5 rounded-lg bg-gray-100 p-0.5 dark:bg-gray-900">
+            <button
+              onClick={() => setView("monthly")}
+              className={`px-3 py-2 font-medium w-full rounded-md text-theme-sm ${
+                view === "monthly"
+                  ? "shadow-theme-xs text-gray-900 dark:text-white bg-white dark:bg-gray-800"
+                  : "text-gray-500 dark:text-gray-400"
+              }`}
+            >
+              Monthly
+            </button>
+            <button
+              onClick={() => setView("quarterly")}
+              className={`px-3 py-2 font-medium w-full rounded-md text-theme-sm ${
+                view === "quarterly"
+                  ? "shadow-theme-xs text-gray-900 dark:text-white bg-white dark:bg-gray-800"
+                  : "text-gray-500 dark:text-gray-400"
+              }`}
+            >
+              Quarterly
+            </button>
+            <button
+              onClick={() => setView("annual")}
+              className={`px-3 py-2 font-medium w-full rounded-md text-theme-sm ${
+                view === "annual"
+                  ? "shadow-theme-xs text-gray-900 dark:text-white bg-white dark:bg-gray-800"
+                  : "text-gray-500 dark:text-gray-400"
+              }`}
+            >
+              Annually
+            </button>
+          </div>
         </div>
       </div>
 

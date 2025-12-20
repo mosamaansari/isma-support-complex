@@ -263,8 +263,8 @@ export default function RoleSelect({
 
       {/* Add Role Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-          <div className="w-full max-w-md p-6 bg-white rounded-lg shadow-lg dark:bg-gray-800">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/30 py-8">
+          <div className="w-full max-w-md p-6 bg-white rounded-lg shadow-lg dark:bg-gray-800 max-h-[90vh] overflow-y-auto">
             <h3 className="mb-4 text-lg font-semibold text-gray-800 dark:text-white">
               Add New Role
             </h3>

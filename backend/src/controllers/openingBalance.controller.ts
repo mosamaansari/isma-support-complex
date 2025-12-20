@@ -34,18 +34,29 @@ class OpeningBalanceController {
 
   async createOpeningBalance(req: AuthRequest, res: Response) {
     try {
+      if (!req.user) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
       const openingBalance = await openingBalanceService.createOpeningBalance(
         req.body,
-        req.user!.id
+        {
+          id: req.user.id,
+          username: req.user.username,
+          name: req.user.name,
+          userType: req.user.userType,
+        }
       );
-      logger.info(`Opening balance created: ${openingBalance.id} by ${req.user?.username}`);
+      logger.info(`Opening balance created: ${openingBalance.id} by ${req.user.username}`);
       res.status(201).json(openingBalance);
     } catch (error: any) {
       logger.error("Create opening balance error:", error);
       if (error.message.includes("already exists")) {
         res.status(400).json({ error: error.message });
+      } else if (error.message.includes("not found")) {
+        res.status(404).json({ error: error.message });
       } else {
-        res.status(500).json({ error: "Internal server error" });
+        res.status(500).json({ error: error.message || "Internal server error" });
       }
     }
   }
@@ -53,7 +64,14 @@ class OpeningBalanceController {
   async updateOpeningBalance(req: AuthRequest, res: Response) {
     try {
       const { id } = req.params;
-      const openingBalance = await openingBalanceService.updateOpeningBalance(id, req.body);
+      const openingBalance = await openingBalanceService.updateOpeningBalance(
+        id,
+        req.body,
+        req.user ? {
+          id: req.user.id,
+          userType: req.user.userType,
+        } : undefined
+      );
       logger.info(`Opening balance updated: ${id} by ${req.user?.username}`);
       res.json(openingBalance);
     } catch (error: any) {
@@ -61,7 +79,7 @@ class OpeningBalanceController {
       if (error.message.includes("not found")) {
         res.status(404).json({ error: error.message });
       } else {
-        res.status(500).json({ error: "Internal server error" });
+        res.status(500).json({ error: error.message || "Internal server error" });
       }
     }
   }

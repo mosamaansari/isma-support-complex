@@ -25,6 +25,23 @@ export const createProductSchema = Joi.object({
     .messages({
       "string.uuid": "Category ID must be a valid UUID",
     }),
+  brand: Joi.string()
+    .required()
+    .min(1)
+    .max(100)
+    .messages({
+      "string.empty": "Brand is required",
+      "string.min": "Brand must be at least 1 character long",
+      "string.max": "Brand cannot exceed 100 characters",
+      "any.required": "Brand is required",
+    }),
+  brandId: Joi.string()
+    .optional()
+    .uuid()
+    .allow("", null)
+    .messages({
+      "string.uuid": "Brand ID must be a valid UUID",
+    }),
   salePrice: Joi.number()
     .required()
     .min(0.01)
@@ -143,6 +160,20 @@ export const updateProductSchema = Joi.object({
     .allow("", null)
     .messages({
       "string.uuid": "Category ID must be a valid UUID",
+    }),
+  brand: Joi.string()
+    .optional()
+    .allow("", null)
+    .max(100)
+    .messages({
+      "string.max": "Brand cannot exceed 100 characters",
+    }),
+  brandId: Joi.string()
+    .optional()
+    .uuid()
+    .allow("", null)
+    .messages({
+      "string.uuid": "Brand ID must be a valid UUID",
     }),
   salePrice: Joi.number()
     .optional()

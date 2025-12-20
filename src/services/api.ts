@@ -588,6 +588,34 @@ class ApiClient {
     await this.client.delete(`/categories/${id}`);
   }
 
+  // Brand endpoints
+  async getBrands() {
+    const response = await this.client.get("/brands");
+    // Response is already transformed by interceptor
+    return response.data?.data || response.data;
+  }
+
+  async getBrand(id: string) {
+    const response = await this.client.get(`/brands/${id}`);
+    // Response is already transformed by interceptor
+    return response.data?.data || response.data;
+  }
+
+  async createBrand(data: { name: string; description?: string }) {
+    const response = await this.client.post("/brands", data);
+    // Response is already transformed by interceptor
+    return response.data?.data || response.data;
+  }
+
+  async updateBrand(id: string, data: { name: string; description?: string }) {
+    const response = await this.client.put(`/brands/${id}`, data);
+    // Response is already transformed by interceptor
+    return response.data?.data || response.data;
+  }
+
+  async deleteBrand(id: string) {
+    await this.client.delete(`/brands/${id}`);
+  }
 
   // Settings endpoints
   async getSettings() {

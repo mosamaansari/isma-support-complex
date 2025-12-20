@@ -20,6 +20,7 @@ class DashboardService {
           createdAt: true,
           payments: true,
         },
+        orderBy: { createdAt: "desc" },
       });
 
       // Calculate today's sales based on:
@@ -61,11 +62,8 @@ class DashboardService {
         });
       });
 
-      // Total sales (all time)
+      // Total sales (all time, including pending/cancelled to show full billed value)
       const totalSalesResult = await prisma.sale.aggregate({
-        where: {
-          status: "completed",
-        },
         _sum: {
           total: true,
         },
@@ -98,6 +96,7 @@ class DashboardService {
           warehouseMinStockLevel: true,
           minStockLevel: true,
         },
+        orderBy: { createdAt: "desc" },
       });
       const lowStockProducts = allProducts.filter(
         (product) => {
@@ -127,6 +126,7 @@ class DashboardService {
         where: {
           status: "pending",
         },
+        orderBy: { createdAt: "desc" },
       });
       const pendingPurchasesAmount = pendingPurchases.reduce(
         (sum, purchase) => sum + Number(purchase.remainingBalance || 0),
@@ -142,11 +142,8 @@ class DashboardService {
       // Monthly sales for last 12 months
       const monthlySales = await this.getMonthlySales();
 
-      // Recent sales (last 5)
+      // Recent sales (last 5, include all statuses)
       const recentSales = await prisma.sale.findMany({
-        where: {
-          status: "completed",
-        },
         orderBy: {
           createdAt: "desc",
         },
@@ -217,6 +214,7 @@ class DashboardService {
     const currentDate = new Date();
     const monthlySalesData = new Array(12).fill(0);
     const monthlyExpensesData = new Array(12).fill(0);
+    const monthlyPurchasesData = new Array(12).fill(0);
 
     // Get sales and expenses for the last 12 months
     for (let i = 0; i < 12; i++) {
@@ -242,8 +240,9 @@ class DashboardService {
             gte: monthStart,
             lte: monthEnd,
           },
-          status: "completed",
+          // include all statuses (completed/pending/cancelled) so chart is not empty
         },
+        orderBy: { createdAt: "desc" },
       });
 
       const monthSalesTotal = monthSales.reduce(
@@ -260,6 +259,7 @@ class DashboardService {
             lte: monthEnd,
           },
         },
+        orderBy: { createdAt: "desc" },
       });
 
       const monthExpensesTotal = monthExpenses.reduce(
@@ -267,12 +267,110 @@ class DashboardService {
         0
       );
       monthlyExpensesData[11 - i] = monthExpensesTotal;
+
+      // Get purchases for this month
+      const monthPurchases = await prisma.purchase.findMany({
+        where: {
+          date: {
+            gte: monthStart,
+            lte: monthEnd,
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+      const monthPurchasesTotal = monthPurchases.reduce(
+        (sum, purchase) => sum + Number(purchase.total),
+        0
+      );
+      monthlyPurchasesData[11 - i] = monthPurchasesTotal;
+    }
+
+    // Quarterly (last 4 quarters)
+    const quarterlyCategories = ["Q1", "Q2", "Q3", "Q4"];
+    const quarterlySales = [];
+    const quarterlyExpenses = [];
+    const quarterlyPurchases = [];
+    for (let q = 0; q < 4; q++) {
+      const startMonth = currentDate.getMonth() - q * 3 - 2;
+      const quarterStart = new Date(currentDate.getFullYear(), startMonth, 1);
+      const quarterEnd = new Date(currentDate.getFullYear(), startMonth + 3, 0, 23, 59, 59, 999);
+
+      const qSales = await prisma.sale.findMany({
+        where: {
+          date: { gte: quarterStart, lte: quarterEnd },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+      const qExpenses = await prisma.expense.findMany({
+        where: {
+          date: { gte: quarterStart, lte: quarterEnd },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+      const qPurchases = await prisma.purchase.findMany({
+        where: {
+          date: { gte: quarterStart, lte: quarterEnd },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      quarterlySales.unshift(qSales.reduce((s, v) => s + Number(v.total), 0));
+      quarterlyExpenses.unshift(qExpenses.reduce((s, v) => s + Number(v.amount), 0));
+      quarterlyPurchases.unshift(qPurchases.reduce((s, v) => s + Number(v.total), 0));
+    }
+
+    // Annual (last 3 years)
+    const annualCategories: string[] = [];
+    const annualSales: number[] = [];
+    const annualExpenses: number[] = [];
+    const annualPurchases: number[] = [];
+    for (let y = 0; y < 3; y++) {
+      const year = currentDate.getFullYear() - (2 - y);
+      const yearStart = new Date(year, 0, 1);
+      const yearEnd = new Date(year, 11, 31, 23, 59, 59, 999);
+
+      const ySales = await prisma.sale.findMany({
+        where: {
+          date: { gte: yearStart, lte: yearEnd },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+      const yExpenses = await prisma.expense.findMany({
+        where: {
+          date: { gte: yearStart, lte: yearEnd },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+      const yPurchases = await prisma.purchase.findMany({
+        where: {
+          date: { gte: yearStart, lte: yearEnd },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      annualCategories.push(String(year));
+      annualSales.push(ySales.reduce((s, v) => s + Number(v.total), 0));
+      annualExpenses.push(yExpenses.reduce((s, v) => s + Number(v.amount), 0));
+      annualPurchases.push(yPurchases.reduce((s, v) => s + Number(v.total), 0));
     }
 
     return {
       categories: months,
-      data: monthlySalesData,
+      sales: monthlySalesData,
       expenses: monthlyExpensesData,
+      purchases: monthlyPurchasesData,
+      quarterly: {
+        categories: quarterlyCategories,
+        sales: quarterlySales,
+        expenses: quarterlyExpenses,
+        purchases: quarterlyPurchases,
+      },
+      annual: {
+        categories: annualCategories,
+        sales: annualSales,
+        expenses: annualExpenses,
+        purchases: annualPurchases,
+      },
     };
   }
 }

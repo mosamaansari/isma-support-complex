@@ -97,13 +97,55 @@ export const createPurchaseSchema = Joi.object({
       "number.min": "Subtotal cannot be negative",
       "any.required": "Subtotal is required",
     }),
+  discount: Joi.number()
+    .optional()
+    .min(0)
+    .when("discountType", {
+      is: "percent",
+      then: Joi.number().max(100).messages({
+        "number.max": "Discount percentage cannot exceed 100%",
+      }),
+      otherwise: Joi.number().max(10000000).messages({
+        "number.max": "Discount amount is too large",
+      }),
+    })
+    .default(0)
+    .allow(null)
+    .messages({
+      "number.base": "Discount must be a number",
+      "number.min": "Discount cannot be negative",
+    }),
+  discountType: Joi.string()
+    .optional()
+    .valid("percent", "value")
+    .default("percent")
+    .messages({
+      "any.only": "Discount type must be either 'percent' or 'value'",
+    }),
   tax: Joi.number()
     .optional()
     .min(0)
+    .when("taxType", {
+      is: "percent",
+      then: Joi.number().max(100).messages({
+        "number.max": "Tax percentage cannot exceed 100%",
+      }),
+      otherwise: Joi.number().max(10000000).messages({
+        "number.max": "Tax amount is too large",
+      }),
+    })
     .default(0)
+    .allow(null)
     .messages({
       "number.base": "Tax must be a number",
       "number.min": "Tax cannot be negative",
+    }),
+  taxType: Joi.string()
+    .optional()
+    .valid("percent", "value")
+    .default("percent")
+    .messages({
+      "any.only": "Tax type must be either 'percent' or 'value'",
     }),
   total: Joi.number()
     .min(0)
@@ -241,7 +283,7 @@ export const updatePurchaseSchema = Joi.object({
 
 export const addPaymentSchema = Joi.object({
   type: Joi.string()
-    .valid("cash", "card")
+    .valid("cash", "bank_transfer")
     .required()
     .messages({
       "any.only": "Payment type must be cash or bank_transfer",
@@ -257,8 +299,14 @@ export const addPaymentSchema = Joi.object({
     }),
   bankAccountId: Joi.string()
     .optional()
-    .uuid()
     .allow("", null)
+    .custom((value, helpers) => {
+      if (value === "" || value === null || value === undefined) return null;
+      if (typeof value === "string" && value.length > 0 && !value.startsWith("c")) {
+        return helpers.error("string.pattern.base", { message: "Bank account ID must be a valid ID" });
+      }
+      return value;
+    })
     .when("type", {
       is: "bank_transfer",
       then: Joi.required().messages({
@@ -267,7 +315,7 @@ export const addPaymentSchema = Joi.object({
       otherwise: Joi.optional(),
     })
     .messages({
-      "string.uuid": "Bank account ID must be a valid UUID",
+      "string.pattern.base": "Bank account ID must be a valid ID",
     }),
   date: Joi.string()
     .optional()

@@ -35,6 +35,12 @@ export default function DatePicker({
   const calendarRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const hiddenInputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [calendarPosition, setCalendarPosition] = useState<{
+    top: boolean;
+    left: boolean;
+    right: boolean;
+  }>({ top: false, left: false, right: false });
 
   // Get today's date in YYYY-MM-DD format
   const getTodayDate = () => {
@@ -71,6 +77,64 @@ export default function DatePicker({
       }
     }
   }, [value]);
+
+  // Calculate calendar position based on available space
+  useEffect(() => {
+    if (!isOpen || !inputRef.current) return;
+
+    const updatePosition = () => {
+      if (!inputRef.current) return;
+
+      // Use setTimeout to ensure DOM is updated
+      setTimeout(() => {
+        if (!inputRef.current || !calendarRef.current) return;
+
+        const inputRect = inputRef.current.getBoundingClientRect();
+        const viewportHeight = window.innerHeight;
+        const viewportWidth = window.innerWidth;
+        const calendarHeight = 380; // Approximate calendar height
+        const calendarWidth = 320; // Calendar width
+        const padding = 8; // Padding from viewport edge
+
+        // Check space below and above
+        const spaceBelow = viewportHeight - inputRect.bottom - padding;
+        const spaceAbove = inputRect.top - padding;
+
+        // Determine vertical position: show below if enough space, otherwise above
+        const positionTop = spaceBelow < calendarHeight && spaceAbove >= calendarHeight;
+
+        // Determine horizontal position: align left by default, right if needed
+        // Try to keep calendar aligned with input's left edge
+        let positionRight = false;
+        if (inputRect.left + calendarWidth > viewportWidth - padding) {
+          // Calendar would overflow on right, try right alignment
+          if (inputRect.right >= calendarWidth + padding) {
+            positionRight = true;
+          }
+        } else if (inputRect.right - calendarWidth < padding) {
+          // If aligning left would overflow left edge, align right
+          positionRight = true;
+        }
+
+        setCalendarPosition({
+          top: positionTop,
+          left: false,
+          right: positionRight,
+        });
+      }, 0);
+    };
+
+    updatePosition();
+    
+    // Update on resize and scroll
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [isOpen]);
 
   // Close calendar when clicking outside
   useEffect(() => {
@@ -229,7 +293,7 @@ export default function DatePicker({
   } ${className}`;
 
   return (
-    <div className={`relative ${className}`}>
+    <div ref={containerRef} className={`relative ${className}`}>
       <div className="relative">
         <input
           ref={inputRef}
@@ -284,7 +348,18 @@ export default function DatePicker({
       {isOpen && !disabled && (
         <div
           ref={calendarRef}
-          className="absolute z-50 mt-2 bg-white rounded-lg shadow-xl border border-gray-200 dark:bg-gray-800 dark:border-gray-700 p-4 w-[320px]"
+          className={`absolute z-50 bg-white rounded-lg shadow-xl border border-gray-200 dark:bg-gray-800 dark:border-gray-700 p-4 w-[320px] ${
+            calendarPosition.top ? "bottom-full mb-2" : "top-full mt-2"
+          } ${
+            calendarPosition.right ? "right-0" : calendarPosition.left ? "left-0" : "left-0"
+          }`}
+          style={{
+            ...(calendarPosition.right && calendarPosition.left
+              ? { right: 0 }
+              : calendarPosition.right
+              ? { right: 0 }
+              : {}),
+          }}
         >
           {/* Header with month navigation */}
           <div className="flex items-center justify-between mb-4">
@@ -411,6 +486,7 @@ export default function DatePicker({
     </div>
   );
 }
+
 
 
 

@@ -9,11 +9,11 @@ export const createOpeningBalanceSchema = Joi.object({
       "any.required": "Date is required",
     }),
   cashBalance: Joi.number()
-    .min(0)
+    .min(1)
     .required()
     .messages({
       "number.base": "Cash balance must be a number",
-      "number.min": "Cash balance cannot be negative",
+      "number.min": "Cash balance must be at least 1",
       "any.required": "Cash balance is required",
     }),
   cardBalances: Joi.array()
@@ -46,11 +46,11 @@ export const createOpeningBalanceSchema = Joi.object({
 
 export const updateOpeningBalanceSchema = Joi.object({
   cashBalance: Joi.number()
-    .min(0)
+    .min(1)
     .optional()
     .messages({
       "number.base": "Cash balance must be a number",
-      "number.min": "Cash balance cannot be negative",
+      "number.min": "Cash balance must be at least 1",
     }),
   cardBalances: Joi.array()
     .items(

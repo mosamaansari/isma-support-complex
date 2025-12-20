@@ -20,7 +20,7 @@ class SupplierService {
         email: true,
         address: true,
       },
-      orderBy: { name: "asc" },
+      orderBy: { createdAt: "desc" },
       take: 50, // Limit to 50 for dropdown
     });
 
@@ -29,5 +29,8 @@ class SupplierService {
 }
 
 export default new SupplierService();
+
+
+
 
 

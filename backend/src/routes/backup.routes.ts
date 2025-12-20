@@ -23,8 +23,8 @@ router.post(
 );
 
 // Export report to Excel
-router.get(
-  "/export-report-excel",
+router.post(
+  "/report/excel",
   authenticate,
   requirePermission(PERMISSIONS.BACKUP_EXPORT),
   backupController.exportReportToExcel.bind(backupController)

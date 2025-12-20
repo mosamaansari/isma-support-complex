@@ -62,6 +62,15 @@ export const createSaleSchema = Joi.object({
         discount: Joi.number()
           .optional()
           .min(0)
+          .when("discountType", {
+            is: "percent",
+            then: Joi.number().max(100).messages({
+              "number.max": "Discount percentage cannot exceed 100%",
+            }),
+            otherwise: Joi.number().messages({
+              "number.base": "Discount must be a number",
+            }),
+          })
           .messages({
             "number.base": "Discount must be a number",
             "number.min": "Discount cannot be negative",
@@ -224,22 +233,52 @@ export const createSaleSchema = Joi.object({
   discount: Joi.number()
     .optional()
     .min(0)
-    .max(100)
+    .when("discountType", {
+      is: "percent",
+      then: Joi.number().max(100).messages({
+        "number.max": "Discount percentage cannot exceed 100%",
+      }),
+      otherwise: Joi.number().max(10000000).messages({
+        "number.max": "Discount amount is too large",
+      }),
+    })
     .default(0)
+    .allow(null)
     .messages({
       "number.base": "Discount must be a number",
       "number.min": "Discount cannot be negative",
-      "number.max": "Discount cannot exceed 100%",
+    }),
+  discountType: Joi.string()
+    .optional()
+    .valid("percent", "value")
+    .default("percent")
+    .messages({
+      "any.only": "Discount type must be either 'percent' or 'value'",
     }),
   tax: Joi.number()
     .optional()
     .min(0)
-    .max(100)
+    .when("taxType", {
+      is: "percent",
+      then: Joi.number().max(100).messages({
+        "number.max": "Tax percentage cannot exceed 100%",
+      }),
+      otherwise: Joi.number().max(10000000).messages({
+        "number.max": "Tax amount is too large",
+      }),
+    })
     .default(0)
+    .allow(null)
     .messages({
       "number.base": "Tax must be a number",
       "number.min": "Tax cannot be negative",
-      "number.max": "Tax cannot exceed 100%",
+    }),
+  taxType: Joi.string()
+    .optional()
+    .valid("percent", "value")
+    .default("percent")
+    .messages({
+      "any.only": "Tax type must be either 'percent' or 'value'",
     }),
 });
 

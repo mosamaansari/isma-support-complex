@@ -4,7 +4,7 @@ import logger from "../utils/logger";
 class CategoryService {
   async getCategories() {
     const categories = await prisma.category.findMany({
-      orderBy: { name: "asc" },
+      orderBy: { createdAt: "desc" },
     });
 
     return categories;

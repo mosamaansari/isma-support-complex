@@ -52,7 +52,8 @@ export default function ProductList() {
     if (!product || !product.name) return false;
     const matchesSearch =
       product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (product.category && product.category.toLowerCase().includes(searchTerm.toLowerCase()));
+      (product.category && product.category.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (product.brand && product.brand.toLowerCase().includes(searchTerm.toLowerCase()));
     const shopMin = (product as any).shopMinStockLevel ?? product.minStockLevel ?? 0;
     const warehouseMin = (product as any).warehouseMinStockLevel ?? product.minStockLevel ?? 0;
     const shopLow = shopMin > 0 && (product.shopQuantity || 0) <= shopMin;
@@ -194,7 +195,7 @@ export default function ProductList() {
       </div>
 
       <div className="overflow-x-auto bg-white rounded-lg shadow-sm dark:bg-gray-800">
-        <table className="w-full">
+        <table className="w-full min-w-[1000px]">
           <thead>
             <tr className="border-b border-gray-200 dark:border-gray-700">
                       <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -205,6 +206,9 @@ export default function ProductList() {
                       </th>
                       <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
                         Category
+                      </th>
+                      <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Brand
                       </th>
               <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
                 Sale Price
@@ -229,7 +233,7 @@ export default function ProductList() {
           <tbody>
             {filteredProducts.length === 0 ? (
               <tr>
-                <td colSpan={9} className="p-8 text-center text-gray-500">
+                <td colSpan={10} className="p-8 text-center text-gray-500">
                   {products.length === 0
                     ? "No products available. Add your first product!"
                     : "No products match your search criteria"}
@@ -261,16 +265,19 @@ export default function ProductList() {
                         </div>
                       )}
                     </td>
-                    <td className="p-4 font-medium text-gray-800 dark:text-white">
-                      {product.name}
+                    <td className="p-4 font-medium text-gray-800 dark:text-white max-w-[250px]">
+                      <div className="line-clamp-3">{product.name}</div>
                     </td>
-                    <td className="p-4 text-gray-700 dark:text-gray-300">
-                      {product.category}
+                    <td className="p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                      {product.category || "-"}
                     </td>
-                    <td className="p-4 text-gray-700 dark:text-gray-300">
+                    <td className="p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                      {product.brand || "-"}
+                    </td>
+                    <td className="p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap">
                       Rs. {Number(product.salePrice || 0).toFixed(2)}
                     </td>
-                    <td className="p-4">
+                    <td className="p-4 whitespace-nowrap">
                       <span
                         className={`font-semibold ${shopLow ? "text-orange-600 dark:text-orange-400" : "text-gray-800 dark:text-white"}`}
                       >
@@ -278,7 +285,7 @@ export default function ProductList() {
                         <span className="text-xs text-gray-500 dark:text-gray-400">(min {shopMin})</span>
                       </span>
                     </td>
-                    <td className="p-4">
+                    <td className="p-4 whitespace-nowrap">
                       <span
                         className={`font-semibold ${warehouseLow ? "text-orange-600 dark:text-orange-400" : "text-gray-800 dark:text-white"}`}
                       >
@@ -286,10 +293,10 @@ export default function ProductList() {
                         <span className="text-xs text-gray-500 dark:text-gray-400">(min {warehouseMin})</span>
                       </span>
                     </td>
-                    <td className="p-4 font-semibold text-gray-800 dark:text-white">
+                    <td className="p-4 font-semibold text-gray-800 dark:text-white whitespace-nowrap">
                       {totalQuantity}
                     </td>
-                    <td className="p-4">
+                    <td className="p-4 whitespace-nowrap">
                       {isLowStock ? (
                         <span className="px-2 py-1 text-xs font-medium rounded bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400">
                           Low Stock
@@ -300,10 +307,10 @@ export default function ProductList() {
                         </span>
                       )}
                     </td>
-                    <td className="p-4">
-                      <div className="flex items-center justify-center gap-2">
+                    <td className="p-4 whitespace-nowrap">
+                      <div className="flex items-center justify-center gap-2 flex-nowrap">
                         <Link to={`/inventory/product/edit/${product.id}`}>
-                          <button className="p-2 text-blue-600 hover:bg-blue-50 rounded dark:hover:bg-blue-900/20">
+                          <button className="p-2 text-blue-600 hover:bg-blue-50 rounded dark:hover:bg-blue-900/20 flex-shrink-0">
                             <PencilIcon className="w-4 h-4" />
                           </button>
                         </Link>
@@ -313,7 +320,7 @@ export default function ProductList() {
                           <button
                             onClick={() => handleDeleteClick(product.id)}
                             disabled={isDeleting === product.id}
-                            className="p-2 text-red-600 hover:bg-red-50 rounded dark:hover:bg-red-900/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="p-2 text-red-600 hover:bg-red-50 rounded dark:hover:bg-red-900/20 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
                           >
                             <TrashBinIcon className="w-4 h-4" />
                           </button>
@@ -329,8 +336,8 @@ export default function ProductList() {
       </div>
 
       {/* Pagination Controls */}
-      <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-4 bg-white rounded-lg shadow-sm p-4 dark:bg-gray-800">
-        <div className="flex items-center gap-4">
+      <div className="mt-6 flex flex-col gap-4 bg-white rounded-lg shadow-sm p-4 dark:bg-gray-800">
+        <div className="flex items-center justify-between">
           <PageSizeSelector
             pageSize={productsPagination?.pageSize || 10}
             onPageSizeChange={handlePageSizeChange}
@@ -341,11 +348,13 @@ export default function ProductList() {
             {productsPagination.total} products
           </span>
         </div>
-        <Pagination
-          currentPage={productsPagination?.page || 1}
-          totalPages={productsPagination?.totalPages || 1}
-          onPageChange={handlePageChange}
-        />
+        <div className="flex justify-center">
+          <Pagination
+            currentPage={productsPagination?.page || 1}
+            totalPages={productsPagination?.totalPages || 1}
+            onPageChange={handlePageChange}
+          />
+        </div>
       </div>
 
       {/* Delete Confirmation Modal */}

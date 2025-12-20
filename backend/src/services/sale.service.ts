@@ -366,8 +366,27 @@ class SaleService {
       });
     }
 
-    const discountAmount = (subtotal * (data.discount || 0)) / 100;
-    const taxAmount = (subtotal * (data.tax || 0)) / 100;
+    // Calculate global discount based on type
+    let discountAmount = 0;
+    if (data.discount && data.discount > 0) {
+      if (data.discountType === "value") {
+        discountAmount = data.discount;
+      } else {
+        discountAmount = (subtotal * data.discount) / 100;
+      }
+    }
+    
+    // Calculate global tax based on type
+    let taxAmount = 0;
+    if (data.tax && data.tax > 0) {
+      if (data.taxType === "value") {
+        taxAmount = data.tax;
+      } else {
+        const afterDiscount = subtotal - discountAmount;
+        taxAmount = (afterDiscount * data.tax) / 100;
+      }
+    }
+    
     const total = subtotal - discountAmount + taxAmount;
 
     // Get or create customer (optional - use default if not provided)
@@ -437,7 +456,9 @@ class SaleService {
         billNumber,
         subtotal,
         discount: discountAmount,
+        discountType: data.discountType || "percent",
         tax: taxAmount,
+        taxType: data.taxType || "percent",
         total,
         paymentType: payments[0]?.type || ("cash" as any),
         payments: payments as any,

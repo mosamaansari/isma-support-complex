@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router";
 import PageMeta from "../../components/common/PageMeta";
 import { useData } from "../../context/DataContext";
@@ -18,13 +18,18 @@ export default function UserList() {
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState<string | null>(null);
+  const usersLoadedRef = useRef(false);
 
-  // Refresh users on mount if empty
+  // Refresh users on mount if empty (only once)
   useEffect(() => {
-    if (users.length === 0 && !loading && currentUser) {
-      refreshUsers(usersPagination?.page || 1, usersPagination?.pageSize || 10).catch(console.error);
+    if (!usersLoadedRef.current) {
+      usersLoadedRef.current = true;
+      if (!loading && (!users || users.length === 0) && currentUser) {
+        refreshUsers(usersPagination?.page || 1, usersPagination?.pageSize || 10).catch(console.error);
+      }
     }
-  }, [users.length, loading, currentUser, refreshUsers, usersPagination?.page, usersPagination?.pageSize]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handlePageChange = (page: number) => {
     refreshUsers(page, usersPagination?.pageSize || 10);
@@ -163,7 +168,7 @@ export default function UserList() {
       </div>
 
       <div className="overflow-x-auto bg-white rounded-lg shadow-sm dark:bg-gray-800">
-        <table className="w-full">
+        <table className="w-full min-w-[800px]">
           <thead>
             <tr className="border-b border-gray-200 dark:border-gray-700">
               <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -204,19 +209,21 @@ export default function UserList() {
                   key={user.id}
                   className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50"
                 >
-                  <td className="p-4 font-medium text-gray-800 dark:text-white">
-                    {user.name}
-                    {user.id === currentUser?.id && (
-                      <span className="ml-2 text-xs text-gray-500">(You)</span>
-                    )}
+                  <td className="p-4 font-medium text-gray-800 dark:text-white max-w-[200px]">
+                    <div className="line-clamp-3">
+                      {user.name}
+                      {user.id === currentUser?.id && (
+                        <span className="ml-2 text-xs text-gray-500">(You)</span>
+                      )}
+                    </div>
                   </td>
-                  <td className="p-4 text-gray-700 dark:text-gray-300">
+                  <td className="p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap">
                     {user.username}
                   </td>
-                  <td className="p-4 text-gray-700 dark:text-gray-300">
+                  <td className="p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap">
                     {user.email || "-"}
                   </td>
-                  <td className="p-4">
+                  <td className="p-4 whitespace-nowrap">
                     <span
                       className={`px-2 py-1 text-xs font-medium rounded ${getRoleBadgeColor(
                         user.role
@@ -225,22 +232,22 @@ export default function UserList() {
                       {user.role.replace("_", " ")}
                     </span>
                   </td>
-                  <td className="p-4 text-gray-700 dark:text-gray-300">
+                  <td className="p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap">
                     <span className="text-xs">
                       {user.permissions && user.permissions.length > 0
                         ? `${user.permissions.length} permission(s)`
                         : "Default permissions"}
                     </span>
                   </td>
-                  <td className="p-4 text-gray-700 dark:text-gray-300">
+                  <td className="p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap">
                     <span className="text-xs">
                     {new Date(user.createdAt).toLocaleDateString()}
                     </span>
                   </td>
-                  <td className="p-4">
-                    <div className="flex items-center justify-center gap-2">
+                  <td className="p-4 whitespace-nowrap">
+                    <div className="flex items-center justify-center gap-2 flex-nowrap">
                       <Link to={`/users/edit/${user.id}`}>
-                        <button className="p-2 text-blue-600 hover:bg-blue-50 rounded dark:hover:bg-blue-900/20">
+                        <button className="p-2 text-blue-600 hover:bg-blue-50 rounded dark:hover:bg-blue-900/20 flex-shrink-0">
                           <PencilIcon className="w-4 h-4" />
                         </button>
                       </Link>
@@ -248,7 +255,7 @@ export default function UserList() {
                         <button
                           onClick={() => handleDeleteClick(user.id)}
                           disabled={isDeleting === user.id}
-                          className="p-2 text-red-600 hover:bg-red-50 rounded dark:hover:bg-red-900/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="p-2 text-red-600 hover:bg-red-50 rounded dark:hover:bg-red-900/20 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
                         >
                           <TrashBinIcon className="w-4 h-4" />
                         </button>
@@ -263,8 +270,8 @@ export default function UserList() {
       </div>
 
       {/* Pagination Controls */}
-      <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-4 bg-white rounded-lg shadow-sm p-4 dark:bg-gray-800">
-        <div className="flex items-center gap-4">
+      <div className="mt-6 flex flex-col gap-4 bg-white rounded-lg shadow-sm p-4 dark:bg-gray-800">
+        <div className="flex items-center justify-between">
           <PageSizeSelector
             pageSize={usersPagination?.pageSize || 10}
             onPageSizeChange={handlePageSizeChange}
@@ -275,11 +282,13 @@ export default function UserList() {
             {usersPagination?.total || 0} users
           </span>
         </div>
-        <Pagination
-          currentPage={usersPagination?.page || 1}
-          totalPages={usersPagination?.totalPages || 1}
-          onPageChange={handlePageChange}
-        />
+        <div className="flex justify-center">
+          <Pagination
+            currentPage={usersPagination?.page || 1}
+            totalPages={usersPagination?.totalPages || 1}
+            onPageChange={handlePageChange}
+          />
+        </div>
       </div>
 
       {/* Delete Confirmation Modal */}

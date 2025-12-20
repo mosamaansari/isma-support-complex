@@ -79,7 +79,7 @@ class PurchaseService {
             supplier: true,
             // Note: user relation removed - userId and userName are stored directly
           },
-          orderBy: { date: "desc" },
+          orderBy: { createdAt: "desc" },
           skip,
           take: pageSize,
         }),
@@ -112,7 +112,10 @@ class PurchaseService {
         toWarehouse?: boolean;
       }>;
       subtotal: number;
+      discount?: number;
+      discountType?: "percent" | "value";
       tax?: number;
+      taxType?: "percent" | "value";
       total: number;
       payments: Array<{
         type: "cash" | "card";
@@ -216,11 +219,14 @@ class PurchaseService {
     // Create purchase with items (store name and phone, not supplierId)
     const purchase = await prisma.purchase.create({
       data: {
-        supplierId: null, // Don't use supplierId, just store name and phone
+        // Don't set supplierId, just store name and phone
         supplierName: data.supplierName,
         supplierPhone: data.supplierPhone || null,
         subtotal: data.subtotal,
+        discount: data.discount || 0,
+        discountType: data.discountType || "percent",
         tax: data.tax || 0,
+        taxType: data.taxType || "percent",
         total: data.total,
         payments: data.payments as any,
         remainingBalance: remainingBalance,
@@ -325,7 +331,10 @@ class PurchaseService {
         toWarehouse?: boolean;
       }>;
       subtotal?: number;
+      discount?: number;
+      discountType?: "percent" | "value";
       tax?: number;
+      taxType?: "percent" | "value";
       total?: number;
       payments?: Array<{
         type: "cash" | "card";
@@ -357,7 +366,7 @@ class PurchaseService {
     // Update supplier name/phone (store in purchase, not linked via ID)
     if (data.supplierName) {
       updateData.supplierName = data.supplierName;
-      updateData.supplierId = null; // Don't use supplierId, just store name and phone
+      // Don't set supplierId, just store name and phone (supplierId is optional)
     }
     if (data.supplierPhone !== undefined) {
       updateData.supplierPhone = data.supplierPhone || null;

@@ -6,11 +6,12 @@ interface InputProps {
   id?: string;
   name?: string;
   placeholder?: string;
-  value?: string | number;
+  value?: string | number | null;
   onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onBlur?: (e: React.FocusEvent<HTMLInputElement>) => void;
   onFocus?: (e: React.FocusEvent<HTMLInputElement>) => void;
   onClick?: (e: React.MouseEvent<HTMLInputElement>) => void;
+  onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
   className?: string;
   min?: string | number;
   max?: string | number;
@@ -34,6 +35,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(({
   onBlur,
   onFocus,
   onClick,
+  onKeyDown,
   className = "",
   min,
   max,
@@ -58,6 +60,38 @@ const Input = forwardRef<HTMLInputElement, InputProps>(({
     inputClasses += ` bg-transparent text-gray-800 border-gray-300 focus:border-brand-300 focus:ring-brand-500/20 dark:border-gray-700 dark:text-white/90  dark:focus:border-brand-800`;
   }
 
+  // Handle wheel event to prevent scrolling on number inputs
+  const handleWheel = (e: React.WheelEvent<HTMLInputElement>) => {
+    if (type === "number") {
+      e.currentTarget.blur();
+    }
+  };
+
+  // Handle keydown for backspace on 0 values
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (type === "number" && e.key === "Backspace") {
+      const currentValue = e.currentTarget.value;
+      // Check if the value is "0" or 0 and the input only has this value
+      if (currentValue === "0" || currentValue === "0." || (value === 0 && currentValue === "0")) {
+        e.preventDefault();
+        const syntheticEvent = {
+          ...e,
+          target: {
+            ...e.currentTarget,
+            value: "",
+          } as HTMLInputElement,
+          currentTarget: {
+            ...e.currentTarget,
+            value: "",
+          } as HTMLInputElement,
+        } as React.ChangeEvent<HTMLInputElement>;
+        onChange?.(syntheticEvent);
+        return;
+      }
+    }
+    onKeyDown?.(e);
+  };
+
   return (
     <div className="relative">
       <input
@@ -66,11 +100,13 @@ const Input = forwardRef<HTMLInputElement, InputProps>(({
         id={id}
         name={name}
         placeholder={placeholder}
-        value={value}
+        value={value ?? ""}
         onChange={onChange}
         onBlur={onBlur}
         onFocus={onFocus}
         onClick={onClick}
+        onKeyDown={handleKeyDown}
+        onWheel={handleWheel}
         min={min}
         max={max}
         step={step}

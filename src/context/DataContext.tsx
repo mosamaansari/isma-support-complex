@@ -11,6 +11,7 @@ import {
   Supplier,
   ShopSettings,
   Category,
+  Brand,
 } from "../types";
 import api from "../services/api";
 
@@ -134,6 +135,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [brands, setBrands] = useState<Brand[]>([]);
   const [settings, setSettings] = useState<ShopSettings>(defaultSettings);
   const [bankAccounts, setBankAccounts] = useState<any[]>([]);
   const [cards, setCards] = useState<any[]>([]);
@@ -775,6 +777,56 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
+  // Brand functions
+  const refreshBrands = async () => {
+    try {
+      const data = await api.getBrands();
+      setBrands(data);
+    } catch (err: any) {
+      setError(err.response?.data?.error || "Failed to load brands");
+      throw err;
+    }
+  };
+
+  const addBrand = async (brandData: Omit<Brand, "id" | "createdAt" | "updatedAt">) => {
+    try {
+      setError(null);
+      const newBrand = await api.createBrand(brandData);
+      setBrands([...brands, newBrand]);
+    } catch (err: any) {
+      setError(err.response?.data?.error || "Failed to create brand");
+      throw err;
+    }
+  };
+
+  const updateBrand = async (id: string, brandData: Partial<Brand>) => {
+    try {
+      setError(null);
+      if (!brandData.name) {
+        throw new Error("Brand name is required");
+      }
+      const updatedBrand = await api.updateBrand(id, {
+        name: brandData.name,
+        description: brandData.description,
+      });
+      setBrands(brands.map((b) => (b.id === id ? updatedBrand : b)));
+    } catch (err: any) {
+      setError(err.response?.data?.error || "Failed to update brand");
+      throw err;
+    }
+  };
+
+  const deleteBrand = async (id: string) => {
+    try {
+      setError(null);
+      await api.deleteBrand(id);
+      setBrands(brands.filter((b) => b.id !== id));
+    } catch (err: any) {
+      setError(err.response?.data?.error || "Failed to delete brand");
+      throw err;
+    }
+  };
+
   // Settings functions
   const refreshSettings = async () => {
     try {
@@ -1002,6 +1054,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     updateCategory,
     deleteCategory,
     refreshCategories,
+    brands,
+    addBrand,
+    updateBrand,
+    deleteBrand,
+    refreshBrands,
     settings,
     updateSettings,
     refreshSettings,

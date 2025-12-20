@@ -144,8 +144,8 @@ export default function PurchaseView() {
                       <td className="p-3 text-gray-800 dark:text-white">{item.productName}</td>
                       <td className="p-3 text-right text-gray-600 dark:text-gray-400">{item.quantity}</td>
                       <td className="p-3 text-right text-gray-600 dark:text-gray-400">Rs. {item.cost.toFixed(2)}</td>
-                      <td className="p-3 text-right text-gray-600 dark:text-gray-400">
-                        Rs. {(item.discount || 0).toFixed(2)}
+                      <td className="p-3 text-right text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                        {((item as any).discountType === "percent" ? `${item.discount || 0}%` : `Rs. ${(item.discount || 0).toFixed(2)}`)}
                       </td>
                       <td className="p-3 text-right text-gray-800 dark:text-white font-medium">
                         Rs. {item.total.toFixed(2)}
@@ -165,10 +165,20 @@ export default function PurchaseView() {
                   <span>Subtotal:</span>
                   <span>Rs. {purchase.subtotal.toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between text-gray-600 dark:text-gray-400">
-                  <span>Tax:</span>
-                  <span>Rs. {(purchase.tax || 0).toFixed(2)}</span>
-                </div>
+                {(purchase as any).discount > 0 && (
+                  <div className="flex justify-between text-gray-600 dark:text-gray-400">
+                    <span>Discount{((purchase as any).discountType === "percent" ? " (%)" : " (Rs)")}:</span>
+                    <span className="text-red-600 dark:text-red-400">
+                      - Rs. {Number((purchase as any).discount || 0).toFixed(2)}
+                    </span>
+                  </div>
+                )}
+                {purchase.tax > 0 && (
+                  <div className="flex justify-between text-gray-600 dark:text-gray-400">
+                    <span>Tax{((purchase as any).taxType === "percent" ? " (%)" : " (Rs)")}:</span>
+                    <span>+ Rs. {(purchase.tax || 0).toFixed(2)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-lg font-semibold text-gray-800 dark:text-white pt-2 border-t border-gray-200 dark:border-gray-700">
                   <span>Total:</span>
                   <span>Rs. {purchase.total.toFixed(2)}</span>

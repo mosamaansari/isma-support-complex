@@ -15,6 +15,7 @@ import DatePicker from "../../components/form/DatePicker";
 import {TrashBinIcon, DownloadIcon } from "../../icons";
 import { FaEye, FaCreditCard, FaListAlt } from "react-icons/fa";
 import { SalePayment } from "../../types";
+import { getTodayDate } from "../../utils/dateHelpers";
 
 export default function SalesList() {
   const { sales, salesPagination, cancelSale, addPaymentToSale, currentUser, bankAccounts, refreshSales, loading } = useData();
@@ -62,9 +63,20 @@ export default function SalesList() {
     return matchesSearch && matchesStatus;
   });
 
-  const totalSales = filteredSales
-    .filter((s) => s && s.status === "completed")
-    .reduce((sum, s) => sum + (s?.total || 0), 0);
+  // Calculate totals for filtered sales (all rows visible in table)
+  const totalSales = filteredSales.reduce((sum, s) => sum + (s?.total || 0), 0);
+  const totalPaid = filteredSales.reduce((sum, s) => {
+    const paid = (s.payments || []).reduce((pSum: number, p: SalePayment) => pSum + (p?.amount || 0), 0);
+    return sum + paid;
+  }, 0);
+  const totalRemaining = filteredSales.reduce((sum, s) => {
+    const paid = (s.payments || []).reduce((pSum: number, p: SalePayment) => pSum + (p?.amount || 0), 0);
+    const remaining = s.remainingBalance !== undefined && s.remainingBalance !== null 
+      ? s.remainingBalance 
+      : ((s.total || 0) - paid);
+    return sum + remaining;
+  }, 0);
+  const completedSales = filteredSales.filter((s) => s && s.status === "completed").reduce((sum, s) => sum + (s?.total || 0), 0);
 
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
   const [saleToCancel, setSaleToCancel] = useState<string | null>(null);
@@ -94,11 +106,10 @@ export default function SalesList() {
 
   const handleAddPayment = (sale: any) => {
     setSelectedSale(sale);
-    const remainingBalance = sale.remainingBalance || (sale.total - (sale.payments?.reduce((sum: number, p: SalePayment) => sum + p.amount, 0) || 0));
     setPaymentData({
       type: "cash",
-      amount: remainingBalance,
-      date: new Date().toISOString().split("T")[0],
+      amount: 0,
+      date: getTodayDate(),
     });
     openPaymentModal();
   };
@@ -119,12 +130,12 @@ export default function SalesList() {
   const handleSubmitPayment = async () => {
     if (!selectedSale) return;
 
-    if (paymentData.amount <= 0) {
+    if (!paymentData.amount || paymentData.amount <= 0) {
       showError("Payment amount must be greater than 0");
       return;
     }
 
-    const remainingBalance = selectedSale.remainingBalance || (selectedSale.total - (selectedSale.payments?.reduce((sum: number, p: SalePayment) => sum + p.amount, 0) || 0));
+    const remainingBalance = selectedSale.remainingBalance || (selectedSale.total - (selectedSale.payments?.reduce((sum: number, p: SalePayment) => sum + (p.amount || 0), 0) || 0));
     
     if (paymentData.amount > remainingBalance) {
       showError(`Payment amount cannot exceed remaining balance of Rs. ${remainingBalance.toFixed(2)}`);
@@ -193,11 +204,29 @@ export default function SalesList() {
           </Link>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 mb-6 md:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 mb-6 sm:grid-cols-2 lg:grid-cols-4">
           <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
             <p className="text-sm text-gray-600 dark:text-gray-400">Total Sales</p>
             <p className="text-2xl font-bold text-gray-800 dark:text-white">
               Rs. {totalSales.toFixed(2)}
+            </p>
+          </div>
+          <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+            <p className="text-sm text-gray-600 dark:text-gray-400">Total Paid</p>
+            <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+              Rs. {totalPaid.toFixed(2)}
+            </p>
+          </div>
+          <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+            <p className="text-sm text-gray-600 dark:text-gray-400">Total Remaining</p>
+            <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+              Rs. {totalRemaining.toFixed(2)}
+            </p>
+          </div>
+          <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+            <p className="text-sm text-gray-600 dark:text-gray-400">Completed Sales</p>
+            <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+              Rs. {completedSales.toFixed(2)}
             </p>
           </div>
           <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
@@ -258,7 +287,7 @@ export default function SalesList() {
 
       {!loading && sales && sales.length > 0 && (
       <div className="overflow-x-auto bg-white rounded-lg shadow-sm dark:bg-gray-800">
-        <table className="w-full">
+        <table className="w-full min-w-[800px]">
           <thead>
             <tr className="border-b border-gray-200 dark:border-gray-700">
               <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -311,28 +340,30 @@ export default function SalesList() {
                     key={sale.id}
                     className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50"
                   >
-                    <td className="p-4 font-medium text-gray-800 dark:text-white">
+                    <td className="p-4 font-medium text-gray-800 dark:text-white whitespace-nowrap">
                       {sale.billNumber}
                     </td>
-                    <td className="p-4 text-gray-700 dark:text-gray-300">
+                    <td className="p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap">
                       {new Date(sale.date || sale.createdAt).toLocaleDateString()}
                     </td>
-                    <td className="p-4 text-gray-700 dark:text-gray-300">
-                      {sale.customerName || "Walk-in"}
-                      {sale.customerPhone && (
-                        <p className="text-xs text-gray-500">{sale.customerPhone}</p>
-                      )}
+                    <td className="p-4 text-gray-700 dark:text-gray-300 max-w-[200px]">
+                      <div className="line-clamp-3">
+                        <div className="font-medium">{sale.customerName || "Walk-in"}</div>
+                        {sale.customerPhone && (
+                          <div className="text-xs text-gray-500 mt-1">{sale.customerPhone}</div>
+                        )}
+                      </div>
                     </td>
-                    <td className="p-4 text-gray-700 dark:text-gray-300">
+                    <td className="p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap">
                       {(sale.items || []).length} item(s)
                     </td>
-                    <td className="p-4 text-right font-semibold text-gray-800 dark:text-white">
+                    <td className="p-4 text-right font-semibold text-gray-800 dark:text-white whitespace-nowrap">
                       Rs. {(sale.total || 0).toFixed(2)}
                     </td>
-                    <td className="p-4 text-right text-gray-700 dark:text-gray-300">
+                    <td className="p-4 text-right text-gray-700 dark:text-gray-300 whitespace-nowrap">
                       Rs. {totalPaid.toFixed(2)}
                     </td>
-                    <td className="p-4 text-right font-semibold text-gray-800 dark:text-white">
+                    <td className="p-4 text-right font-semibold text-gray-800 dark:text-white whitespace-nowrap">
                       {remainingBalance > 0 ? (
                         <span className="text-orange-600 dark:text-orange-400">
                           Rs. {remainingBalance.toFixed(2)}
@@ -341,7 +372,7 @@ export default function SalesList() {
                         <span className="text-green-600 dark:text-green-400">Rs. 0.00</span>
                       )}
                     </td>
-                    <td className="p-4">
+                    <td className="p-4 whitespace-nowrap">
                       <span
                         className={`px-2 py-1 text-xs font-medium rounded ${
                           sale.status === "completed"
@@ -355,7 +386,7 @@ export default function SalesList() {
                       </span>
                     </td>
                     <td className="p-4">
-                      <div className="flex items-center justify-center gap-2 flex-wrap">
+                      <div className="flex items-center justify-center gap-2 flex-nowrap whitespace-nowrap">
                         {/* View Bill Button */}
                         <Link to={`/sales/bill/${sale.billNumber}`}>
                         <button 
@@ -369,7 +400,7 @@ export default function SalesList() {
                         {sale.payments && sale.payments.length > 0 && (
                           <button
                             onClick={() => handleViewPayments(sale)}
-                            className="p-2 text-indigo-500 hover:bg-indigo-50 rounded dark:hover:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800"
+                            className="p-2 text-indigo-500 hover:bg-indigo-50 rounded dark:hover:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 flex-shrink-0"
                             title="View Payments"
                           >
                             <FaListAlt className="w-4 h-4" />
@@ -380,7 +411,7 @@ export default function SalesList() {
                         {sale.status === "pending" && remainingBalance > 0 && (
                           <button
                             onClick={() => handleAddPayment(sale)}
-                            className="p-2 text-green-500 hover:bg-green-50 rounded dark:hover:bg-green-900/20 border border-green-200 dark:border-green-800"
+                            className="p-2 text-green-500 hover:bg-green-50 rounded dark:hover:bg-green-900/20 border border-green-200 dark:border-green-800 flex-shrink-0"
                             title="Add Payment"
                           >
                             <FaCreditCard className="w-4 h-4" />
@@ -393,7 +424,7 @@ export default function SalesList() {
                             currentUser?.id === sale.userId) && (
                             <button
                               onClick={() => handleCancelSaleClick(sale.id)}
-                              className="p-2 text-red-600 hover:bg-red-50 rounded dark:hover:bg-red-900/20 border border-red-200 dark:border-red-800"
+                              className="p-2 text-red-600 hover:bg-red-50 rounded dark:hover:bg-red-900/20 border border-red-200 dark:border-red-800 flex-shrink-0"
                               title="Cancel Sale"
                             >
                               <TrashBinIcon className="w-4 h-4" />
@@ -412,7 +443,7 @@ export default function SalesList() {
 
       {/* Add Payment Modal */}
       <Modal isOpen={isPaymentModalOpen} onClose={closePaymentModal} className="max-w-md m-4">
-        <div className="p-6 bg-white rounded-lg dark:bg-gray-800">
+        <div className="p-6 max-h-[90vh] overflow-y-auto">
           <h2 className="mb-4 text-xl font-semibold text-gray-800 dark:text-white">
             Add Payment
           </h2>
@@ -422,7 +453,7 @@ export default function SalesList() {
               <p className="text-sm text-gray-600 dark:text-gray-400">Total: <span className="font-semibold">Rs. {selectedSale.total.toFixed(2)}</span></p>
               <p className="text-sm text-gray-600 dark:text-gray-400">
                 Remaining: <span className="font-semibold text-orange-600 dark:text-orange-400">
-                  Rs. {(selectedSale.remainingBalance || (selectedSale.total - (selectedSale.payments?.reduce((sum: number, p: SalePayment) => sum + p.amount, 0) || 0))).toFixed(2)}
+                  Rs. {(selectedSale.remainingBalance || (selectedSale.total - (selectedSale.payments?.reduce((sum: number, p: SalePayment) => sum + (p.amount || 0), 0) || 0))).toFixed(2)}
                 </span>
               </p>
             </div>
@@ -446,7 +477,7 @@ export default function SalesList() {
                   value={paymentData.bankAccountId || ""}
                   onChange={(value) => setPaymentData({ ...paymentData, bankAccountId: value })}
                   options={[
-                    { value: "", label: "Select Bank Account" },
+
                     ...(bankAccounts || []).filter((acc) => acc.isActive).map((acc) => ({
                       value: acc.id,
                       label: `${acc.accountName} - ${acc.bankName}${acc.isDefault ? " (Default)" : ""}`,
@@ -461,8 +492,11 @@ export default function SalesList() {
                 type="number"
                 min="0"
                 step={0.01}
-                value={paymentData.amount}
-                onChange={(e) => setPaymentData({ ...paymentData, amount: parseFloat(e.target.value) || 0 })}
+                value={(paymentData.amount !== null && paymentData.amount !== undefined && paymentData.amount !== 0) ? String(paymentData.amount) : ""}
+                onChange={(e) => {
+                  const value = e.target.value === "" ? undefined : parseFloat(e.target.value);
+                  setPaymentData({ ...paymentData, amount: (isNaN(value as any) || value === null || value === undefined) ? 0 : value });
+                }}
                 placeholder="Enter payment amount"
               />
             </div>
@@ -487,7 +521,7 @@ export default function SalesList() {
 
       {/* View Payments Modal */}
       <Modal isOpen={isViewPaymentsModalOpen} onClose={closeViewPaymentsModal} className="max-w-3xl m-4">
-        <div className="p-6 bg-white rounded-lg dark:bg-gray-800">
+        <div className="p-6 max-h-[90vh] overflow-y-auto">
           <h2 className="mb-4 text-xl font-semibold text-gray-800 dark:text-white">
             Payments - Bill #{selectedSale?.billNumber}
           </h2>
@@ -571,7 +605,7 @@ export default function SalesList() {
                               </span>
                             </td>
                             <td className="p-3 text-right font-semibold text-gray-800 dark:text-white">
-                              Rs. {payment.amount.toFixed(2)}
+                              Rs. {(payment.amount || 0).toFixed(2)}
                             </td>
                             <td className="p-3">
                               <div className="flex items-center justify-center gap-2">
@@ -632,8 +666,8 @@ export default function SalesList() {
       </Modal>
 
       {/* Pagination Controls */}
-      <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-4 bg-white rounded-lg shadow-sm p-4 dark:bg-gray-800">
-        <div className="flex items-center gap-4">
+      <div className="mt-6 flex flex-col gap-4 bg-white rounded-lg shadow-sm p-4 dark:bg-gray-800">
+        <div className="flex items-center justify-between">
           <PageSizeSelector
             pageSize={salesPagination?.pageSize || 10}
             onPageSizeChange={handlePageSizeChange}
@@ -644,11 +678,13 @@ export default function SalesList() {
             {salesPagination.total} sales
           </span>
         </div>
-        <Pagination
-          currentPage={salesPagination?.page || 1}
-          totalPages={salesPagination?.totalPages || 1}
-          onPageChange={handlePageChange}
-        />
+        <div className="flex justify-center">
+          <Pagination
+            currentPage={salesPagination?.page || 1}
+            totalPages={salesPagination?.totalPages || 1}
+            onPageChange={handlePageChange}
+          />
+        </div>
       </div>
 
       {/* Cancel Sale Confirmation Modal */}

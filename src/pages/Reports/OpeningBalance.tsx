@@ -1,31 +1,25 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import PageMeta from "../../components/common/PageMeta";
-import { useData } from "../../context/DataContext";
 import { useAlert } from "../../context/AlertContext";
-import { DailyOpeningBalance, CardBalance } from "../../types";
+import { DailyOpeningBalance } from "../../types";
 import Input from "../../components/form/input/InputField";
 import DatePicker from "../../components/form/DatePicker";
 import Label from "../../components/form/Label";
 import Button from "../../components/ui/button/Button";
-import { ChevronLeftIcon, PlusIcon, TrashBinIcon } from "../../icons";
+import { ChevronLeftIcon } from "../../icons";
 import api from "../../services/api";
+import { getTodayDate } from "../../utils/dateHelpers";
 
 export default function OpeningBalance() {
-  const { cards, refreshCards } = useData();
   const { showSuccess, showError } = useAlert();
   const navigate = useNavigate();
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
-  const [cashBalance, setCashBalance] = useState(0);
-  const [cardBalances, setCardBalances] = useState<CardBalance[]>([]);
+  const [date, setDate] = useState(getTodayDate());
+  const [cashBalance, setCashBalance] = useState<number | null>(null);
   const [notes, setNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loading, setLoading] = useState(false);
   const [existingBalance, setExistingBalance] = useState<DailyOpeningBalance | null>(null);
-
-  useEffect(() => {
-    refreshCards();
-  }, [refreshCards]);
 
   useEffect(() => {
     loadOpeningBalance();
@@ -39,19 +33,16 @@ export default function OpeningBalance() {
       if (balance) {
         setExistingBalance(balance);
         setCashBalance(Number(balance.cashBalance));
-        setCardBalances(balance.cardBalances || []);
         setNotes(balance.notes || "");
       } else {
         setExistingBalance(null);
-        setCashBalance(0);
-        setCardBalances([]);
+        setCashBalance(null);
         setNotes("");
       }
     } catch (error: any) {
       if (error.response?.status === 404) {
         setExistingBalance(null);
-        setCashBalance(0);
-        setCardBalances([]);
+        setCashBalance(null);
         setNotes("");
       } else {
         console.error("Error loading opening balance:", error);
@@ -61,65 +52,32 @@ export default function OpeningBalance() {
     }
   };
 
-  const addCardBalance = () => {
-    if (cards.filter((c) => c.isActive).length === 0) {
-      showError("No active cards available");
-      return;
-    }
-    const availableCards = cards.filter(
-      (c) => c.isActive && !cardBalances.some((cb) => cb.cardId === c.id)
-    );
-    if (availableCards.length === 0) {
-      showError("All active cards have been added");
-      return;
-    }
-    setCardBalances([
-      ...cardBalances,
-      { cardId: availableCards[0].id, balance: 0 },
-    ]);
-  };
-
-  const removeCardBalance = (index: number) => {
-    setCardBalances(cardBalances.filter((_, i) => i !== index));
-  };
-
-  const updateCardBalance = (index: number, field: "cardId" | "balance", value: any) => {
-    setCardBalances(
-      cardBalances.map((cb, i) => {
-        if (i === index) {
-          return { ...cb, [field]: field === "balance" ? parseFloat(value) || 0 : value };
-        }
-        return cb;
-      })
-    );
-  };
-
   const handleSubmit = async () => {
-    if (cashBalance < 0) {
-      showError("Cash balance cannot be negative");
-      return;
-    }
-
-    const invalidCard = cardBalances.find((cb) => cb.balance < 0);
-    if (invalidCard) {
-      showError("Card balance cannot be negative");
+    if (!cashBalance || cashBalance < 1) {
+      showError("Cash balance must be at least 1");
       return;
     }
 
     setIsSubmitting(true);
     try {
-      const data = {
-        date,
-        cashBalance,
-        cardBalances: cardBalances.filter((cb) => cb.cardId && cb.balance > 0),
-        notes: notes || undefined,
-      };
-
       if (existingBalance) {
-        await api.updateOpeningBalance(existingBalance.id, data);
+        // For update, don't send date - it cannot be changed
+        const updateData = {
+          cashBalance,
+          cardBalances: [],
+          notes: notes || undefined,
+        };
+        await api.updateOpeningBalance(existingBalance.id, updateData);
         showSuccess("Opening balance updated successfully!");
       } else {
-        await api.createOpeningBalance(data);
+        // For create, include date
+        const createData = {
+          date,
+          cashBalance,
+          cardBalances: [],
+          notes: notes || undefined,
+        };
+        await api.createOpeningBalance(createData);
         showSuccess("Opening balance created successfully!");
       }
       navigate("/reports");
@@ -163,7 +121,13 @@ export default function OpeningBalance() {
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
                   required
+                  disabled={!!existingBalance}
                 />
+                {existingBalance && (
+                  <p className="text-gray-500 text-sm mt-1">
+                    Date cannot be changed for existing opening balance
+                  </p>
+                )}
               </div>
 
               <div>
@@ -173,85 +137,19 @@ export default function OpeningBalance() {
                 <Input
                   type="number"
                   step={0.01}
-                  min="0"
-                  value={cashBalance}
-                  onChange={(e) => setCashBalance(parseFloat(e.target.value) || 0)}
-                  placeholder="Enter cash balance"
+                  min="1"
+                  value={cashBalance ?? ""}
+                  onChange={(e) => {
+                    const value = e.target.value === "" ? null : parseFloat(e.target.value);
+                    setCashBalance(value);
+                  }}
+                  placeholder="Enter cash balance (minimum 1)"
                   required
                 />
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <Label>Card Balances</Label>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={addCardBalance}
-                    disabled={cards.filter((c) => c.isActive).length === 0}
-                  >
-                    <PlusIcon className="w-4 h-4 mr-2" />
-                    Add Card
-                  </Button>
-                </div>
-
-                {cardBalances.length === 0 ? (
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    No card balances added. Click "Add Card" to add one.
+                {(!cashBalance || cashBalance < 1) && (
+                  <p className="text-error-500 text-sm mt-1">
+                    Cash balance must be at least 1
                   </p>
-                ) : (
-                  <div className="space-y-3">
-                    {cardBalances.map((cardBalance, index) => {
-                      const availableCards = cards.filter(
-                        (c) =>
-                          c.isActive &&
-                          (c.id === cardBalance.cardId ||
-                            !cardBalances.some((cb) => cb.cardId === c.id && cb !== cardBalance))
-                      );
-                      return (
-                        <div
-                          key={index}
-                          className="p-3 border border-gray-200 rounded-lg dark:border-gray-700 flex items-center gap-3"
-                        >
-                          <div className="flex-1">
-                            <select
-                              value={cardBalance.cardId}
-                              onChange={(e) =>
-                                updateCardBalance(index, "cardId", e.target.value)
-                              }
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg dark:bg-gray-800 dark:border-gray-700 dark:text-white"
-                            >
-                              <option value="">Select a card</option>
-                              {availableCards.map((card) => (
-                                <option key={card.id} value={card.id}>
-                                  {card.name}
-                                  {card.isDefault ? " (Default)" : ""}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                          <div className="flex-1">
-                            <Input
-                              type="number"
-                              step={0.01}
-                              min="0"
-                              value={cardBalance.balance}
-                              onChange={(e) =>
-                                updateCardBalance(index, "balance", e.target.value)
-                              }
-                              placeholder="Balance"
-                            />
-                          </div>
-                          <button
-                            onClick={() => removeCardBalance(index)}
-                            className="p-2 text-red-600 hover:bg-red-50 rounded dark:hover:bg-red-900/20"
-                          >
-                            <TrashBinIcon className="w-4 h-4" />
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
                 )}
               </div>
 
@@ -271,7 +169,7 @@ export default function OpeningBalance() {
                   onClick={handleSubmit}
                   size="sm"
                   className="flex-1"
-                  disabled={isSubmitting || cashBalance < 0}
+                  disabled={isSubmitting || !cashBalance || cashBalance < 1}
                 >
                   {isSubmitting
                     ? existingBalance

@@ -6,67 +6,68 @@ import Button from "../ui/button/Button";
 import Input from "./input/InputField";
 import Label from "./Label";
 
-interface CategorySelectProps {
+interface BrandSelectProps {
   value: string;
   onChange: (value: string) => void;
   className?: string;
   required?: boolean;
 }
 
-export default function CategorySelect({
+export default function BrandSelect({
   value,
   onChange,
   className = "",
-}: CategorySelectProps) {
-  const { categories, addCategory, refreshCategories } = useData();
+  required = false,
+}: BrandSelectProps) {
+  const { brands, addBrand, refreshBrands } = useData();
   const { showSuccess, showError } = useAlert();
   const [showAddModal, setShowAddModal] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState("");
-  const [newCategoryDesc, setNewCategoryDesc] = useState("");
+  const [newBrandName, setNewBrandName] = useState("");
+  const [newBrandDesc, setNewBrandDesc] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    if (categories.length === 0) {
-      refreshCategories().catch(console.error);
+    if (brands.length === 0) {
+      refreshBrands().catch(console.error);
     }
-  }, [categories.length, refreshCategories]);
+  }, [brands.length, refreshBrands]);
 
-  const handleAddCategory = async () => {
-    if (!newCategoryName.trim()) {
-      showError("Please enter a category name");
+  const handleAddBrand = async () => {
+    if (!newBrandName.trim()) {
+      showError("Please enter a brand name");
       return;
     }
 
     setIsSubmitting(true);
     try {
-      await addCategory({
-        name: newCategoryName.trim(),
-        description: newCategoryDesc.trim() || undefined,
+      await addBrand({
+        name: newBrandName.trim(),
+        description: newBrandDesc.trim() || undefined,
       });
-      await refreshCategories();
-      // Select the newly created category
-      onChange(newCategoryName.trim());
-      setNewCategoryName("");
-      setNewCategoryDesc("");
+      await refreshBrands();
+      // Select the newly created brand
+      onChange(newBrandName.trim());
+      setNewBrandName("");
+      setNewBrandDesc("");
       setShowAddModal(false);
-      showSuccess("Category created successfully!");
+      showSuccess("Brand created successfully!");
     } catch (err: any) {
-      showError(err.response?.data?.error || "Failed to create category");
-      console.error("Error creating category:", err);
+      showError(err.response?.data?.error || "Failed to create brand");
+      console.error("Error creating brand:", err);
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const categoryOptions = categories.map((cat) => ({
-    value: cat.name,
-    label: cat.name,
+  const brandOptions = brands.map((brand) => ({
+    value: brand.name,
+    label: brand.name,
   }));
 
-  // Add "Add New Category" option
-  categoryOptions.push({
+  // Add "Add New Brand" option
+  brandOptions.push({
     value: "__add_new__",
-    label: "+ Add New Category",
+    label: "+ Add New Brand",
   });
 
   const handleSelectChange = (selectedValue: string) => {
@@ -83,29 +84,29 @@ export default function CategorySelect({
         <Select
           value={value}
           onChange={handleSelectChange}
-          options={categoryOptions}
-          placeholder="Select category"
+          options={brandOptions}
+          placeholder="Select brand"
           className={className}
         />
       </div>
 
-      {/* Add Category Modal */}
+      {/* Add Brand Modal */}
       {showAddModal && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/30 py-8">
           <div className="w-full max-w-md p-6 bg-white rounded-lg shadow-lg dark:bg-gray-800 max-h-[90vh] overflow-y-auto">
             <h3 className="mb-4 text-lg font-semibold text-gray-800 dark:text-white">
-              Add New Category
+              Add New Brand
             </h3>
 
             <div className="space-y-4">
               <div>
                 <Label>
-                  Category Name <span className="text-error-500">*</span>
+                  Brand Name <span className="text-error-500">*</span>
                 </Label>
                 <Input
-                  value={newCategoryName}
-                  onChange={(e) => setNewCategoryName(e.target.value)}
-                  placeholder="Enter category name"
+                  value={newBrandName}
+                  onChange={(e) => setNewBrandName(e.target.value)}
+                  placeholder="Enter brand name"
                   required
                 />
               </div>
@@ -113,9 +114,9 @@ export default function CategorySelect({
               <div>
                 <Label>Description (Optional)</Label>
                 <Input
-                  value={newCategoryDesc}
-                  onChange={(e) => setNewCategoryDesc(e.target.value)}
-                  placeholder="Enter category description"
+                  value={newBrandDesc}
+                  onChange={(e) => setNewBrandDesc(e.target.value)}
+                  placeholder="Enter brand description"
                 />
               </div>
             </div>
@@ -124,10 +125,10 @@ export default function CategorySelect({
               <Button
                 type="button"
                 size="sm"
-                onClick={handleAddCategory}
-                disabled={isSubmitting || !newCategoryName.trim()}
+                onClick={handleAddBrand}
+                disabled={isSubmitting || !newBrandName.trim()}
               >
-                {isSubmitting ? "Adding..." : "Add Category"}
+                {isSubmitting ? "Adding..." : "Add Brand"}
               </Button>
               <Button
                 type="button"
@@ -135,8 +136,8 @@ export default function CategorySelect({
                 size="sm"
                 onClick={() => {
                   setShowAddModal(false);
-                  setNewCategoryName("");
-                  setNewCategoryDesc("");
+                  setNewBrandName("");
+                  setNewBrandDesc("");
                 }}
                 disabled={isSubmitting}
               >
@@ -149,4 +150,5 @@ export default function CategorySelect({
     </>
   );
 }
+
 

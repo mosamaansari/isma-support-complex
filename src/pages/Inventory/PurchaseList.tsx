@@ -13,6 +13,7 @@ import { PencilIcon, DownloadIcon } from "../../icons";
 import { FaEye, FaListAlt, FaCreditCard } from "react-icons/fa";
 import Select from "../../components/form/Select";
 import Label from "../../components/form/Label";
+import { getTodayDate } from "../../utils/dateHelpers";
 
 export default function PurchaseList() {
   const { purchases, purchasesPagination, refreshPurchases, cards, refreshCards, bankAccounts, refreshBankAccounts, addPaymentToPurchase, loading, error } = useData();
@@ -25,9 +26,10 @@ export default function PurchaseList() {
   const [paymentData, setPaymentData] = useState<PurchasePayment & { date?: string }>({
     type: "cash",
     amount: 0,
-    date: new Date().toISOString().split("T")[0],
+    date: getTodayDate(),
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [backendErrors, setBackendErrors] = useState<Record<string, string>>({});
   const cardsLoadedRef = useRef(false);
   const bankAccountsLoadedRef = useRef(false);
   const purchasesLoadedRef = useRef(false);
@@ -85,16 +87,31 @@ export default function PurchaseList() {
     return matchesSearch && matchesStatus;
   });
 
+  // Calculate totals for filtered purchases (all rows visible in table)
   const totalPurchases = filteredPurchases.reduce((sum, p) => sum + (p?.total || 0), 0);
-  const totalRemaining = filteredPurchases.reduce((sum, p) => sum + (p?.remainingBalance || 0), 0);
+  const totalPaid = filteredPurchases.reduce((sum, p) => {
+    const payments = (p.payments || []) as PurchasePayment[];
+    const paid = payments.reduce((pSum, payment) => pSum + (payment?.amount || 0), 0);
+    return sum + paid;
+  }, 0);
+  const totalRemaining = filteredPurchases.reduce((sum, p) => {
+    const payments = (p.payments || []) as PurchasePayment[];
+    const paid = payments.reduce((pSum, payment) => pSum + (payment?.amount || 0), 0);
+    const remaining = p.remainingBalance !== undefined && p.remainingBalance !== null 
+      ? p.remainingBalance 
+      : ((p.total || 0) - paid);
+    return sum + remaining;
+  }, 0);
+  const completedPurchases = filteredPurchases.filter((p) => p && p.status === "completed").reduce((sum, p) => sum + (p?.total || 0), 0);
 
   const handleAddPayment = (purchase: Purchase) => {
     setSelectedPurchase(purchase);
     setPaymentData({
       type: "cash",
-      amount: Math.min(purchase.remainingBalance, purchase.remainingBalance),
-      date: new Date().toISOString().split("T")[0],
+      amount: 0,
+      date: getTodayDate(),
     });
+    setBackendErrors({});
     setShowAddPaymentModal(true);
   };
 
@@ -114,7 +131,7 @@ export default function PurchaseList() {
   const handleSubmitPayment = async () => {
     if (!selectedPurchase) return;
 
-    if (paymentData.amount <= 0) {
+    if (!paymentData.amount || paymentData.amount <= 0) {
       showError("Payment amount must be greater than 0");
       return;
     }
@@ -131,13 +148,29 @@ export default function PurchaseList() {
 
     setIsSubmitting(true);
     try {
+      setBackendErrors({});
       await addPaymentToPurchase(selectedPurchase.id, paymentData);
       showSuccess("Payment added successfully!");
       setShowAddPaymentModal(false);
       setSelectedPurchase(null);
+      setBackendErrors({});
       await refreshPurchases(purchasesPagination?.page || 1, purchasesPagination?.pageSize || 10);
     } catch (error: any) {
-      showError(error.message || "Failed to add payment");
+      // Handle backend validation errors
+      if (error.response?.data?.error && typeof error.response.data.error === 'object') {
+        const validationErrors: Record<string, string> = {};
+        Object.keys(error.response.data.error).forEach((field) => {
+          const fieldErrors = error.response.data.error[field];
+          if (Array.isArray(fieldErrors) && fieldErrors.length > 0) {
+            validationErrors[field] = fieldErrors[0]; // Take first error message
+          }
+        });
+        setBackendErrors(validationErrors);
+        showError("Please fix the validation errors below");
+      } else {
+        const errorMessage = error.response?.data?.error || error.response?.data?.message || error.message || "Failed to add payment";
+        showError(errorMessage);
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -159,29 +192,47 @@ export default function PurchaseList() {
           </Link>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 mb-6 md:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 mb-6 sm:grid-cols-2 lg:grid-cols-4">
           <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
             <p className="text-sm text-gray-600 dark:text-gray-400">Total Purchases</p>
+            <p className="text-2xl font-bold text-gray-800 dark:text-white">
+              Rs. {totalPurchases.toFixed(2)}
+            </p>
+          </div>
+          <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+            <p className="text-sm text-gray-600 dark:text-gray-400">Total Paid</p>
+            <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+              Rs. {totalPaid.toFixed(2)}
+            </p>
+          </div>
+          <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+            <p className="text-sm text-gray-600 dark:text-gray-400">Total Remaining</p>
+            <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+              Rs. {totalRemaining.toFixed(2)}
+            </p>
+          </div>
+          <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+            <p className="text-sm text-gray-600 dark:text-gray-400">Completed Purchases</p>
+            <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+              Rs. {completedPurchases.toFixed(2)}
+            </p>
+          </div>
+          <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+            <p className="text-sm text-gray-600 dark:text-gray-400">Total Bills</p>
             <p className="text-2xl font-bold text-gray-800 dark:text-white">
               {filteredPurchases.length}
             </p>
           </div>
           <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-            <p className="text-sm text-gray-600 dark:text-gray-400">Total Amount</p>
-            <p className="text-2xl font-bold text-gray-800 dark:text-white">
-              Rs. {totalPurchases.toFixed(2)}
+            <p className="text-sm text-gray-600 dark:text-gray-400">Completed</p>
+            <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+              {filteredPurchases.filter((p) => p && p.status === "completed").length}
             </p>
           </div>
           <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
             <p className="text-sm text-gray-600 dark:text-gray-400">Pending</p>
             <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
               {filteredPurchases.filter((p) => p && p.status === "pending").length}
-            </p>
-          </div>
-          <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-            <p className="text-sm text-gray-600 dark:text-gray-400">Remaining Balance</p>
-            <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
-              Rs. {totalRemaining.toFixed(2)}
             </p>
           </div>
         </div>
@@ -230,7 +281,7 @@ export default function PurchaseList() {
 
       {!loading && purchases && purchases.length > 0 && (
       <div className="overflow-x-auto bg-white rounded-lg shadow-sm dark:bg-gray-800">
-        <table className="w-full">
+        <table className="w-full min-w-[900px]">
           <thead>
             <tr className="border-b border-gray-200 dark:border-gray-700">
               <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -283,40 +334,42 @@ export default function PurchaseList() {
                     key={purchase.id}
                     className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50"
                   >
-                    <td className="p-4 text-gray-700 dark:text-gray-300">
+                    <td className="p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap">
                       {new Date(purchase.date).toLocaleDateString()}
                     </td>
-                    <td className="p-4">
-                      <div>
-                        <p className="font-medium text-gray-800 dark:text-white">
+                    <td className="p-4 max-w-[200px]">
+                      <div className="line-clamp-3">
+                        <div className="font-medium text-gray-800 dark:text-white">
                           {purchase.supplierName}
-                        </p>
+                        </div>
                         {purchase.supplierPhone && (
-                          <p className="text-xs text-gray-500">{purchase.supplierPhone}</p>
+                          <div className="text-xs text-gray-500 mt-1">{purchase.supplierPhone}</div>
                         )}
                       </div>
                     </td>
-                    <td className="p-4 text-gray-700 dark:text-gray-300">
+                    <td className="p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap">
                       {(purchase.items || []).length} item(s)
                     </td>
-                    <td className="p-4 text-right text-gray-700 dark:text-gray-300">
+                    <td className="p-4 text-right text-gray-700 dark:text-gray-300 whitespace-nowrap">
                       Rs. {(purchase.subtotal || 0).toFixed(2)}
                     </td>
-                    <td className="p-4 text-right text-gray-700 dark:text-gray-300">
+                    <td className="p-4 text-right text-gray-700 dark:text-gray-300 whitespace-nowrap">
                       Rs. {(purchase.tax || 0).toFixed(2)}
                     </td>
-                    <td className="p-4 text-right font-semibold text-gray-800 dark:text-white">
+                    <td className="p-4 text-right font-semibold text-gray-800 dark:text-white whitespace-nowrap">
                       Rs. {(purchase.total || 0).toFixed(2)}
                     </td>
-                    <td className="p-4 text-right text-gray-700 dark:text-gray-300">
-                      Rs. {totalPaid.toFixed(2)}
-                      {payments.length > 0 && (
-                        <p className="text-xs text-gray-500 mt-1">
-                          {payments.length} payment{payments.length > 1 ? 's' : ''}
-                        </p>
-                      )}
+                    <td className="p-4 text-right text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                      <div>
+                        <div>Rs. {totalPaid.toFixed(2)}</div>
+                        {payments.length > 0 && (
+                          <div className="text-xs text-gray-500">
+                            {payments.length} payment{payments.length > 1 ? 's' : ''}
+                          </div>
+                        )}
+                      </div>
                     </td>
-                    <td className="p-4 text-right font-semibold text-gray-800 dark:text-white">
+                    <td className="p-4 text-right font-semibold text-gray-800 dark:text-white whitespace-nowrap">
                       {(purchase.remainingBalance || 0) > 0 ? (
                         <span className="text-orange-600 dark:text-orange-400">
                           Rs. {(purchase.remainingBalance || 0).toFixed(2)}
@@ -325,7 +378,7 @@ export default function PurchaseList() {
                         <span className="text-green-600 dark:text-green-400">Rs. 0.00</span>
                       )}
                     </td>
-                    <td className="p-4">
+                    <td className="p-4 whitespace-nowrap">
                       <span
                         className={`px-2 py-1 text-xs font-medium rounded ${
                           purchase.status === "completed"
@@ -338,11 +391,11 @@ export default function PurchaseList() {
                         {purchase.status || ((purchase.remainingBalance || 0) > 0 ? "pending" : "completed")}
                       </span>
                     </td>
-                    <td className="p-4">
-                      <div className="flex items-center justify-center gap-2 flex-wrap">
+                    <td className="p-4 whitespace-nowrap">
+                      <div className="flex items-center justify-center gap-2 flex-nowrap">
                         <Link to={`/inventory/purchase/view/${purchase.id}`}>
                           <button 
-                            className="p-2 text-gray-600 hover:bg-gray-50 rounded dark:hover:bg-gray-900/20 border border-gray-300 dark:border-gray-600"
+                            className="p-2 text-gray-600 hover:bg-gray-50 rounded dark:hover:bg-gray-900/20 border border-gray-300 dark:border-gray-600 flex-shrink-0"
                             title="View Purchase"
                           >
                             <FaEye className="w-4 h-4 text-blue-500" />
@@ -352,7 +405,7 @@ export default function PurchaseList() {
                         {purchase.payments && purchase.payments.length > 0 && (
                           <button
                             onClick={() => handleViewPayments(purchase)}
-                            className="p-2 text-indigo-500 hover:bg-indigo-50 rounded dark:hover:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800"
+                            className="p-2 text-indigo-500 hover:bg-indigo-50 rounded dark:hover:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 flex-shrink-0"
                             title="View Payments"
                           >
                             <FaListAlt className="w-4 h-4" />
@@ -361,7 +414,7 @@ export default function PurchaseList() {
                         {purchase.status === "pending" && (purchase.remainingBalance || 0) > 0 && (
                           <button
                             onClick={() => handleAddPayment(purchase)}
-                            className="p-2 text-green-500 hover:bg-green-50 rounded dark:hover:bg-green-900/20 border border-green-200 dark:border-green-800"
+                            className="p-2 text-green-500 hover:bg-green-50 rounded dark:hover:bg-green-900/20 border border-green-200 dark:border-green-800 flex-shrink-0"
                             title="Add Payment"
                           >
                             <FaCreditCard className="w-4 h-4" />
@@ -369,7 +422,7 @@ export default function PurchaseList() {
                         )}
                         <Link to={`/inventory/purchase/edit/${purchase.id}`}>
                           <button 
-                            className="p-2 text-blue-600 hover:bg-blue-50 rounded dark:hover:bg-blue-900/20"
+                            className="p-2 text-blue-600 hover:bg-blue-50 rounded dark:hover:bg-blue-900/20 flex-shrink-0"
                             title="Edit Purchase"
                           >
                             <PencilIcon className="w-4 h-4" />
@@ -389,14 +442,14 @@ export default function PurchaseList() {
       {/* Add Payment Modal */}
       {showAddPaymentModal && selectedPurchase && (
         <div 
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/30 py-8"
           onClick={() => {
             setShowAddPaymentModal(false);
             setSelectedPurchase(null);
           }}
         >
           <div 
-            className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-md mx-4"
+            className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <h2 className="text-xl font-bold text-gray-800 dark:text-white mb-4">
@@ -440,12 +493,19 @@ export default function PurchaseList() {
                       type: value as "cash" | "bank_transfer",
                       bankAccountId: value === "bank_transfer" ? paymentData.bankAccountId : undefined,
                     });
+                    // Clear error when user changes value
+                    if (backendErrors.type) {
+                      setBackendErrors({ ...backendErrors, type: "" });
+                    }
                   }}
                   options={[
                     { value: "cash", label: "Cash" },
                     { value: "bank_transfer", label: "Bank Transfer" },
                   ]}
                 />
+                {backendErrors.type && (
+                  <p className="mt-1 text-xs text-error-500">{backendErrors.type}</p>
+                )}
               </div>
 
               {paymentData.type === "bank_transfer" && (
@@ -458,19 +518,29 @@ export default function PurchaseList() {
                       No active bank accounts available.
                     </div>
                   ) : (
-                    <Select
-                      value={paymentData.bankAccountId || ""}
-                      onChange={(value) => setPaymentData({ ...paymentData, bankAccountId: value })}
-                      options={[
-                        { value: "", label: "Select a bank account" },
-                        ...bankAccounts
-                          .filter((acc) => acc.isActive)
-                          .map((acc) => ({
-                            value: acc.id,
-                            label: `${acc.accountName} - ${acc.bankName}${acc.isDefault ? " (Default)" : ""}`,
-                          })),
-                      ]}
-                    />
+                    <>
+                      <Select
+                        value={paymentData.bankAccountId || ""}
+                        onChange={(value) => {
+                          setPaymentData({ ...paymentData, bankAccountId: value });
+                          // Clear error when user changes value
+                          if (backendErrors.bankAccountId) {
+                            setBackendErrors({ ...backendErrors, bankAccountId: "" });
+                          }
+                        }}
+                        options={[
+                          ...bankAccounts
+                            .filter((acc) => acc.isActive)
+                            .map((acc) => ({
+                              value: acc.id,
+                              label: `${acc.accountName} - ${acc.bankName}${acc.isDefault ? " (Default)" : ""}`,
+                            })),
+                        ]}
+                      />
+                      {backendErrors.bankAccountId && (
+                        <p className="mt-1 text-xs text-error-500">{backendErrors.bankAccountId}</p>
+                      )}
+                    </>
                   )}
                 </div>
               )}
@@ -481,8 +551,16 @@ export default function PurchaseList() {
                 </Label>
                 <DatePicker
                   value={paymentData.date}
-                  onChange={(e) => setPaymentData({ ...paymentData, date: e.target.value })}
+                  onChange={(e) => {
+                    setPaymentData({ ...paymentData, date: e.target.value });
+                    // Clear error when user changes value
+                    if (backendErrors.date) {
+                      setBackendErrors({ ...backendErrors, date: "" });
+                    }
+                  }}
                   required
+                  error={!!backendErrors.date}
+                  hint={backendErrors.date || undefined}
                 />
               </div>
 
@@ -495,21 +573,32 @@ export default function PurchaseList() {
                   step={0.01}
                   min="0"
                   max={String(selectedPurchase.remainingBalance)}
-                  value={paymentData.amount}
-                  onChange={(e) => setPaymentData({ ...paymentData, amount: parseFloat(e.target.value) || 0 })}
+                  value={(paymentData.amount !== null && paymentData.amount !== undefined && paymentData.amount !== 0) ? String(paymentData.amount) : ""}
+                  onChange={(e) => {
+                    const value = e.target.value === "" ? undefined : parseFloat(e.target.value);
+                    setPaymentData({ ...paymentData, amount: (isNaN(value as any) || value === null || value === undefined) ? 0 : value });
+                    // Clear error when user changes value
+                    if (backendErrors.amount) {
+                      setBackendErrors({ ...backendErrors, amount: "" });
+                    }
+                  }}
                   placeholder="Enter amount"
                   required
+                  error={!!backendErrors.amount}
+                  hint={backendErrors.amount || undefined}
                 />
-                <p className="mt-1 text-xs text-gray-500">
-                  Max: Rs. {selectedPurchase.remainingBalance.toFixed(2)}
-                </p>
+                {!backendErrors.amount && (
+                  <p className="mt-1 text-xs text-gray-500">
+                    Max: Rs. {selectedPurchase.remainingBalance.toFixed(2)}
+                  </p>
+                )}
               </div>
 
               <div className="flex gap-4 pt-4">
                 <Button
                   onClick={handleSubmitPayment}
                   size="sm"
-                  disabled={isSubmitting || paymentData.amount <= 0 || (paymentData.type === "bank_transfer" && !paymentData.bankAccountId)}
+                  disabled={isSubmitting || !paymentData.amount || paymentData.amount <= 0 || (paymentData.type === "bank_transfer" && !paymentData.bankAccountId)}
                   className="flex-1"
                 >
                   {isSubmitting ? "Adding..." : "Add Payment"}
@@ -534,7 +623,7 @@ export default function PurchaseList() {
       {/* View Payments Modal */}
       {showViewPaymentsModal && selectedPurchase && (
         <div 
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/30 py-8"
           onClick={() => {
             setShowViewPaymentsModal(false);
             setSelectedPurchase(null);
@@ -691,8 +780,8 @@ export default function PurchaseList() {
 
       {/* Pagination Controls */}
       {!loading && purchases && purchases.length > 0 && (
-        <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-4 bg-white rounded-lg shadow-sm p-4 dark:bg-gray-800">
-          <div className="flex items-center gap-4">
+        <div className="mt-6 flex flex-col gap-4 bg-white rounded-lg shadow-sm p-4 dark:bg-gray-800">
+          <div className="flex items-center justify-between">
             <PageSizeSelector
               pageSize={purchasesPagination?.pageSize || 10}
               onPageSizeChange={handlePageSizeChange}
@@ -703,11 +792,13 @@ export default function PurchaseList() {
               {purchasesPagination?.total || 0} purchases
             </span>
           </div>
-          <Pagination
-            currentPage={purchasesPagination?.page || 1}
-            totalPages={purchasesPagination?.totalPages || 1}
-            onPageChange={handlePageChange}
-          />
+          <div className="flex justify-center">
+            <Pagination
+              currentPage={purchasesPagination?.page || 1}
+              totalPages={purchasesPagination?.totalPages || 1}
+              onPageChange={handlePageChange}
+            />
+          </div>
         </div>
       )}
     </>

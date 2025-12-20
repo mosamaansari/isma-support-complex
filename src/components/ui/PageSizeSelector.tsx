@@ -16,7 +16,7 @@ export default function PageSizeSelector({
 }: PageSizeSelectorProps) {
   return (
     <div className={`flex items-center gap-2 ${className}`}>
-      <Label className="mb-0 text-sm">Items per page:</Label>
+      <Label className="mb-0 text-sm flex-nowrap whitespace-nowrap">Items per page:</Label>
       <Select
         value={pageSize.toString()}
         onChange={(value) => onPageSizeChange(parseInt(value))}
@@ -29,6 +29,8 @@ export default function PageSizeSelector({
     </div>
   );
 }
+
+
 
 
 

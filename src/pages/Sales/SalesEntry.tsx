@@ -11,8 +11,10 @@ import Input from "../../components/form/input/InputField";
 import DatePicker from "../../components/form/DatePicker";
 import Label from "../../components/form/Label";
 import Select from "../../components/form/Select";
+import TaxDiscountInput from "../../components/form/TaxDiscountInput";
 import Button from "../../components/ui/button/Button";
 import { TrashBinIcon, PlusIcon } from "../../icons";
+import { getTodayDate } from "../../utils/dateHelpers";
 
 const salesEntrySchema = yup.object().shape({
   customerName: yup
@@ -44,9 +46,11 @@ export default function SalesEntry() {
   >([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [payments, setPayments] = useState<SalePayment[]>([]);
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
-  const [globalDiscount, setGlobalDiscount] = useState(0);
-  const [globalTax, setGlobalTax] = useState(0);
+  const [date, setDate] = useState(getTodayDate());
+  const [globalDiscount, setGlobalDiscount] = useState<number | null>(null);
+  const [globalDiscountType, setGlobalDiscountType] = useState<"percent" | "value">("percent");
+  const [globalTax, setGlobalTax] = useState<number | null>(null);
+  const [globalTaxType, setGlobalTaxType] = useState<"percent" | "value">("percent");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [backendErrors, setBackendErrors] = useState<Record<string, string>>({});
   const [showErrors, setShowErrors] = useState(false);
@@ -64,7 +68,7 @@ export default function SalesEntry() {
       customerName: "",
       customerPhone: "",
       customerCity: "",
-      date: new Date().toISOString().split("T")[0],
+      date: getTodayDate(),
     },
   });
 
@@ -81,7 +85,7 @@ export default function SalesEntry() {
     }
     // Add default cash payment
     if (payments.length === 0) {
-      setPayments([{ type: "cash", amount: 0 }]);
+      setPayments([{ type: "cash", amount: undefined as any }]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -137,7 +141,7 @@ export default function SalesEntry() {
       ...payments,
       {
         type: "cash",
-        amount: 0,
+        amount: undefined as any,
       },
     ]);
   };
@@ -226,9 +230,9 @@ export default function SalesEntry() {
         warehouseQuantity: 0,
         unitPrice: product.salePrice || 0,
         customPrice: undefined,
-        discount: 0,
+        discount: undefined,
         discountType: "percent",
-        tax: 0,
+        tax: undefined,
         taxType: "percent",
         total: (product.salePrice || 0) * 1,
         product,
@@ -239,13 +243,13 @@ export default function SalesEntry() {
     setSearchTerm("");
   };
 
-  const updateItemPrice = (productId: string, price: number) => {
+  const updateItemPrice = (productId: string, price: number | undefined) => {
     setSelectedProducts(
       selectedProducts.map((item) => {
         if (item.productId === productId) {
           return recalcItemTotals(item as any, {
-            customPrice: price > 0 ? price : undefined,
-            unitPrice: price > 0 ? item.unitPrice : item.unitPrice,
+            customPrice: (price !== undefined && price > 0) ? price : undefined,
+            unitPrice: item.unitPrice,
           });
         }
         return item;
@@ -258,28 +262,28 @@ export default function SalesEntry() {
     location: "shop" | "warehouse",
     rawQty: string
   ) => {
-    const parsed = rawQty === "" ? 0 : parseInt(rawQty, 10);
-    const quantity = Number.isNaN(parsed) ? 0 : parsed;
+    const parsed = rawQty === "" ? null : parseInt(rawQty, 10);
+    const quantity = (rawQty === "" || Number.isNaN(parsed)) ? null : parsed;
     setSelectedProducts(
       selectedProducts.map((item) => {
         if (item.productId === productId) {
           const availableShop = item.product?.shopQuantity ?? 0;
           const availableWarehouse = item.product?.warehouseQuantity ?? 0;
-          if (location === "shop" && quantity > availableShop) {
+          if (location === "shop" && quantity !== null && quantity > availableShop) {
             showError(`Shop stock available for ${item.productName} is ${availableShop}`);
             return item;
           }
-          if (location === "warehouse" && quantity > availableWarehouse) {
+          if (location === "warehouse" && quantity !== null && quantity > availableWarehouse) {
             showError(`Warehouse stock available for ${item.productName} is ${availableWarehouse}`);
             return item;
           }
-          const shopQty = location === "shop" ? quantity : item.shopQuantity || 0;
-          const warehouseQty = location === "warehouse" ? quantity : item.warehouseQuantity || 0;
+          const shopQty = location === "shop" ? (quantity ?? 0) : (item.shopQuantity ?? 0);
+          const warehouseQty = location === "warehouse" ? (quantity ?? 0) : (item.warehouseQuantity ?? 0);
           const totalQty = shopQty + warehouseQty;
           return recalcItemTotals(item as any, {
-            shopQuantity: shopQty,
-            warehouseQuantity: warehouseQty,
-            quantity: totalQty,
+            shopQuantity: location === "shop" ? (quantity ?? undefined) : item.shopQuantity,
+            warehouseQuantity: location === "warehouse" ? (quantity ?? undefined) : item.warehouseQuantity,
+            quantity: totalQty > 0 ? totalQty : 1,
           });
         }
         return item;
@@ -287,11 +291,11 @@ export default function SalesEntry() {
     );
   };
 
-  const updateItemDiscount = (productId: string, discount: number) => {
+  const updateItemDiscount = (productId: string, discount: number | undefined) => {
     setSelectedProducts(
       selectedProducts.map((item) => {
         if (item.productId === productId) {
-          return recalcItemTotals(item as any, { discount });
+          return recalcItemTotals(item as any, { discount: discount ?? undefined });
         }
         return item;
       })
@@ -324,26 +328,45 @@ export default function SalesEntry() {
     // Calculate item-level discounts and taxes
     const itemDiscounts = selectedProducts.reduce((sum, item) => {
       const effectivePrice = item.customPrice || item.unitPrice;
+      const discount = item.discount ?? 0;
       if (item.discountType === "value") {
-        return sum + item.discount;
+        return sum + discount;
       } else {
-        return sum + (effectivePrice * item.quantity * item.discount / 100);
+        return sum + (effectivePrice * item.quantity * discount / 100);
       }
     }, 0);
     
     const itemTaxes = selectedProducts.reduce((sum, item) => {
       const effectivePrice = item.customPrice || item.unitPrice;
+      const tax = item.tax ?? 0;
       if (item.taxType === "value") {
-        return sum + item.tax;
+        return sum + tax;
       } else {
-        return sum + (effectivePrice * item.quantity * item.tax / 100);
+        return sum + (effectivePrice * item.quantity * tax / 100);
       }
     }, 0);
     
-    // Global discount/tax are absolute amounts (Rs)
-    const globalDiscountAmount = globalDiscount;
-    const globalTaxAmount = globalTax;
+    // Calculate global discount based on type
+    let globalDiscountAmount = 0;
+    if (globalDiscount !== null && globalDiscount !== undefined) {
+      if (globalDiscountType === "value") {
+        globalDiscountAmount = globalDiscount;
+      } else {
+        globalDiscountAmount = (subtotal * globalDiscount) / 100;
+      }
+    }
     
+    // Calculate global tax based on type
+    let globalTaxAmount = 0;
+    if (globalTax !== null && globalTax !== undefined) {
+      if (globalTaxType === "value") {
+        globalTaxAmount = globalTax;
+      } else {
+        const afterDiscount = subtotal - itemDiscounts - globalDiscountAmount;
+        globalTaxAmount = (afterDiscount * globalTax) / 100;
+      }
+    }
+
     const totalDiscount = itemDiscounts + globalDiscountAmount;
     const totalTax = itemTaxes + globalTaxAmount;
     const total = Math.max(0, subtotal - totalDiscount + totalTax);
@@ -392,7 +415,7 @@ export default function SalesEntry() {
     }
 
     const { subtotal, discountAmount, taxAmount, total } = calculateTotals();
-    const totalPaid = payments.reduce((sum, payment) => sum + payment.amount, 0);
+    const totalPaid = payments.reduce((sum, payment) => sum + (payment.amount ?? 0), 0);
     
     if (totalPaid > total) {
       showError("Total paid amount cannot exceed total amount");
@@ -401,7 +424,7 @@ export default function SalesEntry() {
 
     // Validate payments
     for (const payment of payments) {
-      if (!payment.amount || payment.amount <= 0) {
+      if (payment.amount === undefined || payment.amount === null || payment.amount <= 0) {
         showError("Payment amount must be greater than 0");
         return;
       }
@@ -418,7 +441,7 @@ export default function SalesEntry() {
         const totalQty = (item.shopQuantity || 0) + (item.warehouseQuantity || 0) || item.quantity;
         const taxAmount = item.taxType === "value"
           ? item.tax
-          : (effectivePrice * totalQty * (item.tax || globalTax) / 100);
+          : (effectivePrice * totalQty * (item.tax || globalTax || 0) / 100);
         
         return {
           productId: item.productId,
@@ -443,7 +466,9 @@ export default function SalesEntry() {
         items: saleItems,
         subtotal,
         discount: discountAmount,
+        discountType: globalDiscountType,
         tax: taxAmount,
+        taxType: globalTaxType,
         total,
         paymentType: payments[0]?.type || "cash", // Required for backward compatibility
         payments: payments.map(p => ({
@@ -490,7 +515,7 @@ export default function SalesEntry() {
   };
 
   const { subtotal, total } = calculateTotals();
-  const totalPaid = payments.reduce((sum, payment) => sum + payment.amount, 0);
+  const totalPaid = payments.reduce((sum, payment) => sum + (payment.amount ?? 0), 0);
   const remainingBalance = total - totalPaid;
 
   return (
@@ -552,34 +577,28 @@ export default function SalesEntry() {
               </p>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full">
+                <table className="w-full min-w-[1000px]">
                   <thead>
                     <tr className="border-b border-gray-200 dark:border-gray-700">
-                      <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                      <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300 min-w-[100px] max-w-[100px]">
                         Product
                       </th>
-                      <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
-                        Price
-                      </th>
-                      <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                      <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300 min-w-[140px] max-w-[160px]">
                         Custom Price
                       </th>
-                      <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                      <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300 min-w-[110px] max-w-[130px]">
                         Shop Qty
                       </th>
-                      <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                      <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300 min-w-[130px] max-w-[150px]">
                         Warehouse Qty
                       </th>
-                      <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                      <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300 min-w-[180px] max-w-[220px]" colSpan={2}>
                         Discount
                       </th>
-                      <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
-                        Disc Type
-                      </th>
-                      <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                      <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300 min-w-[100px] max-w-[120px]">
                         Total
                       </th>
-                      <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                      <th className="p-2 text-center text-sm font-medium text-gray-700 dark:text-gray-300 min-w-[80px] max-w-[100px]">
                         Action
                       </th>
                     </tr>
@@ -590,102 +609,72 @@ export default function SalesEntry() {
                         key={item.productId}
                         className="border-b border-gray-100 dark:border-gray-700"
                       >
-                        <td className="p-2">
+                        <td className="p-2 min-w-[100px] max-w-[150px]">
                           <p className="font-medium text-gray-800 dark:text-white">
                             {item.productName}
                           </p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">
-                            Stock — Shop: {item.product.shopQuantity || 0} | Warehouse: {item.product.warehouseQuantity || 0}
+                          <p className="text-sm text-gray-700 dark:text-gray-300">
+                            Rs. {item.unitPrice.toFixed(2)}
                           </p>
                         </td>
-                        <td className="p-2 text-gray-700 dark:text-gray-300">
-                          <div>
-                            <p className="text-sm">Rs. {item.unitPrice.toFixed(2)}</p>
-                            {item.customPrice && (
-                              <p className="text-xs text-green-600 dark:text-green-400">
-                                Custom: Rs. {item.customPrice.toFixed(2)}
-                              </p>
-                            )}
-                          </div>
-                        </td>
-                        <td className="p-2">
+                        <td className="p-2 whitespace-nowrap min-w-[140px] max-w-[160px]">
                           <Input
                             type="number"
                             min="0"
                             step={0.01}
                             placeholder="Custom"
-                            value={item.customPrice ? item.customPrice.toString() : ""}
-                            onChange={(e) =>
-                              updateItemPrice(
-                                item.productId,
-                                e.target.value === "" ? 0 : parseFloat(e.target.value) || 0
-                              )
-                            }
-                            className="w-24"
+                            value={item.customPrice ?? ""}
+                            onChange={(e) => {
+                              const value = e.target.value === "" ? undefined : parseFloat(e.target.value);
+                              updateItemPrice(item.productId, isNaN(value as any) ? undefined : value);
+                            }}
+                            className="w-full min-w-[112px] max-w-[144px]"
                           />
                         </td>
-                        <td className="p-2">
+                        <td className="p-2 whitespace-nowrap min-w-[110px] max-w-[130px]">
                           <Input
                             type="number"
                             min="0"
                             max={(item.product.shopQuantity || 0).toString()}
-                            value={item.shopQuantity === 0 ? "" : item.shopQuantity?.toString()}
+                            value={item.shopQuantity !== null && item.shopQuantity !== undefined ? item.shopQuantity : ""}
                             onChange={(e) => updateItemLocationQuantity(item.productId, "shop", e.target.value)}
-                            className="w-20"
+                            className="w-full min-w-[96px] max-w-[112px]"
                           />
                         </td>
-                        <td className="p-2">
+                        <td className="p-2 whitespace-nowrap min-w-[130px] max-w-[150px]">
                           <Input
                             type="number"
                             min="0"
                             max={(item.product.warehouseQuantity || 0).toString()}
-                            value={item.warehouseQuantity === 0 ? "" : item.warehouseQuantity?.toString()}
+                            value={item.warehouseQuantity !== null && item.warehouseQuantity !== undefined ? item.warehouseQuantity : ""}
                             onChange={(e) => updateItemLocationQuantity(item.productId, "warehouse", e.target.value)}
-                            className="w-20"
+                            className="w-full min-w-[96px] max-w-[112px]"
                           />
                         </td>
-                        <td className="p-2">
-                          <Input
-                            type="number"
-                            min="0"
-                            step={0.01}
-                            value={item.discount === 0 ? "" : item.discount.toString()}
-                            onChange={(e) =>
-                              updateItemDiscount(
-                                item.productId,
-                                e.target.value === "" ? 0 : parseFloat(e.target.value) || 0
-                              )
-                            }
-                            className="w-20"
+                        <td className="p-2 whitespace-nowrap min-w-[180px] max-w-[220px]" colSpan={2}>
+                          <TaxDiscountInput
+                            value={item.discount}
+                            type={item.discountType || "percent"}
+                            onValueChange={(value) => updateItemDiscount(item.productId, value ?? undefined)}
+                            onTypeChange={(type) => updateItemDiscountType(item.productId, type)}
                             placeholder="0"
+                            min={0}
+                            step={0.01}
+                            className="w-full min-w-[160px] max-w-[200px]"
                           />
                         </td>
-                        <td className="p-2">
-                          <Select
-                            value={item.discountType || "percent"}
-                            onChange={(value) =>
-                              updateItemDiscountType(
-                                item.productId,
-                                value as "percent" | "value"
-                              )
-                            }
-                            options={[
-                              { value: "percent", label: "%" },
-                              { value: "value", label: "Rs" },
-                            ]}
-                            className="w-16"
-                          />
-                        </td>
-                        <td className="p-2 font-semibold text-gray-800 dark:text-white">
+                        <td className="p-2 font-semibold text-gray-800 dark:text-white whitespace-nowrap min-w-[100px] max-w-[120px]">
                           Rs. {item.total.toFixed(2)}
                         </td>
-                        <td className="p-2">
-                          <button
-                            onClick={() => removeItem(item.productId)}
-                            className="p-1 text-red-600 hover:bg-red-50 rounded dark:hover:bg-red-900/20"
-                          >
-                            <TrashBinIcon className="w-5 h-5" />
-                          </button>
+                        <td className="p-2 whitespace-nowrap min-w-[80px] max-w-[100px]">
+                          <div className="flex items-center justify-center gap-2 flex-nowrap">
+                            <button
+                              onClick={() => removeItem(item.productId)}
+                              className="p-1 text-red-600 hover:bg-red-50 rounded dark:hover:bg-red-900/20 flex-shrink-0"
+                            >
+                              <TrashBinIcon className="w-5 h-5" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -785,7 +774,7 @@ export default function SalesEntry() {
                   </div>
                   <div className="space-y-3">
                     <div>
-                      <Label>Payment Type</Label>
+                      <Label>Payment Type  <span className="text-error-500">*</span></Label>
                       <Select
                         value={payment.type}
                         onChange={(value) =>
@@ -798,26 +787,24 @@ export default function SalesEntry() {
                       />
                     </div>
                     <div>
-                      <Label>Amount</Label>
+                      <Label>Amount  <span className="text-error-500">*</span></Label>
                     <Input
                       type="number"
                       min="0"
-                      max={String(remainingBalance + payment.amount)}
-                      value={payment.amount === 0 ? "" : payment.amount}
-                      onChange={(e) =>
-                        updatePayment(
-                          index,
-                          "amount",
-                          e.target.value === "" ? 0 : parseFloat(e.target.value) || 0
-                        )
-                      }
+                      max={String(remainingBalance + (payment.amount ?? 0))}
+                      value={(payment.amount !== null && payment.amount !== undefined && payment.amount !== 0) ? String(payment.amount) : ""}
+                      onChange={(e) => {
+                        const value = e.target.value === "" ? undefined : parseFloat(e.target.value);
+                        updatePayment(index, "amount", isNaN(value as any) || value === null ? undefined : value);
+                      }}
                       placeholder="Enter amount"
+                      required
                       error={
-                        (showErrors && (!payment.amount || payment.amount <= 0)) ||
+                        (showErrors && (payment.amount === undefined || payment.amount === null || payment.amount <= 0)) ||
                         !!backendErrors[`payments.${index}.amount`]
                       }
                       hint={
-                        (showErrors && (!payment.amount || payment.amount <= 0)
+                        (showErrors && (payment.amount === undefined || payment.amount === null || payment.amount <= 0)
                           ? "Amount must be greater than 0"
                           : undefined) ||
                         backendErrors[`payments.${index}.amount`]
@@ -826,14 +813,13 @@ export default function SalesEntry() {
                     </div>
                     {payment.type === "bank_transfer" && (
                       <div>
-                        <Label>Select Bank Account</Label>
+                        <Label>Select Bank Account <span className="text-error-500">*</span></Label>
                         <Select
                           value={payment.bankAccountId || ""}
                           onChange={(value) =>
                             updatePayment(index, "bankAccountId", value)
                           }
                           options={[
-                            { value: "", label: "Select Bank Account" },
                             ...bankAccounts
                               .filter((acc) => acc.isActive)
                               .map((acc) => ({
@@ -887,27 +873,33 @@ export default function SalesEntry() {
                   Rs. {subtotal.toFixed(2)}
                 </span>
               </div>
-              <div>
-                <Label>Discount (Rs)</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  value={globalDiscount === 0 ? "" : globalDiscount}
-                  onChange={(e) =>
-                    setGlobalDiscount(e.target.value === "" ? 0 : parseFloat(e.target.value) || 0)
-                  }
-                  placeholder="0"
-                />
+              <div className="flex items-center justify-between">
+                <Label className="mb-0 whitespace-nowrap">Discount:</Label>
+                <div className="">
+                  <TaxDiscountInput
+                    value={globalDiscount}
+                    type={globalDiscountType}
+                    onValueChange={(value) => setGlobalDiscount(value ?? null)}
+                    onTypeChange={(type) => setGlobalDiscountType(type)}
+                    placeholder="0"
+                    min={0}
+                    step={0.01}
+                  />
+                </div>
               </div>
-              <div>
-                <Label>Tax (Rs)</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  value={globalTax === 0 ? "" : globalTax}
-                  onChange={(e) => setGlobalTax(e.target.value === "" ? 0 : parseFloat(e.target.value) || 0)}
-                  placeholder="0"
-                />
+              <div className="flex items-center justify-between gap-4">
+                <Label className="mb-0 whitespace-nowrap">Tax:</Label>
+                <div className="">
+                  <TaxDiscountInput
+                    value={globalTax}
+                    type={globalTaxType}
+                    onValueChange={(value) => setGlobalTax(value ?? null)}
+                    onTypeChange={(type) => setGlobalTaxType(type)}
+                    placeholder="0"
+                    min={0}
+                    step={0.01}
+                  />
+                </div>
               </div>
               <div className="flex justify-between pt-2 border-t border-gray-200 dark:border-gray-700">
                 <span className="text-lg font-semibold text-gray-800 dark:text-white">

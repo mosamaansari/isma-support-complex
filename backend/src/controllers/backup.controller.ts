@@ -43,33 +43,31 @@ class BackupController {
 
   async exportReportToExcel(req: AuthRequest, res: Response) {
     try {
-      const { startDate, endDate } = req.query;
-      
-      // Get report data (you can enhance this to fetch actual data)
+      // Get report data from request body (POST request)
       const reportData = {
-        dateRange: {
-          start: startDate as string,
-          end: endDate as string,
-        },
+        dateRange: req.body.dateRange || {},
         summary: req.body.summary || {},
         sales: req.body.sales || [],
         expenses: req.body.expenses || [],
+        purchases: req.body.purchases || [],
       };
 
       const excelBuffer = await backupService.exportReportToExcel(reportData);
       const timestamp = new Date().toISOString().split("T")[0];
+      const startDate = reportData.dateRange?.start || "all";
+      const endDate = reportData.dateRange?.end || "all";
 
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
       res.setHeader(
         "Content-Disposition",
-        `attachment; filename=report-${startDate || "all"}-${endDate || "all"}-${timestamp}.xlsx`
+        `attachment; filename=report-${startDate}-${endDate}-${timestamp}.xlsx`
       );
 
       res.send(excelBuffer);
       logger.info(`Report exported to Excel by ${req.user?.username}`);
     } catch (error: any) {
       logger.error("Export report to Excel error:", error);
-      res.status(500).json({ error: "Internal server error" });
+      res.status(500).json({ error: error.message || "Internal server error" });
     }
   }
 }

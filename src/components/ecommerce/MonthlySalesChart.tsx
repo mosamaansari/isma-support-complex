@@ -6,34 +6,78 @@ import { DropdownItem } from "../ui/dropdown/DropdownItem";
 import { MoreDotIcon } from "../../icons";
 import api from "../../services/api";
 
+type TrendData = {
+  categories: string[];
+  sales: number[];
+  expenses: number[];
+  purchases: number[];
+  quarterly?: {
+    categories: string[];
+    sales: number[];
+    expenses: number[];
+    purchases: number[];
+  };
+  annual?: {
+    categories: string[];
+    sales: number[];
+    expenses: number[];
+    purchases: number[];
+  };
+};
+
 export default function MonthlySalesChart() {
-  const [monthlyData, setMonthlyData] = useState<{ categories: string[]; data: number[] } | null>(null);
+  const [monthlyData, setMonthlyData] = useState<TrendData | null>(null);
   const [loading, setLoading] = useState(true);
   const [isOpen, setIsOpen] = useState(false);
+  const [view, setView] = useState<"monthly" | "quarterly" | "annual">("monthly");
 
   useEffect(() => {
     const loadData = async () => {
       try {
         setLoading(true);
         const stats = await api.getDashboardStats();
-        // Handle null/undefined monthlySales
-        if (stats?.monthlySales) {
-          setMonthlyData({
-            categories: stats.monthlySales.categories || ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
-            data: stats.monthlySales.data || [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-          });
-        } else {
-          setMonthlyData({
-            categories: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
-            data: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-          });
-        }
+        const ms = stats?.monthlySales;
+        const monthlySales = ms?.sales ?? ms?.data ?? new Array(12).fill(0);
+        const monthlyExpenses = ms?.expenses ?? new Array(12).fill(0);
+        const monthlyPurchases = ms?.purchases ?? new Array(12).fill(0);
+
+        const quarterlySales = ms?.quarterly?.sales ?? ms?.quarterly?.data ?? new Array(4).fill(0);
+        const quarterlyExpenses = ms?.quarterly?.expenses ?? new Array(4).fill(0);
+        const quarterlyPurchases = ms?.quarterly?.purchases ?? new Array(4).fill(0);
+
+        const annualSales = ms?.annual?.sales ?? ms?.annual?.data ?? [];
+        const annualExpenses = ms?.annual?.expenses ?? [];
+        const annualPurchases = ms?.annual?.purchases ?? [];
+
+        setMonthlyData({
+          categories: ms?.categories || ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+          sales: monthlySales,
+          expenses: monthlyExpenses,
+          purchases: monthlyPurchases,
+          quarterly: ms?.quarterly
+            ? {
+                categories: ms.quarterly.categories || ["Q1", "Q2", "Q3", "Q4"],
+                sales: quarterlySales,
+                expenses: quarterlyExpenses,
+                purchases: quarterlyPurchases,
+              }
+            : undefined,
+          annual: ms?.annual
+            ? {
+                categories: ms.annual.categories || [],
+                sales: annualSales,
+                expenses: annualExpenses,
+                purchases: annualPurchases,
+              }
+            : undefined,
+        });
       } catch (error: any) {
         console.error("Error loading monthly sales:", error);
-        // Set default data on error
         setMonthlyData({
           categories: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
-          data: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+          sales: new Array(12).fill(0),
+          expenses: new Array(12).fill(0),
+          purchases: new Array(12).fill(0),
         });
       } finally {
         setLoading(false);
@@ -43,16 +87,47 @@ export default function MonthlySalesChart() {
     loadData();
   }, []);
 
-  // Memoize options and series to prevent re-renders
   const defaultCategories = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  const defaultData = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+  const normalize = (arr: number[] | undefined, len: number) => {
+    const base = Array.isArray(arr) ? arr.slice(0, len) : [];
+    while (base.length < len) base.push(0);
+    return base;
+  };
+
+  const activeCategories =
+    view === "quarterly"
+      ? monthlyData?.quarterly?.categories || ["Q1", "Q2", "Q3", "Q4"]
+      : view === "annual"
+      ? monthlyData?.annual?.categories || []
+      : monthlyData?.categories || defaultCategories;
+
+  const activeSales =
+    view === "quarterly"
+      ? normalize(monthlyData?.quarterly?.sales, (monthlyData?.quarterly?.categories || ["Q1", "Q2", "Q3", "Q4"]).length)
+      : view === "annual"
+      ? normalize(monthlyData?.annual?.sales, (monthlyData?.annual?.categories || []).length || 12)
+      : normalize(monthlyData?.sales, (monthlyData?.categories || defaultCategories).length);
+
+  const activeExpenses =
+    view === "quarterly"
+      ? normalize(monthlyData?.quarterly?.expenses, (monthlyData?.quarterly?.categories || ["Q1", "Q2", "Q3", "Q4"]).length)
+      : view === "annual"
+      ? normalize(monthlyData?.annual?.expenses, (monthlyData?.annual?.categories || []).length || 12)
+      : normalize(monthlyData?.expenses, (monthlyData?.categories || defaultCategories).length);
+
+  const activePurchases =
+    view === "quarterly"
+      ? normalize(monthlyData?.quarterly?.purchases, (monthlyData?.quarterly?.categories || ["Q1", "Q2", "Q3", "Q4"]).length)
+      : view === "annual"
+      ? normalize(monthlyData?.annual?.purchases, (monthlyData?.annual?.categories || []).length || 12)
+      : normalize(monthlyData?.purchases, (monthlyData?.categories || defaultCategories).length);
 
   const options: ApexOptions = useMemo(() => ({
-    colors: ["#465fff"],
+    colors: ["#465fff", "#EF4444", "#8b5cf6"],
     chart: {
       fontFamily: "Outfit, sans-serif",
       type: "bar",
-      height: 180,
+      height: 220,
       toolbar: {
         show: false,
       },
@@ -70,11 +145,11 @@ export default function MonthlySalesChart() {
     },
     stroke: {
       show: true,
-      width: 4,
+      width: 3,
       colors: ["transparent"],
     },
     xaxis: {
-      categories: monthlyData?.categories || defaultCategories,
+      categories: activeCategories,
       axisBorder: {
         show: false,
       },
@@ -111,14 +186,22 @@ export default function MonthlySalesChart() {
         formatter: (val: number) => `Rs. ${(val || 0).toLocaleString("en-PK", { minimumFractionDigits: 2 })}`,
       },
     },
-  }), [monthlyData?.categories]);
+  }), [activeCategories]);
 
   const series = useMemo(() => [
     {
       name: "Sales",
-      data: monthlyData?.data || defaultData,
+      data: activeSales,
     },
-  ], [monthlyData?.data]);
+    {
+      name: "Expenses",
+      data: activeExpenses,
+    },
+    {
+      name: "Purchases",
+      data: activePurchases,
+    },
+  ], [activeSales, activeExpenses, activePurchases]);
 
   function toggleDropdown() {
     setIsOpen(!isOpen);
@@ -139,11 +222,11 @@ export default function MonthlySalesChart() {
     );
   }
 
-  if (!monthlyData || !monthlyData.categories || !monthlyData.data) {
+  if (!monthlyData || !activeCategories || activeCategories.length === 0) {
     return (
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white px-5 pt-5 dark:border-gray-800 dark:bg-white/[0.03] sm:px-6 sm:pt-6">
         <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90 mb-4">
-          Monthly Sales
+          Sales vs Expenses vs Purchases
         </h3>
         <div className="py-8 text-center">
           <p className="text-sm text-gray-500 dark:text-gray-400">Data not found</p>
@@ -156,7 +239,7 @@ export default function MonthlySalesChart() {
     <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white px-5 pt-5 dark:border-gray-800 dark:bg-white/[0.03] sm:px-6 sm:pt-6">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-          Monthly Sales
+          Sales vs Expenses vs Purchases
         </h3>
         <div className="relative inline-block">
           <button className="dropdown-toggle" onClick={toggleDropdown}>
@@ -168,16 +251,31 @@ export default function MonthlySalesChart() {
             className="w-40 p-2"
           >
             <DropdownItem
-              onItemClick={closeDropdown}
+              onItemClick={() => {
+                setView("monthly");
+                closeDropdown();
+              }}
               className="flex w-full font-normal text-left text-gray-500 rounded-lg hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
             >
-              View More
+              Monthly
             </DropdownItem>
             <DropdownItem
-              onItemClick={closeDropdown}
+              onItemClick={() => {
+                setView("quarterly");
+                closeDropdown();
+              }}
               className="flex w-full font-normal text-left text-gray-500 rounded-lg hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
             >
-              Delete
+              Quarterly
+            </DropdownItem>
+            <DropdownItem
+              onItemClick={() => {
+                setView("annual");
+                closeDropdown();
+              }}
+              className="flex w-full font-normal text-left text-gray-500 rounded-lg hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
+            >
+              Annual
             </DropdownItem>
           </Dropdown>
         </div>
@@ -185,8 +283,8 @@ export default function MonthlySalesChart() {
 
       <div className="max-w-full overflow-x-auto custom-scrollbar">
         <div className="-ml-5 min-w-[650px] xl:min-w-full pl-2">
-          {monthlyData && monthlyData.categories && monthlyData.data && (
-            <Chart options={options} series={series} type="bar" height={180} />
+          {monthlyData && (
+            <Chart options={options} series={series} type="bar" height={220} />
           )}
         </div>
       </div>

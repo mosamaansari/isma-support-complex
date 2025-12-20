@@ -19,6 +19,7 @@ export interface Product {
   id: string;
   name: string;
   category?: string;
+  brand?: string;
   salePrice?: number;
   shopQuantity: number;
   warehouseQuantity: number;
@@ -46,16 +47,16 @@ export interface SaleItem {
   fromWarehouse?: boolean;
   unitPrice: number;
   customPrice?: number; // Custom price for this customer
-  discount: number;
+  discount?: number;
   discountType?: "percent" | "value"; // Discount type: percent or direct value
-  tax: number;
+  tax?: number;
   taxType?: "percent" | "value"; // Tax type: percent or direct value
   total: number;
 }
 
 export interface SalePayment {
   type: "cash" | "bank_transfer";
-  amount: number;
+  amount?: number;
   bankAccountId?: string;
 }
 
@@ -65,7 +66,9 @@ export interface Sale {
   items: SaleItem[];
   subtotal: number;
   discount: number;
+  discountType?: "percent" | "value";
   tax: number;
+  taxType?: "percent" | "value";
   total: number;
   paymentType: PaymentType;
   payments?: SalePayment[];
@@ -90,6 +93,11 @@ export type ExpenseCategory =
   | "salaries"
   | "maintenance"
   | "marketing"
+  | "tea"
+  | "breakfast"
+  | "lunch"
+  | "dinner"
+  | "refreshment"
   | "other";
 
 export interface Expense {
@@ -112,7 +120,7 @@ export interface PurchaseItem {
   quantity: number;
   shopQuantity?: number;
   warehouseQuantity?: number;
-  cost: number;
+  cost?: number;
   discount?: number;
   total: number;
   toWarehouse?: boolean;
@@ -263,6 +271,15 @@ export interface Supplier {
 
 // Category Types
 export interface Category {
+  id: string;
+  name: string;
+  description?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Brand Types
+export interface Brand {
   id: string;
   name: string;
   description?: string;

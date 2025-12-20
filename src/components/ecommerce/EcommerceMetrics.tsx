@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { DollarLineIcon } from "../../icons";
+import { DollarLineIcon, BoxIconLine } from "../../icons";
 import api from "../../services/api";
 
 interface DashboardStats {
@@ -102,41 +102,43 @@ export default function EcommerceMetrics() {
     totalProducts: metrics?.totalProducts ?? 0,
   };
 
-  return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:gap-6">
-      {/* Today's Sales */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] md:p-6">
-        <div className="flex items-center justify-center w-12 h-12 bg-green-100 rounded-xl dark:bg-green-500/10">
-          <DollarLineIcon className="text-green-600 size-6 dark:text-green-400" />
-        </div>
-        <div className="flex items-end justify-between mt-5">
-          <div>
-            <span className="text-sm text-gray-500 dark:text-gray-400">
-              Today's Sales
-            </span>
-            <h4 className="mt-2 font-bold text-gray-800 text-title-sm dark:text-white/90">
-              Rs. {(safeMetrics.todaySales || 0).toLocaleString("en-PK", { minimumFractionDigits: 2 })}
-            </h4>
-          </div>
-        </div>
-      </div>
+  const cards = [
+    {
+      title: "Total Sales",
+      value: safeMetrics.totalSales,
+      icon: <DollarLineIcon className="text-blue-600 size-6 dark:text-blue-400" />,
+      bg: "bg-blue-100 dark:bg-blue-500/10",
+    },
+    {
+      title: "Total Purchases",
+      value: safeMetrics.totalPurchases,
+      icon: <BoxIconLine className="text-purple-600 size-6 dark:text-purple-400" />,
+      bg: "bg-purple-100 dark:bg-purple-500/10",
+    },
+  ];
 
-      {/* Total Sales */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] md:p-6">
-        <div className="flex items-center justify-center w-12 h-12 bg-blue-100 rounded-xl dark:bg-blue-500/10">
-          <DollarLineIcon className="text-blue-600 size-6 dark:text-blue-400" />
-        </div>
-        <div className="flex items-end justify-between mt-5">
-          <div>
-            <span className="text-sm text-gray-500 dark:text-gray-400">
-              Total Sales
-            </span>
-            <h4 className="mt-2 font-bold text-gray-800 text-title-sm dark:text-white/90">
-              Rs. {(safeMetrics.totalSales || 0).toLocaleString("en-PK", { minimumFractionDigits: 2 })}
-            </h4>
+  return (
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 md:gap-6">
+      {cards.map((card, idx) => (
+        <div
+          key={card.title}
+          className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] md:p-6"
+        >
+          <div className={`flex items-center justify-center w-12 h-12 rounded-xl ${card.bg}`}>
+            {card.icon}
+          </div>
+          <div className="flex items-end justify-between mt-5">
+            <div>
+              <span className="text-sm text-gray-500 dark:text-gray-400">{card.title}</span>
+              <h4 className="mt-2 font-bold text-gray-800 text-title-sm dark:text-white/90">
+                {card.suffix
+                  ? `${card.value} ${card.suffix}`
+                  : `Rs. ${(card.value || 0).toLocaleString("en-PK", { minimumFractionDigits: 2 })}`}
+              </h4>
+            </div>
           </div>
         </div>
-      </div>
+      ))}
     </div>
   );
 }

@@ -13,6 +13,7 @@ import Label from "../../components/form/Label";
 import Select from "../../components/form/Select";
 import Button from "../../components/ui/button/Button";
 import { ChevronLeftIcon } from "../../icons";
+import { getTodayDate } from "../../utils/dateHelpers";
 
 const expenseFormSchema = yup.object().shape({
   amount: yup
@@ -23,7 +24,7 @@ const expenseFormSchema = yup.object().shape({
   category: yup
     .string()
     .required("Category is required")
-    .oneOf(["rent", "bills", "transport", "salaries", "supplies", "maintenance", "marketing", "other"], "Invalid category"),
+    .oneOf(["rent", "bills", "transport", "salaries", "maintenance", "marketing", "tea", "breakfast", "lunch", "dinner", "refreshment", "other"], "Invalid category"),
   description: yup
     .string()
     .optional()
@@ -70,13 +71,13 @@ export default function ExpenseForm() {
   } = useForm({
     resolver: yupResolver(expenseFormSchema),
     defaultValues: {
-      amount: 0,
+      amount: undefined,
       category: "other" as ExpenseCategory,
       description: "",
       paymentType: "cash" as PaymentType,
       cardId: "",
       bankAccountId: "",
-      date: isEdit ? "" : new Date().toISOString().split("T")[0],
+      date: isEdit ? "" : getTodayDate(),
     },
   });
 
@@ -242,10 +243,10 @@ export default function ExpenseForm() {
               name="amount"
               step={0.01}
               min="0"
-              value={formData.amount || ""}
+              value={formData.amount ?? ""}
               onChange={(e) => {
-                const value = e.target.value === "" ? 0 : parseFloat(e.target.value);
-                setValue("amount", isNaN(value) ? 0 : value);
+                const value = e.target.value === "" ? null : parseFloat(e.target.value);
+                setValue("amount", isNaN(value as any) ? undefined : value);
               }}
               onBlur={register("amount").onBlur}
               placeholder="0.00"
@@ -269,9 +270,13 @@ export default function ExpenseForm() {
                 { value: "bills", label: "Bills" },
                 { value: "transport", label: "Transport" },
                 { value: "salaries", label: "Salaries" },
-                { value: "supplies", label: "Supplies" },
                 { value: "maintenance", label: "Maintenance" },
                 { value: "marketing", label: "Marketing" },
+                { value: "tea", label: "Tea" },
+                { value: "breakfast", label: "Breakfast" },
+                { value: "lunch", label: "Lunch" },
+                { value: "dinner", label: "Dinner" },
+                { value: "refreshment", label: "Refreshment" },
                 { value: "other", label: "Other" },
               ]}
             />

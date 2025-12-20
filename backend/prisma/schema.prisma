@@ -40,6 +40,11 @@ enum ExpenseCategory {
   salaries
   maintenance
   marketing
+  tea
+  breakfast
+  lunch
+  dinner
+  refreshment
   other
 }
 
@@ -83,6 +88,8 @@ model Product {
   name              String
   category          String?
   categoryId        String?
+  brand             String?
+  brandId           String?
   salePrice         Decimal? @db.Decimal(10, 2)
   shopQuantity      Int      @default(0)
   warehouseQuantity Int      @default(0)
@@ -103,6 +110,7 @@ model Product {
   updatedAt         DateTime @updatedAt
 
   categoryRef   Category?      @relation(fields: [categoryId], references: [id])
+  brandRef      Brand?         @relation(fields: [brandId], references: [id])
   saleItems     SaleItem[]
   purchaseItems PurchaseItem[]
 
@@ -152,7 +160,9 @@ model Sale {
   billNumber       String      @unique
   subtotal         Decimal     @db.Decimal(10, 2)
   discount         Decimal     @default(0) @db.Decimal(10, 2)
+  discountType     String?     @default("percent") // "percent" or "value"
   tax              Decimal     @default(0) @db.Decimal(10, 2)
+  taxType          String?     @default("percent") // "percent" or "value"
   total            Decimal     @db.Decimal(10, 2)
   paymentType      PaymentType @default(cash)
   payments         Json? // Array of { type: "cash"|"card"|"credit"|"bank_transfer", amount: number, cardId?: string, bankAccountId?: string }
@@ -243,7 +253,10 @@ model Purchase {
   supplierName     String
   supplierPhone    String?
   subtotal         Decimal        @db.Decimal(10, 2)
+  discount         Decimal        @default(0) @db.Decimal(10, 2)
+  discountType     String?        @default("percent") // "percent" or "value"
   tax              Decimal        @default(0) @db.Decimal(10, 2)
+  taxType          String?        @default("percent") // "percent" or "value"
   total            Decimal        @db.Decimal(10, 2)
   payments         Json? // Array of { type: "cash"|"card", amount: number, cardId?: string, bankAccountId?: string, date?: string }
   remainingBalance Decimal        @default(0) @db.Decimal(10, 2)
@@ -313,6 +326,18 @@ model Category {
   @@map("categories")
 }
 
+model Brand {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  products Product[]
+
+  @@map("brands")
+}
+
 model Card {
   id            String   @id @default(cuid())
   name          String
@@ -360,11 +385,11 @@ model BankAccount {
 
 model DailyOpeningBalance {
   id            String   @id @default(cuid())
-  date          DateTime @unique @db.Date
+  date          DateTime @db.Date
   cashBalance   Decimal  @default(0) @db.Decimal(10, 2)
   cardBalances  Json? // Array of { cardId: string, balance: number }
   notes         String?
-  userId        String
+  userId        String? // Can be from User or AdminUser table (optional FK constraint)
   userName      String
   createdBy     String?
   createdByType String? // "user" or "admin"
@@ -373,7 +398,7 @@ model DailyOpeningBalance {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  user User @relation(fields: [userId], references: [id])
+  user User? @relation(fields: [userId], references: [id])
 
   @@map("daily_opening_balances")
 }

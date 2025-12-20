@@ -6,6 +6,7 @@ export interface AuthRequest extends Request {
   user?: {
     id: string;
     username: string;
+    name?: string;
     role: string;
     permissions?: string[];
     userType?: "user" | "admin";
@@ -39,7 +40,7 @@ export const authenticate = async (
     if (decoded.userType === "admin") {
       user = await prisma.adminUser.findUnique({
         where: { id: decoded.userId },
-        select: { id: true, username: true, role: true },
+        select: { id: true, username: true, role: true, name: true },
       });
       if (user) {
         user.permissions = [];
@@ -49,7 +50,7 @@ export const authenticate = async (
       // Default to regular user
       user = await prisma.user.findUnique({
         where: { id: decoded.userId },
-        select: { id: true, username: true, role: true, permissions: true },
+        select: { id: true, username: true, role: true, permissions: true, name: true },
       });
       if (user) {
         user.userType = "user";
@@ -60,14 +61,14 @@ export const authenticate = async (
     if (!user) {
       user = await prisma.user.findUnique({
         where: { id: decoded.userId },
-        select: { id: true, username: true, role: true, permissions: true },
+        select: { id: true, username: true, role: true, permissions: true, name: true },
       });
       if (user) {
         user.userType = "user";
       } else {
         const adminUser = await prisma.adminUser.findUnique({
           where: { id: decoded.userId },
-          select: { id: true, username: true, role: true },
+          select: { id: true, username: true, role: true, name: true },
         });
         if (adminUser) {
           user = { ...adminUser, permissions: [], userType: "admin" };

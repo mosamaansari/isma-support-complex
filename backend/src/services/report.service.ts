@@ -20,6 +20,7 @@ class ReportService {
         items: true,
         customer: true,
       },
+      orderBy: { createdAt: "desc" },
     });
 
     const totalSales = sales.reduce((sum, sale) => sum + Number(sale.total), 0);
@@ -47,6 +48,7 @@ class ReportService {
 
     const expenses = await prisma.expense.findMany({
       where,
+      orderBy: { createdAt: "desc" },
     });
 
     const totalExpenses = expenses.reduce((sum, exp) => sum + Number(exp.amount), 0);
@@ -79,6 +81,7 @@ class ReportService {
         status: "completed",
         createdAt: Object.keys(dateFilter).length > 0 ? dateFilter : undefined,
       },
+      orderBy: { createdAt: "desc" },
     });
 
     // Get expenses
@@ -86,6 +89,7 @@ class ReportService {
       where: {
         date: Object.keys(dateFilter).length > 0 ? dateFilter : undefined,
       },
+      orderBy: { createdAt: "desc" },
     });
 
     const totalSales = sales.reduce((sum, sale) => sum + Number(sale.total), 0);
@@ -256,14 +260,32 @@ class ReportService {
   }
 
   async getDailyReport(date: string) {
-    const targetDate = new Date(date);
+    // Parse date string (YYYY-MM-DD) properly to avoid timezone issues
+    const dateParts = date.split("-");
+    const targetDate = new Date(
+      parseInt(dateParts[0]), 
+      parseInt(dateParts[1]) - 1, 
+      parseInt(dateParts[2])
+    );
     targetDate.setHours(0, 0, 0, 0);
+    
     const nextDate = new Date(targetDate);
     nextDate.setDate(nextDate.getDate() + 1);
+    nextDate.setHours(0, 0, 0, 0);
 
-    // Get opening balance
-    const openingBalance = await prisma.dailyOpeningBalance.findUnique({
-      where: { date: targetDate },
+    // Get opening balance (most recent for the date)
+    // Query by date range to handle date-only comparison properly
+    const endOfDay = new Date(targetDate);
+    endOfDay.setHours(23, 59, 59, 999);
+    
+    const openingBalance = await prisma.dailyOpeningBalance.findFirst({
+      where: {
+        date: {
+          gte: targetDate,
+          lte: endOfDay,
+        },
+      },
+      orderBy: { createdAt: "desc" },
     });
 
     // Get all cards for mapping
@@ -283,25 +305,175 @@ class ReportService {
     const openingCardTotal = openingCards.reduce((sum, card) => sum + card.balance, 0);
     const openingCash = Number(openingBalance?.cashBalance || 0);
 
-    // Get sales for the day
-    const sales = await prisma.sale.findMany({
+    // Get sales for the day - check date field, createdAt, OR payments made today
+    // First get all sales that match date or createdAt
+    const salesByDate = await prisma.sale.findMany({
       where: {
         status: "completed",
-        createdAt: {
-          gte: targetDate,
-          lt: nextDate,
+        OR: [
+          {
+            date: {
+              gte: targetDate,
+              lt: nextDate,
+            },
+          },
+          {
+            createdAt: {
+              gte: targetDate,
+              lt: nextDate,
+            },
+          },
+        ],
+      },
+      include: {
+        items: true,
+        customer: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    // Also get sales where payments were made today (even if sale date is different)
+    // We need to get all sales and filter by payments date in code
+    const allSalesWithPayments = await prisma.sale.findMany({
+      where: {
+        payments: {
+          not: null,
         },
       },
       include: {
         items: true,
         customer: true,
       },
+      orderBy: { createdAt: "desc" },
     });
 
-    // Calculate sales totals
-    const salesTotal = sales.reduce((sum, sale) => sum + Number(sale.total), 0);
-    const salesCash = sales.filter((s) => s.paymentType === "cash").reduce((sum, sale) => sum + Number(sale.total), 0);
-    const salesBankTransfer = sales.filter((s) => s.paymentType === "bank_transfer").reduce((sum, sale) => sum + Number(sale.total), 0);
+    // Filter sales where any payment was made today
+    const salesWithTodayPayments = allSalesWithPayments.filter((sale) => {
+      const payments = (sale.payments as Array<{
+        type: string;
+        amount: number;
+        date?: string;
+      }> | null) || [];
+      
+      return payments.some((payment) => {
+        if (!payment.date) return false;
+        
+        // Handle different date formats (YYYY-MM-DD or ISO string)
+        let paymentDate: Date;
+        try {
+          const dateStr = payment.date.includes("T") 
+            ? payment.date.split("T")[0] 
+            : payment.date;
+          const paymentDateParts = dateStr.split("-");
+          if (paymentDateParts.length === 3) {
+            paymentDate = new Date(
+              parseInt(paymentDateParts[0]),
+              parseInt(paymentDateParts[1]) - 1,
+              parseInt(paymentDateParts[2])
+            );
+          } else {
+            paymentDate = new Date(payment.date);
+          }
+          paymentDate.setHours(0, 0, 0, 0);
+          return paymentDate.getTime() === targetDate.getTime();
+        } catch (e) {
+          return false;
+        }
+      });
+    });
+
+    // Combine both and remove duplicates
+    const salesMap = new Map();
+    [...salesByDate, ...salesWithTodayPayments].forEach((sale) => {
+      if (!salesMap.has(sale.id)) {
+        salesMap.set(sale.id, sale);
+      }
+    });
+    const sales = Array.from(salesMap.values());
+
+    // Calculate sales totals - only count PAID AMOUNTS, not sale.total
+    // Count payments made today (from sales created today OR payments made today)
+    let salesTotal = 0;
+    let salesCash = 0;
+    let salesBankTransfer = 0;
+    let salesCard = 0;
+    
+    sales.forEach((sale) => {
+      const saleDate = sale.date ? new Date(sale.date) : new Date(sale.createdAt);
+      saleDate.setHours(0, 0, 0, 0);
+      const isSaleCreatedToday = saleDate.getTime() === targetDate.getTime();
+      
+      const payments = (sale.payments as Array<{ 
+        type: string; 
+        amount: number; 
+        date?: string;
+        cardId?: string; 
+        bankAccountId?: string 
+      }> | null) || [];
+      
+      if (isSaleCreatedToday) {
+        // Sale created today - count only paid amounts (not full sale.total)
+        if (payments.length > 0) {
+          // Count all payments for today's sale
+          payments.forEach((payment) => {
+            salesTotal += Number(payment.amount || 0);
+            
+            if (payment.type === "cash") {
+              salesCash += Number(payment.amount || 0);
+            } else if (payment.type === "bank_transfer") {
+              salesBankTransfer += Number(payment.amount || 0);
+            } else if (payment.type === "card") {
+              salesCard += Number(payment.amount || 0);
+            }
+          });
+        } else {
+          // No payments array, but sale created today - assume full amount was paid
+          // This handles legacy sales without payments array
+          salesTotal += Number(sale.total || 0);
+          
+          if (sale.paymentType === "cash") {
+            salesCash += Number(sale.total);
+          } else if (sale.paymentType === "bank_transfer") {
+            salesBankTransfer += Number(sale.total);
+          }
+        }
+      } else {
+        // Sale not created today - only count payments made today
+        payments.forEach((payment) => {
+          if (!payment.date) return;
+          
+          try {
+            const dateStr = payment.date.includes("T") 
+              ? payment.date.split("T")[0] 
+              : payment.date;
+            const paymentDateParts = dateStr.split("-");
+            if (paymentDateParts.length === 3) {
+              const paymentDate = new Date(
+                parseInt(paymentDateParts[0]),
+                parseInt(paymentDateParts[1]) - 1,
+                parseInt(paymentDateParts[2])
+              );
+              paymentDate.setHours(0, 0, 0, 0);
+              
+              if (paymentDate.getTime() === targetDate.getTime()) {
+                // This payment was made today - count only this payment amount
+                salesTotal += Number(payment.amount || 0);
+                
+                if (payment.type === "cash") {
+                  salesCash += Number(payment.amount || 0);
+                } else if (payment.type === "bank_transfer") {
+                  salesBankTransfer += Number(payment.amount || 0);
+                } else if (payment.type === "card") {
+                  salesCard += Number(payment.amount || 0);
+                }
+              }
+            }
+          } catch (e) {
+            // Skip invalid payment dates
+          }
+        });
+      }
+    });
 
     // Get purchases for the day
     const purchases = await prisma.purchase.findMany({
@@ -314,6 +486,7 @@ class ReportService {
       include: {
         items: true,
       },
+      orderBy: { createdAt: "desc" },
     });
 
     // Calculate purchase totals
@@ -347,6 +520,7 @@ class ReportService {
           lt: nextDate,
         },
       },
+      orderBy: { createdAt: "desc" },
     });
 
     // Calculate expense totals
@@ -423,14 +597,35 @@ class ReportService {
   }
 
   async getDateRangeReport(startDate: string, endDate: string) {
-    const start = new Date(startDate);
+    // Parse dates properly to avoid timezone issues
+    const startParts = startDate.split("-");
+    const start = new Date(
+      parseInt(startParts[0]), 
+      parseInt(startParts[1]) - 1, 
+      parseInt(startParts[2])
+    );
     start.setHours(0, 0, 0, 0);
-    const end = new Date(endDate);
+    
+    const endParts = endDate.split("-");
+    const end = new Date(
+      parseInt(endParts[0]), 
+      parseInt(endParts[1]) - 1, 
+      parseInt(endParts[2])
+    );
     end.setHours(23, 59, 59, 999);
 
-    // Get opening balance for start date
-    const openingBalance = await prisma.dailyOpeningBalance.findUnique({
-      where: { date: start },
+    // Get opening balance for start date (most recent for the date)
+    const startEndOfDay = new Date(start);
+    startEndOfDay.setHours(23, 59, 59, 999);
+    
+    const openingBalance = await prisma.dailyOpeningBalance.findFirst({
+      where: {
+        date: {
+          gte: start,
+          lte: startEndOfDay,
+        },
+      },
+      orderBy: { createdAt: "desc" },
     });
 
     // Get all cards for mapping
@@ -463,6 +658,7 @@ class ReportService {
         items: true,
         customer: true,
       },
+      orderBy: { createdAt: "desc" },
     });
 
     // Get all purchases in range
@@ -476,6 +672,7 @@ class ReportService {
       include: {
         items: true,
       },
+      orderBy: { createdAt: "desc" },
     });
 
     // Get all expenses in range
@@ -486,12 +683,39 @@ class ReportService {
           lte: end,
         },
       },
+      orderBy: { createdAt: "desc" },
     });
 
-    // Calculate summary totals
+    // Calculate summary totals - combine multiple payments for same sale
     const salesTotal = sales.reduce((sum, sale) => sum + Number(sale.total), 0);
-    const salesCash = sales.filter((s) => s.paymentType === "cash").reduce((sum, sale) => sum + Number(sale.total), 0);
-    const salesBankTransfer = sales.filter((s) => s.paymentType === "bank_transfer").reduce((sum, sale) => sum + Number(sale.total), 0);
+    
+    // Calculate cash and bank transfer from payments array (combine multiple payments)
+    let salesCash = 0;
+    let salesBankTransfer = 0;
+    let salesCard = 0;
+    
+    sales.forEach((sale) => {
+      const payments = (sale.payments as Array<{ type: string; amount: number; cardId?: string; bankAccountId?: string }> | null) || [];
+      if (payments.length > 0) {
+        // Use payments array if available
+        payments.forEach((payment) => {
+          if (payment.type === "cash") {
+            salesCash += Number(payment.amount || 0);
+          } else if (payment.type === "bank_transfer") {
+            salesBankTransfer += Number(payment.amount || 0);
+          } else if (payment.type === "card") {
+            salesCard += Number(payment.amount || 0);
+          }
+        });
+      } else {
+        // Fallback to paymentType if payments array is not available
+        if (sale.paymentType === "cash") {
+          salesCash += Number(sale.total);
+        } else if (sale.paymentType === "bank_transfer") {
+          salesBankTransfer += Number(sale.total);
+        }
+      }
+    });
 
     const purchasesTotal = purchases.reduce((sum, p) => sum + Number(p.total), 0);
     const purchasesCash = purchases
