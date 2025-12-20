@@ -203,7 +203,7 @@ export default function SalesPaymentsCombinedPrint() {
                     </div>
                     <div className="flex justify-between mt-2">
                       <span className="text-gray-700">Amount:</span>
-                      <span className="font-semibold text-lg">Rs. {payment.amount.toFixed(2)}</span>
+                      <span className="font-semibold text-lg">Rs. {(payment.amount || 0).toFixed(2)}</span>
                     </div>
                   </div>
                 );
@@ -315,7 +315,7 @@ export default function SalesPaymentsCombinedPrint() {
                     <br />
                     <span style={{ fontSize: "10px" }}>{payment.type.replace("_", " ")}</span>
                   </td>
-                  <td className="text-right">{payment.amount.toFixed(2)}</td>
+                  <td className="text-right">{(payment.amount || 0).toFixed(2)}</td>
                 </tr>
               );
             })}

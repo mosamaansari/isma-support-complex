@@ -98,8 +98,8 @@ export default function OverallPaymentsPrint() {
     });
   });
 
-  const totalSalesPayments = allSalesPayments.reduce((sum, item) => sum + item.payment.amount, 0);
-  const totalPurchasePayments = allPurchasePayments.reduce((sum, item) => sum + item.payment.amount, 0);
+  const totalSalesPayments = allSalesPayments.reduce((sum, item) => sum + (item.payment.amount || 0), 0);
+  const totalPurchasePayments = allPurchasePayments.reduce((sum, item) => sum + (item.payment.amount || 0), 0);
   const grandTotal = totalSalesPayments + totalPurchasePayments;
 
   if (allSalesPayments.length === 0 && allPurchasePayments.length === 0) {
@@ -211,7 +211,7 @@ export default function OverallPaymentsPrint() {
                       </div>
                       <div className="flex justify-between mt-2">
                         <span className="text-gray-700">Amount:</span>
-                        <span className="font-semibold text-lg">Rs. {item.payment.amount.toFixed(2)}</span>
+                        <span className="font-semibold text-lg">Rs. {(item.payment.amount || 0).toFixed(2)}</span>
                       </div>
                     </div>
                   );
@@ -249,7 +249,7 @@ export default function OverallPaymentsPrint() {
                       </div>
                       <div className="flex justify-between mt-2">
                         <span className="text-gray-700">Amount:</span>
-                        <span className="font-semibold text-lg">Rs. {item.payment.amount.toFixed(2)}</span>
+                        <span className="font-semibold text-lg">Rs. {(item.payment.amount || 0).toFixed(2)}</span>
                       </div>
                     </div>
                   );
@@ -285,6 +285,7 @@ export default function OverallPaymentsPrint() {
     </>
   );
 }
+
 
 
 

@@ -179,7 +179,7 @@ export default function PurchasePaymentPrint() {
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-700">Amount Paid:</span>
-                <span className="font-semibold text-lg">Rs. {payment.amount.toFixed(2)}</span>
+                <span className="font-semibold text-lg">Rs. {(payment.amount || 0).toFixed(2)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-700">Purchase Total:</span>

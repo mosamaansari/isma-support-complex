@@ -118,7 +118,7 @@ export default function BillPrint() {
       return;
     }
 
-    const totalPaid = sale.payments?.reduce((sum, p) => sum + p.amount, 0) || (sale.remainingBalance && sale.remainingBalance < sale.total ? sale.total - sale.remainingBalance : sale.total);
+    const totalPaid = sale.payments?.reduce((sum, p) => sum + (p.amount || 0), 0) || (sale.remainingBalance && sale.remainingBalance < sale.total ? sale.total - sale.remainingBalance : sale.total);
     const remainingBalance = sale.remainingBalance || (sale.total - totalPaid);
     const change = totalPaid > sale.total ? totalPaid - sale.total : 0;
     const paymentStatus = remainingBalance > 0 ? "Pending" : "Completed";

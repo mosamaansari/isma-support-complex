@@ -474,7 +474,7 @@ export default function PurchaseList() {
                     <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Previous Payments:</p>
                     {(selectedPurchase.payments || []).map((p: PurchasePayment, idx: number) => (
                       <div key={idx} className="text-xs text-gray-600 dark:text-gray-400">
-                        {new Date(p.date || selectedPurchase.date).toLocaleDateString()} - {p.type.toUpperCase()}: Rs. {p.amount.toFixed(2)}
+                        {new Date(p.date || selectedPurchase.date).toLocaleDateString()} - {p.type.toUpperCase()}: Rs. {(p.amount || 0).toFixed(2)}
                       </div>
                     ))}
                   </div>
@@ -715,7 +715,7 @@ export default function PurchaseList() {
                               </span>
                             </td>
                             <td className="p-3 text-right font-semibold text-gray-800 dark:text-white">
-                              Rs. {payment.amount.toFixed(2)}
+                              Rs. {(payment.amount || 0).toFixed(2)}
                             </td>
                             <td className="p-3">
                               <div className="flex items-center justify-center gap-2">

@@ -192,7 +192,7 @@ export default function SalesPaymentPrint() {
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-700">Amount Paid:</span>
-                <span className="font-semibold text-lg">Rs. {payment.amount.toFixed(2)}</span>
+                <span className="font-semibold text-lg">Rs. {(payment.amount || 0).toFixed(2)}</span>
               </div>
               {paymentBank && (
                 <div className="flex justify-between">
@@ -297,7 +297,7 @@ export default function SalesPaymentPrint() {
           </div>
           <div className="totals-row total-row">
             <span>Paid:</span>
-            <span>{payment.amount.toFixed(2)}</span>
+            <span>{(payment.amount || 0).toFixed(2)}</span>
           </div>
           <div className="totals-row">
             <span>Bill Total:</span>

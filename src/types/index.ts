@@ -128,7 +128,7 @@ export interface PurchaseItem {
 
 export interface PurchasePayment {
   type: "cash" | "bank_transfer";
-  amount: number;
+  amount?: number;
   bankAccountId?: string;
   date?: string;
 }

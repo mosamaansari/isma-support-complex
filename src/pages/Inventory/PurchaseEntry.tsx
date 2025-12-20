@@ -91,7 +91,7 @@ export default function PurchaseEntry() {
     }
     // Add default cash payment
     if (payments.length === 0 && !isEdit) {
-      setPayments([{ type: "cash", amount: undefined }]);
+      setPayments([{ type: "cash" }]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -314,7 +314,6 @@ export default function PurchaseEntry() {
       ...payments,
       {
         type: "cash",
-        amount: undefined,
       },
     ]);
   };
@@ -953,7 +952,7 @@ export default function PurchaseEntry() {
                         type="number"
                         step={0.01}
                         min="0.01"
-                        max={String(total - totalPaid + payment.amount)}
+                        max={String(total - totalPaid + (payment.amount || 0))}
                         value={(payment.amount !== null && payment.amount !== undefined && payment.amount !== 0) ? String(payment.amount) : ""}
                         onChange={(e) => {
                           const value = e.target.value === "" ? undefined : parseFloat(e.target.value);

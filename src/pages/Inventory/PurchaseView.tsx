@@ -143,7 +143,7 @@ export default function PurchaseView() {
                     <tr key={idx} className="border-b border-gray-100 dark:border-gray-700">
                       <td className="p-3 text-gray-800 dark:text-white">{item.productName}</td>
                       <td className="p-3 text-right text-gray-600 dark:text-gray-400">{item.quantity}</td>
-                      <td className="p-3 text-right text-gray-600 dark:text-gray-400">Rs. {item.cost.toFixed(2)}</td>
+                      <td className="p-3 text-right text-gray-600 dark:text-gray-400">Rs. {(item.cost || 0).toFixed(2)}</td>
                       <td className="p-3 text-right text-gray-600 dark:text-gray-400 whitespace-nowrap">
                         {((item as any).discountType === "percent" ? `${item.discount || 0}%` : `Rs. ${(item.discount || 0).toFixed(2)}`)}
                       </td>
@@ -205,7 +205,7 @@ export default function PurchaseView() {
                     {payments.map((p, idx) => (
                       <div key={idx} className="text-xs text-gray-600 dark:text-gray-400 mb-1">
                         {new Date(p.date || purchase.date).toLocaleDateString()} - {p.type.toUpperCase()}: Rs.{" "}
-                        {p.amount.toFixed(2)}
+                        {(p.amount || 0).toFixed(2)}
                       </div>
                     ))}
                   </div>
@@ -241,7 +241,7 @@ export default function PurchaseView() {
                 <tr key={idx} className="border-b border-gray-300">
                   <td className="p-2">{item.productName}</td>
                   <td className="p-2 text-right">{item.quantity}</td>
-                  <td className="p-2 text-right">Rs. {item.cost.toFixed(2)}</td>
+                  <td className="p-2 text-right">Rs. {(item.cost || 0).toFixed(2)}</td>
                   <td className="p-2 text-right">Rs. {item.total.toFixed(2)}</td>
                 </tr>
               ))}
