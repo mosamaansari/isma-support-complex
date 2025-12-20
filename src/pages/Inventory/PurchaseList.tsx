@@ -13,7 +13,7 @@ import { PencilIcon, DownloadIcon } from "../../icons";
 import { FaEye, FaListAlt, FaCreditCard } from "react-icons/fa";
 import Select from "../../components/form/Select";
 import Label from "../../components/form/Label";
-import { getTodayDate } from "../../utils/dateHelpers";
+import { extractErrorMessage, extractValidationErrors } from "../../utils/errorHandler";
 
 export default function PurchaseList() {
   const { purchases, purchasesPagination, refreshPurchases, cards, refreshCards, bankAccounts, refreshBankAccounts, addPaymentToPurchase, loading, error } = useData();
@@ -26,7 +26,7 @@ export default function PurchaseList() {
   const [paymentData, setPaymentData] = useState<PurchasePayment & { date?: string }>({
     type: "cash",
     amount: 0,
-    date: getTodayDate(),
+    date: new Date().toISOString(), // Current date and time
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [backendErrors, setBackendErrors] = useState<Record<string, string>>({});
@@ -109,7 +109,7 @@ export default function PurchaseList() {
     setPaymentData({
       type: "cash",
       amount: 0,
-      date: getTodayDate(),
+      date: new Date().toISOString(), // Current date and time
     });
     setBackendErrors({});
     setShowAddPaymentModal(true);
@@ -149,26 +149,32 @@ export default function PurchaseList() {
     setIsSubmitting(true);
     try {
       setBackendErrors({});
-      await addPaymentToPurchase(selectedPurchase.id, paymentData);
+      // Always use current date and time for payment
+      const paymentPayload = {
+        ...paymentData,
+        date: new Date().toISOString() // Current date and time
+      };
+      await addPaymentToPurchase(selectedPurchase.id, paymentPayload);
       showSuccess("Payment added successfully!");
       setShowAddPaymentModal(false);
       setSelectedPurchase(null);
       setBackendErrors({});
+      setPaymentData({ type: "cash", amount: 0, date: new Date().toISOString() });
       await refreshPurchases(purchasesPagination?.page || 1, purchasesPagination?.pageSize || 10);
     } catch (error: any) {
       // Handle backend validation errors
-      if (error.response?.data?.error && typeof error.response.data.error === 'object') {
-        const validationErrors: Record<string, string> = {};
-        Object.keys(error.response.data.error).forEach((field) => {
-          const fieldErrors = error.response.data.error[field];
+      const validationErrors = extractValidationErrors(error);
+      if (validationErrors) {
+        const mappedErrors: Record<string, string> = {};
+        Object.entries(validationErrors).forEach(([field, fieldErrors]) => {
           if (Array.isArray(fieldErrors) && fieldErrors.length > 0) {
-            validationErrors[field] = fieldErrors[0]; // Take first error message
+            mappedErrors[field] = fieldErrors[0]; // Take first error message
           }
         });
-        setBackendErrors(validationErrors);
+        setBackendErrors(mappedErrors);
         showError("Please fix the validation errors below");
       } else {
-        const errorMessage = error.response?.data?.error || error.response?.data?.message || error.message || "Failed to add payment";
+        const errorMessage = extractErrorMessage(error) || "Failed to add payment";
         showError(errorMessage);
       }
     } finally {

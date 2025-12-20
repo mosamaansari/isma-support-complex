@@ -18,10 +18,14 @@ import reportsRoutes from "./routes/reports.routes";
 import usersRoutes from "./routes/users.routes";
 import settingsRoutes from "./routes/settings.routes";
 import categoriesRoutes from "./routes/categories.routes";
+import brandsRoutes from "./routes/brands.routes";
 import rolesRoutes from "./routes/roles.routes";
 import cardsRoutes from "./routes/cards.routes";
 import bankAccountsRoutes from "./routes/bankAccounts.routes";
 import openingBalanceRoutes from "./routes/openingBalance.routes";
+import dailyConfirmationRoutes from "./routes/dailyConfirmation.routes";
+import balanceTransactionRoutes from "./routes/balanceTransaction.routes";
+import dailyClosingBalanceRoutes from "./routes/dailyClosingBalance.routes";
 import searchRoutes from "./routes/search.routes";
 import dashboardRoutes from "./routes/dashboard.routes";
 import backupRoutes from "./routes/backup.routes";
@@ -96,10 +100,18 @@ app.get("/", (req: Request, res: Response) => {
       users: "/api/users",
       settings: "/api/settings",
       categories: "/api/categories",
+      brands: "/api/brands",
       roles: "/api/roles",
+      cards: "/api/cards",
+      bankAccounts: "/api/bank-accounts",
       search: "/api/search",
       dashboard: "/api/dashboard",
       backup: "/api/backup",
+      suppliers: "/api/suppliers",
+      openingBalances: "/api/opening-balances",
+      dailyConfirmation: "/api/daily-confirmation",
+      balanceTransactions: "/api/balance-transactions",
+      dailyClosingBalance: "/api/daily-closing-balance",
     },
   });
 });
@@ -114,14 +126,18 @@ app.use("/api/reports", reportsRoutes);
 app.use("/api/users", usersRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/categories", categoriesRoutes);
+app.use("/api/brands", brandsRoutes);
 app.use("/api/roles", rolesRoutes);
 app.use("/api/cards", cardsRoutes);
-    app.use("/api/bank-accounts", bankAccountsRoutes);
-    app.use("/api/opening-balances", openingBalanceRoutes);
-    app.use("/api/search", searchRoutes);
-    app.use("/api/dashboard", dashboardRoutes);
-    app.use("/api/backup", backupRoutes);
-    app.use("/api/suppliers", suppliersRoutes);
+app.use("/api/bank-accounts", bankAccountsRoutes);
+app.use("/api/search", searchRoutes);
+app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/backup", backupRoutes);
+app.use("/api/suppliers", suppliersRoutes);
+app.use("/api/opening-balances", openingBalanceRoutes);
+app.use("/api/daily-confirmation", dailyConfirmationRoutes);
+app.use("/api/balance-transactions", balanceTransactionRoutes);
+app.use("/api/daily-closing-balance", dailyClosingBalanceRoutes);
 
 // 404 handler
 app.use((req: Request, res: Response) => {

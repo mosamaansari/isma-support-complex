@@ -118,7 +118,7 @@ class PurchaseService {
       taxType?: "percent" | "value";
       total: number;
       payments: Array<{
-        type: "cash" | "card";
+        type: "cash" | "card" | "bank_transfer";
         amount: number;
         cardId?: string;
         bankAccountId?: string;
@@ -205,8 +205,15 @@ class PurchaseService {
     // Use provided userType if available, otherwise use detected type
     const userTypeToUse = userType || finalUserType;
 
+    // Add current date and time to all payments
+    const currentDateTime = new Date().toISOString();
+    const paymentsWithDate = data.payments.map((payment: any) => ({
+      ...payment,
+      date: currentDateTime // Always use current date and time
+    }));
+
     // Calculate total paid amount
-    const totalPaid = data.payments.reduce((sum, payment) => sum + payment.amount, 0);
+    const totalPaid = paymentsWithDate.reduce((sum, payment) => sum + payment.amount, 0);
     const remainingBalance = data.total - totalPaid;
 
     if (totalPaid > data.total) {
@@ -228,7 +235,7 @@ class PurchaseService {
         tax: data.tax || 0,
         taxType: data.taxType || "percent",
         total: data.total,
-        payments: data.payments as any,
+        payments: paymentsWithDate as any,
         remainingBalance: remainingBalance,
         status: status as any,
         date: data.date ? new Date(data.date) : new Date(),
@@ -294,6 +301,61 @@ class PurchaseService {
       },
     });
 
+    // Update balances atomically for payments using balance management service
+    // This must happen after purchase creation to get the purchase ID
+    const balanceManagementService = (await import("./balanceManagement.service")).default;
+    
+    for (const payment of data.payments) {
+      // Skip payments with invalid amounts
+      if (!payment.amount || payment.amount <= 0 || isNaN(Number(payment.amount))) {
+        logger.warn(`Skipping invalid payment amount: ${payment.amount} for purchase ${purchase.id}`);
+        continue;
+      }
+      
+      const amount = Number(payment.amount);
+      
+      try {
+        // Purchase payments can be cash, card, or bank_transfer
+        if (payment.type === "cash") {
+          await balanceManagementService.updateCashBalance(
+            purchase.date,
+            amount,
+            "expense",
+            {
+              description: `Purchase - ${data.supplierName}`,
+              source: "purchase_payment",
+              sourceId: purchase.id,
+              userId: user.id,
+              userName: user.name,
+            }
+          );
+          logger.info(`Updated cash balance: -${amount} for purchase ${purchase.id}`);
+        } else if ((payment.type === "bank_transfer" || payment.type === "card") && payment.bankAccountId) {
+          // Bank transfer and card payments in purchases are treated as bank transfers
+          await balanceManagementService.updateBankBalance(
+            payment.bankAccountId,
+            purchase.date,
+            amount,
+            "expense",
+            {
+              description: `Purchase - ${data.supplierName}${payment.type === "card" ? " (Card)" : ""}`,
+              source: "purchase_payment",
+              sourceId: purchase.id,
+              userId: user.id,
+              userName: user.name,
+            }
+          );
+          logger.info(`Updated bank balance: -${amount} for purchase ${purchase.id}, bank: ${payment.bankAccountId}`);
+        } else if ((payment.type === "bank_transfer" || payment.type === "card") && !payment.bankAccountId) {
+          logger.warn(`Skipping ${payment.type} payment without bankAccountId for purchase ${purchase.id}`);
+        }
+      } catch (error: any) {
+        logger.error(`Error updating balance for payment type ${payment.type} in purchase ${purchase.id}:`, error);
+        // Re-throw to ensure the error is propagated
+        throw new Error(`Failed to update balance for purchase payment: ${error.message}`);
+      }
+    }
+
     return purchase;
   }
 
@@ -337,7 +399,7 @@ class PurchaseService {
       taxType?: "percent" | "value";
       total?: number;
       payments?: Array<{
-        type: "cash" | "card";
+        type: "cash" | "card" | "bank_transfer";
         amount: number;
         cardId?: string;
         bankAccountId?: string;
@@ -525,7 +587,7 @@ class PurchaseService {
   async addPaymentToPurchase(
     purchaseId: string,
     payment: {
-      type: "cash" | "card";
+      type: "cash" | "card" | "bank_transfer";
       amount: number;
       cardId?: string;
       bankAccountId?: string;
@@ -550,7 +612,8 @@ class PurchaseService {
     }
 
     const currentPayments = (purchase.payments as any) || [];
-    const newPayments = [...currentPayments, { ...payment, date: payment.date ? new Date(payment.date) : new Date() }];
+    // Always use current date and time for new payment
+    const newPayments = [...currentPayments, { ...payment, date: new Date().toISOString() }];
     const totalPaid = newPayments.reduce((sum, p: any) => sum + Number(p.amount), 0);
     const remainingBalance = Number(purchase.total) - totalPaid;
 
@@ -583,6 +646,80 @@ class PurchaseService {
         supplier: true,
       },
     });
+
+    // Update balances atomically for the new payment using balance management service
+    try {
+      const balanceManagementService = (await import("./balanceManagement.service")).default;
+      
+      // Get user info
+      let user: any = null;
+      let userName = "System";
+      if (userId) {
+        user = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { id: true, name: true, username: true },
+        });
+        if (!user) {
+          const adminUser = await prisma.adminUser.findUnique({
+            where: { id: userId },
+            select: { id: true, name: true, username: true },
+          });
+          if (adminUser) {
+            user = adminUser;
+          }
+        }
+        if (user) {
+          userName = user.name || user.username || "System";
+        }
+      }
+
+      // Skip invalid payments
+      if (!payment.amount || payment.amount <= 0 || isNaN(Number(payment.amount))) {
+        logger.warn(`Skipping invalid payment amount: ${payment.amount} for purchase ${purchase.id}`);
+      } else {
+        const paymentDate = payment.date ? new Date(payment.date) : purchase.date;
+        const amount = Number(payment.amount);
+
+        // Update balance for cash, bank_transfer, or card payments
+        if (payment.type === "cash") {
+          await balanceManagementService.updateCashBalance(
+            paymentDate,
+            amount,
+            "expense",
+            {
+              description: `Purchase Payment - ${purchase.supplierName}`,
+              source: "purchase_payment",
+              sourceId: purchase.id,
+              userId: userId,
+              userName: userName,
+            }
+          );
+          logger.info(`Updated cash balance: -${amount} for purchase payment ${purchase.id}`);
+        } else if ((payment.type === "bank_transfer" || payment.type === "card") && payment.bankAccountId) {
+          // Bank transfer and card payments in purchases are treated as bank transfers
+          await balanceManagementService.updateBankBalance(
+            payment.bankAccountId,
+            paymentDate,
+            amount,
+            "expense",
+            {
+              description: `Purchase Payment - ${purchase.supplierName}${payment.type === "card" ? " (Card)" : ""}`,
+              source: "purchase_payment",
+              sourceId: purchase.id,
+              userId: userId,
+              userName: userName,
+            }
+          );
+          logger.info(`Updated bank balance: -${amount} for purchase payment ${purchase.id}, bank: ${payment.bankAccountId}`);
+        } else if ((payment.type === "bank_transfer" || payment.type === "card") && !payment.bankAccountId) {
+          logger.warn(`Skipping ${payment.type} payment without bankAccountId for purchase ${purchase.id}`);
+        }
+      }
+    } catch (error: any) {
+      logger.error("Error updating balance for purchase payment:", error);
+      // Re-throw to ensure the error is propagated
+      throw new Error(`Failed to update balance for purchase payment: ${error.message}`);
+    }
 
     // Supplier table is maintained for listing only, not linked to purchases via ID
 

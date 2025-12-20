@@ -15,7 +15,7 @@ import DatePicker from "../../components/form/DatePicker";
 import {TrashBinIcon, DownloadIcon } from "../../icons";
 import { FaEye, FaCreditCard, FaListAlt } from "react-icons/fa";
 import { SalePayment } from "../../types";
-import { getTodayDate } from "../../utils/dateHelpers";
+import { extractErrorMessage } from "../../utils/errorHandler";
 
 export default function SalesList() {
   const { sales, salesPagination, cancelSale, addPaymentToSale, currentUser, bankAccounts, refreshSales, loading } = useData();
@@ -96,7 +96,7 @@ export default function SalesList() {
       setCancelModalOpen(false);
       setSaleToCancel(null);
     } catch (error: any) {
-      showError(error?.response?.data?.error || "Failed to cancel sale. Please try again.");
+      showError(extractErrorMessage(error) || "Failed to cancel sale. Please try again.");
       setCancelModalOpen(false);
       setSaleToCancel(null);
     }
@@ -109,7 +109,7 @@ export default function SalesList() {
     setPaymentData({
       type: "cash",
       amount: 0,
-      date: getTodayDate(),
+      date: new Date().toISOString(), // Current date and time
     });
     openPaymentModal();
   };
@@ -148,19 +148,19 @@ export default function SalesList() {
     }
 
     try {
-      // Ensure date is included in payment data
+      // Always use current date and time for payment
       const paymentPayload = {
         ...paymentData,
-        date: paymentData.date || new Date().toISOString().split("T")[0]
+        date: new Date().toISOString() // Current date and time
       };
       await addPaymentToSale(selectedSale.id, paymentPayload);
       await refreshSales(salesPagination?.page || 1, salesPagination?.pageSize || 10);
       closePaymentModal();
       setSelectedSale(null);
-      setPaymentData({ type: "cash", amount: 0, date: new Date().toISOString().split("T")[0], bankAccountId: undefined });
+      setPaymentData({ type: "cash", amount: 0, date: new Date().toISOString(), bankAccountId: undefined });
       showSuccess("Payment added successfully!");
     } catch (err: any) {
-      showError(err.response?.data?.error || "Failed to add payment");
+      showError(extractErrorMessage(err) || "Failed to add payment");
     }
   };
 
@@ -344,12 +344,18 @@ export default function SalesList() {
                       {sale.billNumber}
                     </td>
                     <td className="p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                      {new Date(sale.date || sale.createdAt).toLocaleDateString()}
+                      {new Date(sale.date || sale.createdAt).toLocaleString('en-US', { 
+                        year: 'numeric', 
+                        month: 'short', 
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
                     </td>
                     <td className="p-4 text-gray-700 dark:text-gray-300 max-w-[200px]">
                       <div className="line-clamp-3">
                         <div className="font-medium">{sale.customerName || "Walk-in"}</div>
-                        {sale.customerPhone && (
+                        {sale.customerPhone && sale.customerPhone !== "0000000000" && sale.customerPhone.trim() !== "" && (
                           <div className="text-xs text-gray-500 mt-1">{sale.customerPhone}</div>
                         )}
                       </div>
@@ -587,17 +593,13 @@ export default function SalesList() {
                           <tr key={index} className="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
                             <td className="p-3 text-gray-700 dark:text-gray-300 font-medium">{index + 1}</td>
                             <td className="p-3 text-gray-700 dark:text-gray-300">
-                              <div className="flex flex-col">
-                                <span className="font-medium">{paymentDate.toLocaleDateString('en-GB', { 
-                                  day: '2-digit', 
-                                  month: 'short', 
-                                  year: 'numeric' 
-                                })}</span>
-                                <span className="text-xs text-gray-500">{paymentDate.toLocaleTimeString('en-GB', { 
-                                  hour: '2-digit', 
-                                  minute: '2-digit' 
-                                })}</span>
-                              </div>
+                              <span className="font-medium">{paymentDate.toLocaleString('en-US', {
+                                year: 'numeric', 
+                                month: 'short', 
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}</span>
                             </td>
                             <td className="p-3">
                               <span className="px-2 py-1 text-xs font-medium rounded bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400 uppercase">

@@ -14,6 +14,7 @@ import {
   Brand,
 } from "../types";
 import api from "../services/api";
+import { extractErrorMessage } from "../utils/errorHandler";
 
 interface DataContextType {
   // Users
@@ -182,30 +183,27 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, []);
 
-  // Load initial data when user is logged in (only once)
+  // Load only essential data (settings) when user is logged in (only once)
+  // Other data will be loaded by individual pages when needed
   useEffect(() => {
     if (currentUser && !initialDataLoaded) {
-      loadInitialData();
+      loadEssentialData();
       setInitialDataLoaded(true);
     }
   }, [currentUser, initialDataLoaded]);
 
-  const loadInitialData = async () => {
+  const loadEssentialData = async () => {
     if (!currentUser) return;
     
     setLoading(true);
     setError(null);
     try {
-      // Load data sequentially to avoid multiple simultaneous requests
-      // Use default values if pagination state is not initialized
-      await refreshProducts(productsPagination?.page || 1, productsPagination?.pageSize || 10);
-      await refreshSales(salesPagination?.page || 1, salesPagination?.pageSize || 10);
-      await refreshExpenses(expensesPagination?.page || 1, expensesPagination?.pageSize || 10);
-      await refreshPurchases(purchasesPagination?.page || 1, purchasesPagination?.pageSize || 10);
+      // Only load settings which might be needed globally
+      // Other data (products, sales, expenses, purchases) will be loaded by individual pages
       await refreshSettings();
     } catch (err: any) {
-      setError(err.message || "Failed to load data");
-      console.error("Error loading initial data:", err);
+      setError(extractErrorMessage(err) || "Failed to load settings");
+      console.error("Error loading essential data:", err);
     } finally {
       setLoading(false);
     }
@@ -218,10 +216,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setError(null);
       const response = await api.login(username, password);
       setCurrentUser(response.user);
-      await loadInitialData();
+      await loadEssentialData();
       return true;
     } catch (err: any) {
-      setError(err.response?.data?.error || "Login failed");
+      setError(extractErrorMessage(err) || "Login failed");
       return false;
     } finally {
       setLoading(false);
@@ -234,10 +232,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setError(null);
       const response = await api.superAdminLogin(username, password);
       setCurrentUser(response.user);
-      await loadInitialData();
+      await loadEssentialData();
       return true;
     } catch (err: any) {
-      setError(err.response?.data?.error || "SuperAdmin login failed");
+      setError(extractErrorMessage(err) || "SuperAdmin login failed");
       return false;
     } finally {
       setLoading(false);
@@ -296,7 +294,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
     } catch (err: any) {
       // console.error("refreshUsers error:", err);
-      setError(err.response?.data?.error || "Failed to load users");
+      setError(extractErrorMessage(err) || "Failed to load users");
       throw err;
     }
   };
@@ -307,7 +305,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const newUser = await api.createUser(userData);
       setUsers([...users, newUser]);
     } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to create user");
+      setError(extractErrorMessage(err) || "Failed to create user");
       throw err;
     }
   };
@@ -323,7 +321,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setCurrentUser(updatedUser);
       }
     } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to update user");
+      setError(extractErrorMessage(err) || "Failed to update user");
       throw err;
     }
   };
@@ -334,7 +332,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       await api.deleteUser(id);
       setUsers(users.filter((u) => u.id !== id));
     } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to delete user");
+      setError(extractErrorMessage(err) || "Failed to delete user");
       throw err;
     }
   };
@@ -357,7 +355,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
     } catch (err: any) {
       // console.error("refreshProducts error:", err);
-      setError(err.response?.data?.error || "Failed to load products");
+      setError(extractErrorMessage(err) || "Failed to load products");
       throw err;
     } finally {
       setLoadingProducts(false);
@@ -370,7 +368,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const newProduct = await api.createProduct(productData);
       setProducts([...products, newProduct]);
     } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to create product");
+      setError(extractErrorMessage(err) || "Failed to create product");
       throw err;
     }
   };
@@ -381,7 +379,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const updatedProduct = await api.updateProduct(id, productData);
       setProducts(products.map((p) => (p.id === id ? updatedProduct : p)));
     } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to update product");
+      setError(extractErrorMessage(err) || "Failed to update product");
       throw err;
     }
   };
@@ -392,7 +390,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       await api.deleteProduct(id);
       setProducts(products.filter((p) => p.id !== id));
     } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to delete product");
+      setError(extractErrorMessage(err) || "Failed to delete product");
       throw err;
     }
   };
@@ -428,7 +426,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
     } catch (err: any) {
       console.error("refreshSales error:", err);
-      setError(err.response?.data?.error || "Failed to load sales");
+      setError(extractErrorMessage(err) || "Failed to load sales");
       throw err;
     }
   };
@@ -478,7 +476,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setSales([...sales, newSale]);
       await refreshProducts(productsPagination?.page || 1, productsPagination?.pageSize || 10); // Refresh products to update stock
     } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to create sale");
+      setError(extractErrorMessage(err) || "Failed to create sale");
       throw err;
     }
   };
@@ -490,7 +488,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setSales(sales.map((s) => (s.id === id ? updatedSale : s)));
       await refreshProducts(productsPagination?.page || 1, productsPagination?.pageSize || 10); // Refresh products to update stock
     } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to cancel sale");
+      setError(extractErrorMessage(err) || "Failed to cancel sale");
       throw err;
     }
   };
@@ -505,11 +503,12 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const updatedSale = await api.addPaymentToSale(id, { 
         type: payment.type, 
         amount: payment.amount, 
-        bankAccountId: payment.bankAccountId 
+        bankAccountId: payment.bankAccountId,
+        date: payment.date
       });
       setSales(sales.map((s) => (s.id === id ? updatedSale : s)));
     } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to add payment");
+      setError(extractErrorMessage(err) || "Failed to add payment");
       throw err;
     }
   };
@@ -540,7 +539,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
     } catch (err: any) {
       // console.error("refreshExpenses error:", err);
-      setError(err.response?.data?.error || "Failed to load expenses");
+      setError(extractErrorMessage(err) || "Failed to load expenses");
       throw err;
     }
   };
@@ -566,7 +565,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // Refresh expenses list to get updated data from server
       await refreshExpenses(expensesPagination?.page || 1, expensesPagination?.pageSize || 10);
     } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to create expense");
+      setError(extractErrorMessage(err) || "Failed to create expense");
       throw err;
     }
   };
@@ -584,7 +583,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const updatedExpense = await api.updateExpense(id, apiData);
       setExpenses(expenses.map((e) => (e.id === id ? updatedExpense : e)));
     } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to update expense");
+      setError(extractErrorMessage(err) || "Failed to update expense");
       throw err;
     }
   };
@@ -595,7 +594,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       await api.deleteExpense(id);
       setExpenses(expenses.filter((e) => e.id !== id));
     } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to delete expense");
+      setError(extractErrorMessage(err) || "Failed to delete expense");
       throw err;
     }
   };
@@ -620,7 +619,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
     } catch (err: any) {
       console.error("refreshPurchases error:", err);
-      setError(err.response?.data?.error || "Failed to load purchases");
+      setError(extractErrorMessage(err) || "Failed to load purchases");
       throw err;
     }
   };
@@ -651,7 +650,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setPurchases([...purchases, newPurchase]);
       await refreshProducts(); // Refresh products to update stock
     } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to create purchase");
+      setError(extractErrorMessage(err) || "Failed to create purchase");
       throw err;
     }
   };
@@ -682,7 +681,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setPurchases(purchases.map((p) => (p.id === id ? updatedPurchase : p)));
       await refreshProducts(productsPagination?.page || 1, productsPagination?.pageSize || 10); // Refresh products to update stock
     } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to update purchase");
+      setError(extractErrorMessage(err) || "Failed to update purchase");
       throw err;
     }
   };
@@ -693,7 +692,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const updatedPurchase = await api.addPaymentToPurchase(id, payment);
       setPurchases(purchases.map((p) => (p.id === id ? updatedPurchase : p)));
     } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to add payment");
+      setError(extractErrorMessage(err) || "Failed to add payment");
       throw err;
     }
   };
@@ -748,7 +747,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const data = await api.getCategories();
       setCategories(data);
     } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to load categories");
+      setError(extractErrorMessage(err) || "Failed to load categories");
       throw err;
     }
   };
@@ -759,7 +758,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const newCategory = await api.createCategory(categoryData);
       setCategories([...categories, newCategory]);
     } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to create category");
+      setError(extractErrorMessage(err) || "Failed to create category");
       throw err;
     }
   };
@@ -776,7 +775,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       });
       setCategories(categories.map((c) => (c.id === id ? updatedCategory : c)));
     } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to update category");
+      setError(extractErrorMessage(err) || "Failed to update category");
       throw err;
     }
   };
@@ -787,7 +786,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       await api.deleteCategory(id);
       setCategories(categories.filter((c) => c.id !== id));
     } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to delete category");
+      setError(extractErrorMessage(err) || "Failed to delete category");
       throw err;
     }
   };
@@ -798,7 +797,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const data = await api.getBrands();
       setBrands(data);
     } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to load brands");
+      setError(extractErrorMessage(err) || "Failed to load brands");
       throw err;
     }
   };
@@ -809,7 +808,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const newBrand = await api.createBrand(brandData);
       setBrands([...brands, newBrand]);
     } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to create brand");
+      setError(extractErrorMessage(err) || "Failed to create brand");
       throw err;
     }
   };
@@ -826,7 +825,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       });
       setBrands(brands.map((b) => (b.id === id ? updatedBrand : b)));
     } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to update brand");
+      setError(extractErrorMessage(err) || "Failed to update brand");
       throw err;
     }
   };
@@ -837,7 +836,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       await api.deleteBrand(id);
       setBrands(brands.filter((b) => b.id !== id));
     } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to delete brand");
+      setError(extractErrorMessage(err) || "Failed to delete brand");
       throw err;
     }
   };
@@ -848,7 +847,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const data = await api.getSettings();
       setSettings(data);
     } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to load settings");
+      setError(extractErrorMessage(err) || "Failed to load settings");
       // Keep default settings on error
     }
   };
@@ -859,7 +858,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const updatedSettings = await api.updateSettings(settingsData);
       setSettings(updatedSettings);
     } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to update settings");
+      setError(extractErrorMessage(err) || "Failed to update settings");
       throw err;
     }
   };
@@ -906,7 +905,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const data = await api.getBankAccounts();
       setBankAccounts(data);
     } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to load bank accounts");
+      setError(extractErrorMessage(err) || "Failed to load bank accounts");
       throw err;
     } finally {
       setLoadingBankAccounts(false);
@@ -919,7 +918,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const newAccount = await api.createBankAccount(accountData);
       setBankAccounts([...bankAccounts, newAccount]);
     } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to create bank account");
+      setError(extractErrorMessage(err) || "Failed to create bank account");
       throw err;
     }
   };
@@ -930,7 +929,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const updatedAccount = await api.updateBankAccount(id, accountData);
       setBankAccounts(bankAccounts.map((a) => (a.id === id ? updatedAccount : a)));
     } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to update bank account");
+      setError(extractErrorMessage(err) || "Failed to update bank account");
       throw err;
     }
   };
@@ -941,7 +940,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       await api.deleteBankAccount(id);
       setBankAccounts(bankAccounts.filter((a) => a.id !== id));
     } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to delete bank account");
+      setError(extractErrorMessage(err) || "Failed to delete bank account");
       throw err;
     }
   };
@@ -963,7 +962,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const data = await api.getCards();
       setCards(data);
     } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to load cards");
+      setError(extractErrorMessage(err) || "Failed to load cards");
       throw err;
     } finally {
       setLoadingCards(false);
@@ -976,7 +975,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const newCard = await api.createCard(cardData);
       setCards([...cards, newCard]);
     } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to create card");
+      setError(extractErrorMessage(err) || "Failed to create card");
       throw err;
     }
   };
@@ -987,7 +986,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const updatedCard = await api.updateCard(id, cardData);
       setCards(cards.map((c) => (c.id === id ? updatedCard : c)));
     } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to update card");
+      setError(extractErrorMessage(err) || "Failed to update card");
       throw err;
     }
   };
@@ -998,7 +997,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       await api.deleteCard(id);
       setCards(cards.filter((c) => c.id !== id));
     } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to delete card");
+      setError(extractErrorMessage(err) || "Failed to delete card");
       throw err;
     }
   };

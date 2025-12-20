@@ -25,6 +25,9 @@ const dashboardRoutes = getRoute(require("./dist/routes/dashboard.routes"));
 const backupRoutes = getRoute(require("./dist/routes/backup.routes"));
 const suppliersRoutes = getRoute(require("./dist/routes/suppliers.routes"));
 const openingBalanceRoutes = getRoute(require("./dist/routes/openingBalance.routes"));
+const dailyConfirmationRoutes = getRoute(require("./dist/routes/dailyConfirmation.routes"));
+const balanceTransactionRoutes = getRoute(require("./dist/routes/balanceTransaction.routes"));
+const dailyClosingBalanceRoutes = getRoute(require("./dist/routes/dailyClosingBalance.routes"));
 
 const app = express();
 
@@ -115,6 +118,9 @@ app.get("/", (req, res) => {
       backup: "/api/backup",
       suppliers: "/api/suppliers",
       openingBalances: "/api/opening-balances",
+      dailyConfirmation: "/api/daily-confirmation",
+      balanceTransactions: "/api/balance-transactions",
+      dailyClosingBalance: "/api/daily-closing-balance",
     },
   });
 });
@@ -138,6 +144,9 @@ app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/backup", backupRoutes);
 app.use("/api/suppliers", suppliersRoutes);
 app.use("/api/opening-balances", openingBalanceRoutes);
+app.use("/api/daily-confirmation", dailyConfirmationRoutes);
+app.use("/api/balance-transactions", balanceTransactionRoutes);
+app.use("/api/daily-closing-balance", dailyClosingBalanceRoutes);
 
 // 404 handler
 app.use((req, res) => {

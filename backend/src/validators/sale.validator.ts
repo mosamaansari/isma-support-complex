@@ -153,10 +153,10 @@ export const createSaleSchema = Joi.object({
     .items(
       Joi.object({
         type: Joi.string()
-          .valid("cash", "bank_transfer")
+          .valid("cash", "bank_transfer", "card", "credit")
           .required()
           .messages({
-            "any.only": "Payment type must be one of: cash, bank_transfer",
+            "any.only": "Payment type must be one of: cash, bank_transfer, card, credit",
             "any.required": "Payment type is required",
           }),
         amount: Joi.number()
@@ -166,6 +166,13 @@ export const createSaleSchema = Joi.object({
             "number.base": "Payment amount must be a number",
             "number.min": "Payment amount cannot be negative",
             "any.required": "Payment amount is required",
+          }),
+        date: Joi.string()
+          .optional()
+          .isoDate()
+          .allow("", null)
+          .messages({
+            "string.isoDate": "Payment date must be a valid ISO date",
           }),
         cardId: Joi.string()
           .optional()

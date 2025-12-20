@@ -43,6 +43,17 @@ export const PERMISSIONS = {
   OPENING_BALANCE_UPDATE: "opening_balance:update",
   OPENING_BALANCE_DELETE: "opening_balance:delete",
   
+  // Daily Confirmation
+  DAILY_CONFIRMATION_VIEW: "daily_confirmation:view",
+  DAILY_CONFIRMATION_CONFIRM: "daily_confirmation:confirm",
+  
+  // Daily Closing Balance
+  CLOSING_BALANCE_VIEW: "closing_balance:view",
+  CLOSING_BALANCE_CALCULATE: "closing_balance:calculate",
+  
+  // Balance Transactions
+  BALANCE_TRANSACTIONS_VIEW: "balance_transactions:view",
+  
   // Bank Accounts
   BANK_ACCOUNTS_VIEW: "bank_accounts:view",
   BANK_ACCOUNTS_CREATE: "bank_accounts:create",

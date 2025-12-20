@@ -123,13 +123,14 @@ class ExpenseService {
     // Use provided userType if available, otherwise use detected type
     const userTypeToUse = userType || finalUserType;
 
+    // Always use current date and time for expense
     const expenseData: any = {
       amount: data.amount,
       category: data.category as any,
       paymentType: (data.paymentType || "cash") as any,
       cardId: data.cardId || null,
       bankAccountId: data.bankAccountId || null,
-      date: data.date ? new Date(data.date) : new Date(),
+      date: new Date(), // Always use current date and time
       userId: user.id,
       userName: user.name,
       createdBy: user.id,
@@ -148,6 +149,44 @@ class ExpenseService {
         bankAccount: true,
       },
     });
+
+    // Update balance atomically for expense using balance management service
+    try {
+      const balanceManagementService = (await import("./balanceManagement.service")).default;
+      
+      if (expense.paymentType === "cash") {
+        await balanceManagementService.updateCashBalance(
+          expense.date,
+          Number(expense.amount),
+          "expense",
+          {
+            description: expense.description || `Expense - ${expense.category}`,
+            source: "expense",
+            sourceId: expense.id,
+            userId: user.id,
+            userName: user.name,
+          }
+        );
+      } else if (expense.bankAccountId) {
+        await balanceManagementService.updateBankBalance(
+          expense.bankAccountId,
+          expense.date,
+          Number(expense.amount),
+          "expense",
+          {
+            description: expense.description || `Expense - ${expense.category}`,
+            source: "expense",
+            sourceId: expense.id,
+            userId: user.id,
+            userName: user.name,
+          }
+        );
+      }
+    } catch (error: any) {
+      logger.error("Error updating balance for expense:", error);
+      // Re-throw to ensure transaction is rolled back
+      throw error;
+    }
 
     return expense;
   }

@@ -394,30 +394,38 @@ class SaleService {
 
     // Get or create customer (optional - use default if not provided)
     const customerName = data.customerName || "Walk-in Customer";
-    const customerPhone = data.customerPhone || "0000000000";
+    const customerPhone = data.customerPhone && data.customerPhone.trim() !== "" && data.customerPhone !== "0000000000" 
+      ? data.customerPhone.trim() 
+      : null;
     const customerCity = data.customerCity || null;
 
-    let customer = await prisma.customer.findFirst({
-      where: { phone: customerPhone },
-    });
+    let customer = null;
+    let customerId = null;
+    
+    // Only create/find customer if phone number is provided and valid (not empty or "0000000000")
+    if (customerPhone && customerPhone.trim() !== "" && customerPhone !== "0000000000") {
+      customer = await prisma.customer.findFirst({
+        where: { phone: customerPhone },
+      });
 
-    if (!customer) {
-      customer = await prisma.customer.create({
-        data: {
-          name: customerName,
-          phone: customerPhone,
-          city: customerCity,
-        },
-      });
-    } else if (customerCity && customer.city !== customerCity) {
-      // Update city if provided and different
-      customer = await prisma.customer.update({
-        where: { id: customer.id },
-        data: { city: customerCity },
-      });
+      if (!customer) {
+        customer = await prisma.customer.create({
+          data: {
+            name: customerName,
+            phone: customerPhone,
+            city: customerCity,
+          },
+        });
+      } else if (customerCity && customer.city !== customerCity) {
+        // Update city if provided and different
+        customer = await prisma.customer.update({
+          where: { id: customer.id },
+          data: { city: customerCity },
+        });
+      }
+
+      customerId = customer.id;
     }
-
-    const customerId = customer.id;
 
     // Handle payments - support both old single payment and new multiple payments
     let payments: Array<{
@@ -429,8 +437,12 @@ class SaleService {
     let remainingBalance = total;
 
     if (data.payments && data.payments.length > 0) {
-      // New multiple payments format
-      payments = data.payments;
+      // New multiple payments format - add current date and time to all payments
+      const currentDateTime = new Date().toISOString();
+      payments = data.payments.map((payment: any) => ({
+        ...payment,
+        date: currentDateTime // Always use current date and time
+      }));
       const totalPaid = payments.reduce((sum, payment) => sum + payment.amount, 0);
       remainingBalance = total - totalPaid;
       
@@ -447,6 +459,7 @@ class SaleService {
         type: paymentType,
         amount: paymentAmount,
         bankAccountId: data.bankAccountId || undefined,
+        date: new Date().toISOString(), // Always use current date and time
       }];
     }
 
@@ -492,8 +505,8 @@ class SaleService {
       },
     });
 
-    // Update customer due amount if there's remaining balance
-    if (remainingBalance > 0) {
+    // Update customer due amount if there's remaining balance and customer exists
+    if (remainingBalance > 0 && customerId) {
       await prisma.customer.update({
         where: { id: customerId },
         data: {
@@ -550,8 +563,70 @@ class SaleService {
       }
     }
 
+    // Update balances atomically for payments using balance management service
+    try {
+      const balanceManagementService = (await import("./balanceManagement.service")).default;
+      const payments = (sale.payments as Array<{ 
+        type: string; 
+        amount: number; 
+        bankAccountId?: string;
+        cardId?: string;
+      }>) || [];
+      
+      for (const payment of payments) {
+        // Skip invalid payments
+        if (!payment.amount || payment.amount <= 0 || isNaN(Number(payment.amount))) {
+          logger.warn(`Skipping invalid payment amount: ${payment.amount} for sale ${sale.id}`);
+          continue;
+        }
+        
+        // Handle cash, bank_transfer, and card payments (card maps to bank_transfer for balance tracking)
+        if (payment.type === "cash") {
+          await balanceManagementService.updateCashBalance(
+            sale.date,
+            Number(payment.amount),
+            "income",
+            {
+              description: `Sale - Bill #${sale.billNumber}${sale.customerName ? ` - ${sale.customerName}` : ""}`,
+              source: "sale",
+              sourceId: sale.id,
+              userId: user.id,
+              userName: user.name,
+            }
+          );
+          logger.info(`Updated cash balance: +${payment.amount} for sale ${sale.billNumber}`);
+        } else if (payment.type === "bank_transfer" || payment.type === "card") {
+          // Card payments are treated as bank transfers for balance tracking
+          const bankAccountId = payment.bankAccountId || sale.bankAccountId || payment.cardId;
+          if (bankAccountId) {
+            await balanceManagementService.updateBankBalance(
+              bankAccountId,
+              sale.date,
+              Number(payment.amount),
+              "income",
+              {
+                description: `Sale - Bill #${sale.billNumber}${sale.customerName ? ` - ${sale.customerName}` : ""}${payment.type === "card" ? " (Card)" : ""}`,
+                source: "sale",
+                sourceId: sale.id,
+                userId: user.id,
+                userName: user.name,
+              }
+            );
+            logger.info(`Updated bank balance: +${payment.amount} for sale ${sale.billNumber}, bank: ${bankAccountId}`);
+          } else {
+            logger.warn(`Skipping ${payment.type} payment without bankAccountId for sale ${sale.billNumber}`);
+          }
+        }
+        // Note: credit payments don't create balance transactions (they're future payments)
+      }
+    } catch (error: any) {
+      logger.error("Error updating balance for sale:", error);
+      // Don't fail the sale creation if balance update fails, but log it
+      throw error; // Re-throw to ensure transaction is rolled back
+    }
+
     // Send WhatsApp notification if customer phone number exists and payment is completed
-    if (sale.customerPhone && sale.status === "completed" && sale.customerPhone !== "0000000000") {
+    if (sale.customerPhone && sale.status === "completed" && sale.customerPhone !== "0000000000" && sale.customerPhone.trim() !== "") {
       try {
         const payments = (sale.payments as Array<{ type: string; amount: number }>) || [];
         const totalPaid = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
@@ -677,10 +752,10 @@ class SaleService {
       throw new Error("Total payment amount cannot exceed sale total");
     }
 
-    // Add date to payment if not provided
+    // Add current date and time to payment (always use current timestamp)
     const paymentWithDate = {
       ...payment,
-      date: payment.date ? new Date(payment.date).toISOString() : new Date().toISOString()
+      date: new Date().toISOString() // Always use current date and time
     };
 
     const newPayments = [...currentPayments, paymentWithDate];
@@ -714,6 +789,83 @@ class SaleService {
       },
     });
 
+    // Update balances atomically for the new payment using balance management service
+    try {
+      const balanceManagementService = (await import("./balanceManagement.service")).default;
+      
+      // Get user info
+      let user: any = null;
+      let userName = "System";
+      if (userId) {
+        user = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { id: true, name: true, username: true },
+        });
+        if (!user) {
+          const adminUser = await prisma.adminUser.findUnique({
+            where: { id: userId },
+            select: { id: true, name: true, username: true },
+          });
+          if (adminUser) {
+            user = adminUser;
+          }
+        }
+        if (user) {
+          userName = user.name || user.username || "System";
+        }
+      }
+
+      // Skip invalid payments
+      if (!payment.amount || payment.amount <= 0 || isNaN(Number(payment.amount))) {
+        logger.warn(`Skipping invalid payment amount: ${payment.amount} for sale ${sale.id}`);
+      } else {
+        const paymentDate = payment.date ? new Date(payment.date) : sale.date;
+        const amount = Number(payment.amount);
+
+        // Update balance only for cash, bank_transfer, or card payments (not credit)
+        if (payment.type === "cash") {
+          await balanceManagementService.updateCashBalance(
+            paymentDate,
+            amount,
+            "income",
+            {
+              description: `Sale Payment - Bill #${sale.billNumber}${sale.customerName ? ` - ${sale.customerName}` : ""}`,
+              source: "sale_payment",
+              sourceId: sale.id,
+              userId: userId || "system",
+              userName: userName,
+            }
+          );
+          logger.info(`Updated cash balance: +${amount} for sale payment ${sale.billNumber}`);
+        } else if (payment.type === "bank_transfer" || payment.type === "card") {
+          const bankAccountId = payment.bankAccountId || payment.cardId || sale.bankAccountId;
+          if (bankAccountId) {
+            await balanceManagementService.updateBankBalance(
+              bankAccountId,
+              paymentDate,
+              amount,
+              "income",
+              {
+                description: `Sale Payment - Bill #${sale.billNumber}${sale.customerName ? ` - ${sale.customerName}` : ""}${payment.type === "card" ? " (Card)" : ""}`,
+                source: "sale_payment",
+                sourceId: sale.id,
+                userId: userId || "system",
+                userName: userName,
+              }
+            );
+            logger.info(`Updated bank balance: +${amount} for sale payment ${sale.billNumber}, bank: ${bankAccountId}`);
+          } else {
+            logger.warn(`Skipping ${payment.type} payment without bankAccountId for sale ${sale.billNumber}`);
+          }
+        }
+        // Note: credit payments don't create balance transactions (they're future payments)
+      }
+    } catch (error: any) {
+      logger.error("Error updating balance for sale payment:", error);
+      // Re-throw to ensure the error is propagated
+      throw new Error(`Failed to update balance for sale payment: ${error.message}`);
+    }
+
     // Update customer due amount
     if (sale.customerId) {
       const oldDue = Number(sale.customer?.dueAmount || 0);
@@ -728,7 +880,7 @@ class SaleService {
     }
 
     // Send WhatsApp notification if customer phone number exists
-    if (updatedSale.customerPhone && updatedSale.customerPhone !== "0000000000") {
+    if (updatedSale.customerPhone && updatedSale.customerPhone !== "0000000000" && updatedSale.customerPhone.trim() !== "") {
       try {
         const payments = (updatedSale.payments as Array<{ type: string; amount: number; date?: string }>) || [];
         const totalPaid = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);

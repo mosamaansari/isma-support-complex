@@ -179,6 +179,7 @@ export interface DailyReport {
   sales: {
     total: number;
     cash: number;
+    bank_transfer: number;
     card: number;
     credit: number;
     count: number;
@@ -187,6 +188,7 @@ export interface DailyReport {
   purchases: {
     total: number;
     cash: number;
+    bank_transfer: number;
     card: number;
     count: number;
     items: Purchase[];
@@ -194,6 +196,7 @@ export interface DailyReport {
   expenses: {
     total: number;
     cash: number;
+    bank_transfer: number;
     card: number;
     count: number;
     items: Expense[];

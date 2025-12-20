@@ -26,4 +26,13 @@ router.get(
   reportsController.getDateRangeReport.bind(reportsController)
 );
 
+// Generate daily report PDF
+router.get(
+  "/daily/pdf",
+  authenticate,
+  requirePermission(PERMISSIONS.REPORTS_VIEW),
+  queryValidator(getReportQuerySchema),
+  reportsController.generateDailyReportPDF.bind(reportsController)
+);
+
 export default router;

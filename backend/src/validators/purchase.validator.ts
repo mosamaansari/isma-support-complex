@@ -159,10 +159,10 @@ export const createPurchaseSchema = Joi.object({
     .items(
       Joi.object({
         type: Joi.string()
-          .valid("cash", "bank_transfer")
+          .valid("cash", "bank_transfer", "card")
           .required()
           .messages({
-            "any.only": "Payment type must be cash or bank_transfer",
+            "any.only": "Payment type must be cash, bank_transfer, or card",
             "any.required": "Payment type is required",
           }),
         amount: Joi.number()
@@ -173,6 +173,13 @@ export const createPurchaseSchema = Joi.object({
             "number.min": "Payment amount must be greater than 0",
             "any.required": "Payment amount is required",
           }),
+        date: Joi.string()
+          .optional()
+          .isoDate()
+          .allow("", null)
+          .messages({
+            "string.isoDate": "Payment date must be a valid ISO date",
+          }),
         cardId: Joi.string()
           .optional()
           .uuid()
@@ -180,7 +187,7 @@ export const createPurchaseSchema = Joi.object({
           .when("type", {
             is: "card",
             then: Joi.required().messages({
-              "any.required": "Bank account ID is required when payment type is bank_transfer",
+              "any.required": "Card ID is required when payment type is card",
             }),
             otherwise: Joi.optional(),
           })
@@ -283,10 +290,10 @@ export const updatePurchaseSchema = Joi.object({
 
 export const addPaymentSchema = Joi.object({
   type: Joi.string()
-    .valid("cash", "bank_transfer")
+    .valid("cash", "bank_transfer", "card")
     .required()
     .messages({
-      "any.only": "Payment type must be cash or bank_transfer",
+      "any.only": "Payment type must be cash, bank_transfer, or card",
       "any.required": "Payment type is required",
     }),
   amount: Joi.number()
@@ -296,6 +303,27 @@ export const addPaymentSchema = Joi.object({
       "number.base": "Payment amount must be a number",
       "number.min": "Payment amount must be greater than 0",
       "any.required": "Payment amount is required",
+    }),
+  date: Joi.string()
+    .optional()
+    .isoDate()
+    .allow("", null)
+    .messages({
+      "string.isoDate": "Payment date must be a valid ISO date",
+    }),
+  cardId: Joi.string()
+    .optional()
+    .allow("", null)
+    .uuid()
+    .when("type", {
+      is: "card",
+      then: Joi.required().messages({
+        "any.required": "Card ID is required when payment type is card",
+      }),
+      otherwise: Joi.optional(),
+    })
+    .messages({
+      "string.uuid": "Card ID must be a valid UUID",
     }),
   bankAccountId: Joi.string()
     .optional()
@@ -316,12 +344,6 @@ export const addPaymentSchema = Joi.object({
     })
     .messages({
       "string.pattern.base": "Bank account ID must be a valid ID",
-    }),
-  date: Joi.string()
-    .optional()
-    .isoDate()
-    .messages({
-      "string.isoDate": "Date must be a valid ISO date",
     }),
 });
 

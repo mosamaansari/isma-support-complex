@@ -22,11 +22,14 @@ import brandsRoutes from "./src/routes/brands.routes";
 import rolesRoutes from "./src/routes/roles.routes";
 import cardsRoutes from "./src/routes/cards.routes";
 import bankAccountsRoutes from "./src/routes/bankAccounts.routes";
+import openingBalanceRoutes from "./src/routes/openingBalance.routes";
+import dailyConfirmationRoutes from "./src/routes/dailyConfirmation.routes";
+import balanceTransactionRoutes from "./src/routes/balanceTransaction.routes";
+import dailyClosingBalanceRoutes from "./src/routes/dailyClosingBalance.routes";
 import searchRoutes from "./src/routes/search.routes";
 import dashboardRoutes from "./src/routes/dashboard.routes";
 import backupRoutes from "./src/routes/backup.routes";
 import suppliersRoutes from "./src/routes/suppliers.routes";
-import openingBalanceRoutes from "./src/routes/openingBalance.routes";
 
 
 // Load environment variables
@@ -107,6 +110,9 @@ app.get("/", (req, res) => {
       backup: "/api/backup",
       suppliers: "/api/suppliers",
       openingBalances: "/api/opening-balances",
+      dailyConfirmation: "/api/daily-confirmation",
+      balanceTransactions: "/api/balance-transactions",
+      dailyClosingBalance: "/api/daily-closing-balance",
     },
   });
 });
@@ -130,6 +136,10 @@ app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/backup", backupRoutes);
 app.use("/api/suppliers", suppliersRoutes);
 app.use("/api/opening-balances", openingBalanceRoutes);
+app.use("/api/daily-confirmation", dailyConfirmationRoutes);
+app.use("/api/balance-transactions", balanceTransactionRoutes);
+app.use("/api/daily-closing-balance", dailyClosingBalanceRoutes);
+
 
 // 404 handler
 app.use((req, res) => {

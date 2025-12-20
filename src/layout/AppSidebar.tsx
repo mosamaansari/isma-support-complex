@@ -80,7 +80,10 @@ const AppSidebar: React.FC = () => {
       {
         icon: <PieChartIcon />,
         name: "Reports",
-        path: "/reports",
+        subItems: [
+          { name: "Reports", path: "/reports", pro: false },
+          { name: "Opening Balance", path: "/reports/opening-balance", pro: false },
+        ],
       },
     ];
 

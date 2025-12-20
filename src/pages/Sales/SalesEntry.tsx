@@ -15,6 +15,7 @@ import TaxDiscountInput from "../../components/form/TaxDiscountInput";
 import Button from "../../components/ui/button/Button";
 import { TrashBinIcon, PlusIcon } from "../../icons";
 import { getTodayDate } from "../../utils/dateHelpers";
+import { extractErrorMessage, extractValidationErrors } from "../../utils/errorHandler";
 
 const salesEntrySchema = yup.object().shape({
   customerName: yup
@@ -38,7 +39,7 @@ const salesEntrySchema = yup.object().shape({
 });
 
 export default function SalesEntry() {
-  const { products, currentUser, addSale, sales, loading, error, bankAccounts, refreshBankAccounts, cards, refreshCards } = useData();
+  const { products, currentUser, addSale, sales, loading, error, bankAccounts, refreshBankAccounts, cards, refreshCards, refreshProducts } = useData();
   const { showError } = useAlert();
   const navigate = useNavigate();
   const [selectedProducts, setSelectedProducts] = useState<
@@ -77,6 +78,10 @@ export default function SalesEntry() {
   const customerCity = watch("customerCity");
 
   useEffect(() => {
+    // Load products only when on this page
+    if (products.length === 0 && !loading) {
+      refreshProducts(1, 100).catch(console.error); // Load more products for selection
+    }
     if (bankAccounts.length === 0) {
       refreshBankAccounts();
     }
@@ -475,6 +480,7 @@ export default function SalesEntry() {
           type: p.type,
           amount: p.amount,
           bankAccountId: p.bankAccountId,
+          date: new Date().toISOString(), // Always use current date and time
         })),
         customerName: data.customerName.trim(),
         customerPhone: data.customerPhone || undefined,
@@ -488,10 +494,10 @@ export default function SalesEntry() {
       // Redirect to bill print page
       navigate(`/sales/bill/${billNumber}`);
     } catch (err: any) {
-      const backendErr = err?.response?.data?.error;
-      if (backendErr && typeof backendErr === "object") {
+      const validationErrors = extractValidationErrors(err);
+      if (validationErrors) {
         const mapped: Record<string, string> = {};
-        Object.entries(backendErr).forEach(([key, value]) => {
+        Object.entries(validationErrors).forEach(([key, value]) => {
           if (Array.isArray(value) && value.length > 0) {
             mapped[key.replace("data.", "")] = String(value[0]);
           }
@@ -500,11 +506,7 @@ export default function SalesEntry() {
         setFormError("Please fix the highlighted errors.");
         showError("Please fix the highlighted errors.");
       } else {
-        const msg =
-          err?.response?.data?.error ||
-          err?.response?.data?.message ||
-          err?.message ||
-          "Failed to create sale. Please try again.";
+        const msg = extractErrorMessage(err) || "Failed to create sale. Please try again.";
         setFormError(msg);
         showError(msg);
       }

@@ -17,6 +17,7 @@ export const rolePermissions: Record<UserRole, string[]> = {
     "/expenses/add",
     "/expenses/edit/:id",
     "/reports",
+    "/reports/opening-balance",
     "/users",
     "/users/add",
     "/users/edit/:id",
@@ -37,6 +38,7 @@ export const rolePermissions: Record<UserRole, string[]> = {
     "/expenses/add",
     "/expenses/edit/:id",
     "/reports",
+    "/reports/opening-balance",
     "/users",
     "/users/add",
     "/users/edit/:id",
@@ -97,6 +99,17 @@ export const hasPermission = (
       }
       return false;
     });
+
+    // Special permission: Users with sales, purchase, or expense permissions
+    // can access opening balance page (for daily confirmation)
+    if (path === "/reports/opening-balance") {
+      const hasRelevantPermission = userPermissions.some((perm) => 
+        perm.includes("sales") || perm.includes("purchase") || perm.includes("expense")
+      );
+      if (hasRelevantPermission) {
+        return true;
+      }
+    }
 
     if (hasPathPermission || hasActionPermission) {
       return true;

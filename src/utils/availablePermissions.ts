@@ -45,6 +45,17 @@ export const AVAILABLE_PERMISSIONS = {
   OPENING_BALANCE_UPDATE: "opening_balance:update",
   OPENING_BALANCE_DELETE: "opening_balance:delete",
   
+  // Daily Confirmation
+  DAILY_CONFIRMATION_VIEW: "daily_confirmation:view",
+  DAILY_CONFIRMATION_CONFIRM: "daily_confirmation:confirm",
+  
+  // Daily Closing Balance
+  CLOSING_BALANCE_VIEW: "closing_balance:view",
+  CLOSING_BALANCE_CALCULATE: "closing_balance:calculate",
+  
+  // Balance Transactions
+  BALANCE_TRANSACTIONS_VIEW: "balance_transactions:view",
+  
   // Bank Accounts
   BANK_ACCOUNTS_VIEW: "bank_accounts:view",
   BANK_ACCOUNTS_CREATE: "bank_accounts:create",
@@ -102,6 +113,30 @@ export const PERMISSION_GROUPS = [
     ],
   },
   {
+    group: "Opening Balance",
+    permissions: [
+      { key: "OPENING_BALANCE_VIEW", label: "View Opening Balance", value: AVAILABLE_PERMISSIONS.OPENING_BALANCE_VIEW },
+      { key: "OPENING_BALANCE_CREATE", label: "Create Opening Balance", value: AVAILABLE_PERMISSIONS.OPENING_BALANCE_CREATE },
+      { key: "OPENING_BALANCE_UPDATE", label: "Update Opening Balance", value: AVAILABLE_PERMISSIONS.OPENING_BALANCE_UPDATE },
+      { key: "OPENING_BALANCE_DELETE", label: "Delete Opening Balance", value: AVAILABLE_PERMISSIONS.OPENING_BALANCE_DELETE },
+    ],
+  },
+  {
+    group: "Daily Confirmation",
+    permissions: [
+      { key: "DAILY_CONFIRMATION_VIEW", label: "View Daily Confirmation", value: AVAILABLE_PERMISSIONS.DAILY_CONFIRMATION_VIEW },
+      { key: "DAILY_CONFIRMATION_CONFIRM", label: "Confirm Daily Balance", value: AVAILABLE_PERMISSIONS.DAILY_CONFIRMATION_CONFIRM },
+    ],
+  },
+  {
+    group: "Balance & Transactions",
+    permissions: [
+      { key: "CLOSING_BALANCE_VIEW", label: "View Closing Balance", value: AVAILABLE_PERMISSIONS.CLOSING_BALANCE_VIEW },
+      { key: "CLOSING_BALANCE_CALCULATE", label: "Calculate Closing Balance", value: AVAILABLE_PERMISSIONS.CLOSING_BALANCE_CALCULATE },
+      { key: "BALANCE_TRANSACTIONS_VIEW", label: "View Transaction History", value: AVAILABLE_PERMISSIONS.BALANCE_TRANSACTIONS_VIEW },
+    ],
+  },
+  {
     group: "User Management",
     permissions: [
       { key: "USERS_VIEW", label: "View Users", value: AVAILABLE_PERMISSIONS.USERS_VIEW },
@@ -155,6 +190,11 @@ export const getDefaultPermissionsForRole = (role: string): string[] => {
       AVAILABLE_PERMISSIONS.OPENING_BALANCE_CREATE,
       AVAILABLE_PERMISSIONS.OPENING_BALANCE_UPDATE,
       AVAILABLE_PERMISSIONS.OPENING_BALANCE_DELETE,
+      AVAILABLE_PERMISSIONS.DAILY_CONFIRMATION_VIEW,
+      AVAILABLE_PERMISSIONS.DAILY_CONFIRMATION_CONFIRM,
+      AVAILABLE_PERMISSIONS.CLOSING_BALANCE_VIEW,
+      AVAILABLE_PERMISSIONS.CLOSING_BALANCE_CALCULATE,
+      AVAILABLE_PERMISSIONS.BALANCE_TRANSACTIONS_VIEW,
       AVAILABLE_PERMISSIONS.BANK_ACCOUNTS_VIEW,
       AVAILABLE_PERMISSIONS.BANK_ACCOUNTS_CREATE,
       AVAILABLE_PERMISSIONS.BANK_ACCOUNTS_UPDATE,
@@ -170,6 +210,11 @@ export const getDefaultPermissionsForRole = (role: string): string[] => {
       AVAILABLE_PERMISSIONS.SALES_CREATE,
       AVAILABLE_PERMISSIONS.SALES_VIEW_BILL,
       AVAILABLE_PERMISSIONS.SALES_ADD_PAYMENT,
+      // Cashiers with sales permission can also access daily confirmation and opening balance view
+      AVAILABLE_PERMISSIONS.DAILY_CONFIRMATION_VIEW,
+      AVAILABLE_PERMISSIONS.DAILY_CONFIRMATION_CONFIRM,
+      AVAILABLE_PERMISSIONS.OPENING_BALANCE_VIEW,
+      AVAILABLE_PERMISSIONS.BALANCE_TRANSACTIONS_VIEW,
     ],
     warehouse_manager: [
       AVAILABLE_PERMISSIONS.INVENTORY_VIEW,
@@ -179,6 +224,11 @@ export const getDefaultPermissionsForRole = (role: string): string[] => {
       AVAILABLE_PERMISSIONS.PURCHASE_CREATE,
       AVAILABLE_PERMISSIONS.PURCHASE_UPDATE,
       AVAILABLE_PERMISSIONS.PURCHASE_ADD_PAYMENT,
+      // Warehouse managers with purchase permission can also access daily confirmation and opening balance view
+      AVAILABLE_PERMISSIONS.DAILY_CONFIRMATION_VIEW,
+      AVAILABLE_PERMISSIONS.DAILY_CONFIRMATION_CONFIRM,
+      AVAILABLE_PERMISSIONS.OPENING_BALANCE_VIEW,
+      AVAILABLE_PERMISSIONS.BALANCE_TRANSACTIONS_VIEW,
     ],
   };
 

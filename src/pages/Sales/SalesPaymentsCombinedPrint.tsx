@@ -147,7 +147,13 @@ export default function SalesPaymentsCombinedPrint() {
               </div>
               <div className="text-right">
                 <p className="text-sm text-gray-600">Bill Date:</p>
-                <p className="font-semibold">{new Date(sale.date || sale.createdAt).toLocaleDateString()}</p>
+                <p className="font-semibold">{new Date(sale.createdAt || sale.date || new Date()).toLocaleString('en-US', { 
+                  year: 'numeric', 
+                  month: 'short', 
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })}</p>
               </div>
             </div>
 
@@ -155,7 +161,7 @@ export default function SalesPaymentsCombinedPrint() {
               <div className="mb-4">
                 <p className="text-sm text-gray-600">Customer Name:</p>
                 <p className="font-semibold">{sale.customerName}</p>
-                {sale.customerPhone && (
+                {sale.customerPhone && sale.customerPhone !== "0000000000" && sale.customerPhone.trim() !== "" && (
                   <p className="text-sm text-gray-600">Phone: {sale.customerPhone}</p>
                 )}
               </div>

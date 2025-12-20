@@ -175,7 +175,7 @@ export default function SalesPaymentPrint() {
               <div className="mb-4">
                 <p className="text-sm text-gray-600">Customer Name:</p>
                 <p className="font-semibold">{sale.customerName}</p>
-                {sale.customerPhone && (
+                {sale.customerPhone && sale.customerPhone !== "0000000000" && sale.customerPhone.trim() !== "" && (
                   <p className="text-sm text-gray-600">Phone: {sale.customerPhone}</p>
                 )}
               </div>

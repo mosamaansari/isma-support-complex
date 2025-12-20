@@ -122,6 +122,13 @@ export default function BillPrint() {
     const remainingBalance = sale.remainingBalance || (sale.total - totalPaid);
     const change = totalPaid > sale.total ? totalPaid - sale.total : 0;
     const paymentStatus = remainingBalance > 0 ? "Pending" : "Completed";
+    const billDate = new Date(sale.createdAt || sale.date || new Date()).toLocaleString('en-US', { 
+      year: 'numeric', 
+      month: 'short', 
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
 
     printWindow.document.write(`
       <!DOCTYPE html>
@@ -350,7 +357,7 @@ export default function BillPrint() {
             <div class="footer">
               <div class="thank-you">THANK YOU!</div>
               <div>Bill #: ${sale.billNumber}</div>
-              <div>Date: ${new Date(sale.date || sale.createdAt).toLocaleString()}</div>
+              <div>Date: ${billDate}</div>
             </div>
           </div>
           <script>
@@ -456,7 +463,13 @@ export default function BillPrint() {
           <div className="flex justify-between mb-2">
             <span className="text-gray-600 dark:text-gray-400">Date:</span>
             <span className="text-gray-800 dark:text-white">
-              {new Date(sale.date || sale.createdAt).toLocaleString()}
+              {new Date(sale.createdAt || sale.date || new Date()).toLocaleString('en-US', { 
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+              })}
             </span>
           </div>
           {sale.customerName && (
@@ -467,7 +480,7 @@ export default function BillPrint() {
               </span>
             </div>
           )}
-          {sale.customerPhone && (
+          {sale.customerPhone && sale.customerPhone !== "0000000000" && sale.customerPhone.trim() !== "" && (
             <div className="flex justify-between mb-2">
               <span className="text-gray-600 dark:text-gray-400">Phone:</span>
               <span className="text-gray-800 dark:text-white">
@@ -826,7 +839,13 @@ export default function BillPrint() {
         <div className="footer">
           <div className="thank-you">THANK YOU!</div>
           <div>Bill #: {sale.billNumber}</div>
-          <div>Date: {new Date(sale.date || sale.createdAt).toLocaleString()}</div>
+          <div>Date: {new Date(sale.createdAt || sale.date || new Date()).toLocaleString('en-US', { 
+            year: 'numeric', 
+            month: 'short', 
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          })}</div>
         </div>
       </div>
 

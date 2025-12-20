@@ -270,7 +270,7 @@ class ApiClient {
     return normalizeSale(sale);
   }
 
-  async addPaymentToSale(saleId: string, payment: { type: string; amount: number; cardId?: string; bankAccountId?: string }) {
+  async addPaymentToSale(saleId: string, payment: { type: string; amount: number; cardId?: string; bankAccountId?: string; date?: string }) {
     const response = await this.client.post(`/sales/${saleId}/payments`, payment);
     // Response is already transformed by interceptor
     const sale = response.data?.data || response.data;
@@ -444,6 +444,14 @@ class ApiClient {
   // Reports endpoints
   async getDailyReport(date: string) {
     const response = await this.client.get("/reports/daily", { params: { date } });
+    return response.data;
+  }
+
+  async generateDailyReportPDF(date: string) {
+    const response = await this.client.get("/reports/daily/pdf", { 
+      params: { date },
+      responseType: "blob"
+    });
     return response.data;
   }
 
@@ -773,6 +781,95 @@ class ApiClient {
 
   async deleteRole(id: string) {
     const response = await this.client.delete(`/roles/${id}`);
+    return response.data?.response?.data || response.data;
+  }
+
+  // Daily Confirmation endpoints
+  async checkDailyConfirmation() {
+    const response = await this.client.get("/daily-confirmation/check");
+    return response.data?.response || response.data;
+  }
+
+  async confirmDaily() {
+    const response = await this.client.post("/daily-confirmation/confirm");
+    return response.data?.response || response.data;
+  }
+
+  // Enhanced Opening Balance endpoints
+  async createOpeningBalanceWithBanks(data: {
+    date: string;
+    cashBalance: number;
+    bankBalances?: Array<{ bankAccountId: string; balance: number }>;
+    notes?: string;
+  }) {
+    const response = await this.client.post("/opening-balances", data);
+    return response.data?.response?.data || response.data;
+  }
+
+  async updateOpeningBalanceWithBanks(id: string, data: {
+    cashBalance?: number;
+    bankBalances?: Array<{ bankAccountId: string; balance: number }>;
+    notes?: string;
+  }) {
+    const response = await this.client.put(`/opening-balances/${id}`, data);
+    return response.data?.response?.data || response.data;
+  }
+
+  // Balance Transaction endpoints
+  async getCashTransactions(startDate?: string, endDate?: string) {
+    const response = await this.client.get("/balance-transactions/cash", {
+      params: { startDate, endDate },
+    });
+    // After interceptor, response.data is response.response, which contains { data: [...] }
+    return response.data?.data || response.data || [];
+  }
+
+  async getBankTransactions(bankAccountId: string, startDate?: string, endDate?: string) {
+    const response = await this.client.get("/balance-transactions/bank", {
+      params: { bankAccountId, startDate, endDate },
+    });
+    // After interceptor, response.data is response.response, which contains { data: [...] }
+    return response.data?.data || response.data || [];
+  }
+
+  async getAllTransactionsGroupedByDay(startDate?: string, endDate?: string) {
+    const response = await this.client.get("/balance-transactions/grouped", {
+      params: { startDate, endDate },
+    });
+    // After interceptor, response.data is response.response, which contains { data: [...] }
+    return response.data?.data || response.data || [];
+  }
+
+  // Daily Closing Balance endpoints
+  async getClosingBalance(date: string) {
+    const response = await this.client.get("/daily-closing-balance", {
+      params: { date },
+    });
+    return response.data?.response || response.data;
+  }
+
+  async getPreviousDayClosingBalance(date: string) {
+    const response = await this.client.get("/daily-closing-balance/previous", {
+      params: { date },
+    });
+    return response.data?.response || response.data;
+  }
+
+  async getClosingBalances(startDate: string, endDate: string) {
+    const response = await this.client.get("/daily-closing-balance/range", {
+      params: { startDate, endDate },
+    });
+    return response.data?.response || response.data;
+  }
+
+  async getTransactions(params?: {
+    startDate?: string;
+    endDate?: string;
+    paymentType?: "cash" | "bank_transfer";
+    bankAccountId?: string;
+    type?: "income" | "expense";
+  }) {
+    const response = await this.client.get("/balance-transactions", { params });
     return response.data?.response?.data || response.data;
   }
 }

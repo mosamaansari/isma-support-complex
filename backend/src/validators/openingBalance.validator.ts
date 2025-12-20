@@ -9,12 +9,31 @@ export const createOpeningBalanceSchema = Joi.object({
       "any.required": "Date is required",
     }),
   cashBalance: Joi.number()
-    .min(1)
+    .min(0)
     .required()
     .messages({
       "number.base": "Cash balance must be a number",
-      "number.min": "Cash balance must be at least 1",
+      "number.min": "Cash balance cannot be negative",
       "any.required": "Cash balance is required",
+    }),
+  bankBalances: Joi.array()
+    .items(
+      Joi.object({
+        bankAccountId: Joi.string().required().messages({
+          "string.empty": "Bank account ID is required",
+          "any.required": "Bank account ID is required",
+        }),
+        balance: Joi.number().min(0).required().messages({
+          "number.base": "Bank balance must be a number",
+          "number.min": "Bank balance cannot be negative",
+          "any.required": "Bank balance is required",
+        }),
+      })
+    )
+    .optional()
+    .default([])
+    .messages({
+      "array.base": "Bank balances must be an array",
     }),
   cardBalances: Joi.array()
     .items(
@@ -46,11 +65,29 @@ export const createOpeningBalanceSchema = Joi.object({
 
 export const updateOpeningBalanceSchema = Joi.object({
   cashBalance: Joi.number()
-    .min(1)
+    .min(0)
     .optional()
     .messages({
       "number.base": "Cash balance must be a number",
-      "number.min": "Cash balance must be at least 1",
+      "number.min": "Cash balance cannot be negative",
+    }),
+  bankBalances: Joi.array()
+    .items(
+      Joi.object({
+        bankAccountId: Joi.string().required().messages({
+          "string.empty": "Bank account ID is required",
+          "any.required": "Bank account ID is required",
+        }),
+        balance: Joi.number().min(0).required().messages({
+          "number.base": "Bank balance must be a number",
+          "number.min": "Bank balance cannot be negative",
+          "any.required": "Bank balance is required",
+        }),
+      })
+    )
+    .optional()
+    .messages({
+      "array.base": "Bank balances must be an array",
     }),
   cardBalances: Joi.array()
     .items(

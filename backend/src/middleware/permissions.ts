@@ -24,6 +24,26 @@ export const hasPermission = (
     return true;
   }
 
+  // Special permission mappings:
+  // Users with sales, purchase, or expense permissions can also access:
+  // - Daily confirmation (for daily balance confirmation)
+  // - Opening balance view (to see balances)
+  // - Balance transactions view (to see transaction history)
+  if (requiredPermission === "daily_confirmation:view" || 
+      requiredPermission === "daily_confirmation:confirm") {
+    if (userPermissions.some((p) => p.includes("sales") || p.includes("purchase") || p.includes("expense"))) {
+      return true;
+    }
+  }
+  
+  if (requiredPermission === "opening_balance:view" || 
+      requiredPermission === "closing_balance:view" ||
+      requiredPermission === "balance_transactions:view") {
+    if (userPermissions.some((p) => p.includes("sales") || p.includes("purchase") || p.includes("expense"))) {
+      return true;
+    }
+  }
+
   // Check pattern matching (e.g., "sales:*" matches "sales:create")
   return userPermissions.some((perm) => {
     if (perm.endsWith("*")) {
