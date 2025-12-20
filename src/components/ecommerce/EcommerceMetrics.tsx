@@ -102,7 +102,13 @@ export default function EcommerceMetrics() {
     totalProducts: metrics?.totalProducts ?? 0,
   };
 
-  const cards = [
+  const cards: Array<{
+    title: string;
+    value: number;
+    icon: React.ReactElement;
+    bg: string;
+    suffix?: string;
+  }> = [
     {
       title: "Total Sales",
       value: safeMetrics.totalSales,
@@ -121,7 +127,7 @@ export default function EcommerceMetrics() {
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 md:gap-6">
       {cards.map((card, idx) => (
         <div
-          key={card.title}
+          key={idx}
           className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] md:p-6"
         >
           <div className={`flex items-center justify-center w-12 h-12 rounded-xl ${card.bg}`}>

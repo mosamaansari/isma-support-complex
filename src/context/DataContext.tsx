@@ -88,6 +88,13 @@ interface DataContextType {
   deleteCategory: (id: string) => Promise<void>;
   refreshCategories: () => Promise<void>;
 
+  // Brands
+  brands: Brand[];
+  addBrand: (brand: Omit<Brand, "id" | "createdAt" | "updatedAt">) => Promise<void>;
+  updateBrand: (id: string, brand: Partial<Brand>) => Promise<void>;
+  deleteBrand: (id: string) => Promise<void>;
+  refreshBrands: () => Promise<void>;
+
   // Settings
   settings: ShopSettings;
   updateSettings: (settings: Partial<ShopSettings>) => Promise<void>;
@@ -491,7 +498,15 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const addPaymentToSale = async (id: string, payment: SalePayment & { date?: string }) => {
     try {
       setError(null);
-      const updatedSale = await api.addPaymentToSale(id, payment);
+      // Ensure amount is provided and valid
+      if (payment.amount === undefined || payment.amount === null || payment.amount <= 0) {
+        throw new Error("Payment amount must be greater than 0");
+      }
+      const updatedSale = await api.addPaymentToSale(id, { 
+        type: payment.type, 
+        amount: payment.amount, 
+        bankAccountId: payment.bankAccountId 
+      });
       setSales(sales.map((s) => (s.id === id ? updatedSale : s)));
     } catch (err: any) {
       setError(err.response?.data?.error || "Failed to add payment");

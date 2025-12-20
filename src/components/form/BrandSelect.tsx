@@ -17,7 +17,6 @@ export default function BrandSelect({
   value,
   onChange,
   className = "",
-  required = false,
 }: BrandSelectProps) {
   const { brands, addBrand, refreshBrands } = useData();
   const { showSuccess, showError } = useAlert();

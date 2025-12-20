@@ -271,8 +271,12 @@ export default function ProductForm() {
               min="0.01"
               value={formData.salePrice ?? ""}
               onChange={(e) => {
-                const value = e.target.value === "" ? undefined : parseFloat(e.target.value);
-                setValue("salePrice", isNaN(value as any) ? undefined : value);
+                if (e.target.value === "") {
+                  setValue("salePrice", undefined as any);
+                } else {
+                  const value = parseFloat(e.target.value);
+                  setValue("salePrice", isNaN(value) ? (undefined as any) : value);
+                }
               }}
               onBlur={register("salePrice").onBlur}
               placeholder="0.00"
@@ -293,8 +297,12 @@ export default function ProductForm() {
                 min="0"
                 value={formData.shopQuantity ?? ""}
                 onChange={(e) => {
-                  const value = e.target.value === "" ? undefined : parseInt(e.target.value);
-                  setValue("shopQuantity", isNaN(value as any) ? undefined : value);
+                  if (e.target.value === "") {
+                    setValue("shopQuantity", undefined as any);
+                  } else {
+                    const value = parseInt(e.target.value);
+                    setValue("shopQuantity", isNaN(value) ? (undefined as any) : value);
+                  }
                 }}
                 onBlur={register("shopQuantity").onBlur}
                 placeholder="0"
@@ -313,8 +321,12 @@ export default function ProductForm() {
                 min="0"
                 value={formData.warehouseQuantity ?? ""}
                 onChange={(e) => {
-                  const value = e.target.value === "" ? undefined : parseInt(e.target.value);
-                  setValue("warehouseQuantity", isNaN(value as any) ? undefined : value);
+                  if (e.target.value === "") {
+                    setValue("warehouseQuantity", undefined as any);
+                  } else {
+                    const value = parseInt(e.target.value);
+                    setValue("warehouseQuantity", isNaN(value) ? (undefined as any) : value);
+                  }
                 }}
                 onBlur={register("warehouseQuantity").onBlur}
                 placeholder="0"
@@ -367,8 +379,12 @@ export default function ProductForm() {
                 min="0"
                 value={formData.shopMinStockLevel ?? ""}
                 onChange={(e) => {
-                  const value = e.target.value === "" ? undefined : parseInt(e.target.value);
-                  setValue("shopMinStockLevel", isNaN(value as any) ? undefined : value);
+                  if (e.target.value === "") {
+                    setValue("shopMinStockLevel", undefined as any);
+                  } else {
+                    const value = parseInt(e.target.value);
+                    setValue("shopMinStockLevel", isNaN(value) ? (undefined as any) : value);
+                  }
                 }}
                 onBlur={register("shopMinStockLevel").onBlur}
                 placeholder="0"
@@ -387,8 +403,12 @@ export default function ProductForm() {
                 min="0"
                 value={formData.warehouseMinStockLevel ?? ""}
                 onChange={(e) => {
-                  const value = e.target.value === "" ? undefined : parseInt(e.target.value);
-                  setValue("warehouseMinStockLevel", isNaN(value as any) ? undefined : value);
+                  if (e.target.value === "") {
+                    setValue("warehouseMinStockLevel", undefined as any);
+                  } else {
+                    const value = parseInt(e.target.value);
+                    setValue("warehouseMinStockLevel", isNaN(value) ? (undefined as any) : value);
+                  }
                 }}
                 onBlur={register("warehouseMinStockLevel").onBlur}
                 placeholder="0"

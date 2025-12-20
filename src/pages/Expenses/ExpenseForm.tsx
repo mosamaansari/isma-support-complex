@@ -245,8 +245,12 @@ export default function ExpenseForm() {
               min="0"
               value={formData.amount ?? ""}
               onChange={(e) => {
-                const value = e.target.value === "" ? null : parseFloat(e.target.value);
-                setValue("amount", isNaN(value as any) ? undefined : value);
+                if (e.target.value === "") {
+                  setValue("amount", undefined as any);
+                } else {
+                  const value = parseFloat(e.target.value);
+                  setValue("amount", isNaN(value) ? (undefined as any) : value);
+                }
               }}
               onBlur={register("amount").onBlur}
               placeholder="0.00"
