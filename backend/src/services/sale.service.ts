@@ -245,7 +245,9 @@ class SaleService {
       cardId?: string;
       bankAccountId?: string;
       discount?: number;
+      discountType?: "percent" | "value";
       tax?: number;
+      taxType?: "percent" | "value";
       date?: string;
     },
     userId: string,
@@ -367,9 +369,10 @@ class SaleService {
     }
 
     // Calculate global discount based on type
+    const dataWithTypes = data as any;
     let discountAmount = 0;
     if (data.discount && data.discount > 0) {
-      if (data.discountType === "value") {
+      if (dataWithTypes.discountType === "value") {
         discountAmount = data.discount;
       } else {
         discountAmount = (subtotal * data.discount) / 100;
@@ -379,7 +382,7 @@ class SaleService {
     // Calculate global tax based on type
     let taxAmount = 0;
     if (data.tax && data.tax > 0) {
-      if (data.taxType === "value") {
+      if (dataWithTypes.taxType === "value") {
         taxAmount = data.tax;
       } else {
         const afterDiscount = subtotal - discountAmount;
@@ -456,9 +459,9 @@ class SaleService {
         billNumber,
         subtotal,
         discount: discountAmount,
-        discountType: data.discountType || "percent",
+        discountType: dataWithTypes.discountType || "percent",
         tax: taxAmount,
-        taxType: data.taxType || "percent",
+        taxType: dataWithTypes.taxType || "percent",
         total,
         paymentType: payments[0]?.type || ("cash" as any),
         payments: payments as any,

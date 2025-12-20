@@ -162,6 +162,8 @@ class ProductService {
       name?: string;
       category?: string;
       categoryId?: string;
+      brand?: string;
+      brandId?: string;
       salePrice?: number;
       shopQuantity?: number;
       warehouseQuantity?: number;
@@ -192,12 +194,13 @@ class ProductService {
 
     // Try to find brand by name or use brandId
     let brandId: string | null | undefined = undefined;
-    if (data.brandId !== undefined) {
-      brandId = data.brandId || null;
-    } else if (data.brand !== undefined) {
-      if (data.brand) {
+    const dataWithBrand = data as any;
+    if (dataWithBrand.brandId !== undefined) {
+      brandId = dataWithBrand.brandId || null;
+    } else if (dataWithBrand.brand !== undefined) {
+      if (dataWithBrand.brand) {
         const brand = await prisma.brand.findFirst({
-          where: { name: { equals: data.brand, mode: "insensitive" } },
+          where: { name: { equals: dataWithBrand.brand, mode: "insensitive" } },
         });
         brandId = brand ? brand.id : null;
       } else {
@@ -209,7 +212,7 @@ class ProductService {
     if (data.name !== undefined) updateData.name = data.name;
     if (data.category !== undefined) updateData.category = data.category || null;
     if (categoryId !== undefined) updateData.categoryId = categoryId;
-    if (data.brand !== undefined) updateData.brand = data.brand || null;
+    if (dataWithBrand.brand !== undefined) updateData.brand = dataWithBrand.brand || null;
     if (brandId !== undefined) updateData.brandId = brandId;
     if (data.salePrice !== undefined) updateData.salePrice = data.salePrice || null;
     if (data.shopQuantity !== undefined) updateData.shopQuantity = data.shopQuantity;
