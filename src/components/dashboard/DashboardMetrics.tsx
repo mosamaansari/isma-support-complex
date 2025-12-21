@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useData } from "../../context/DataContext";
 import { DollarLineIcon, BoxIconLine, FileIcon, AlertIcon } from "../../icons";
 import { Link } from "react-router";
+import { formatPriceWithCurrency } from "../../utils/priceHelpers";
 
 export default function DashboardMetrics() {
   const { sales, expenses, purchases, products, getLowStockProducts } = useData();
@@ -69,61 +70,61 @@ export default function DashboardMetrics() {
   }, [sales, expenses, purchases, products, getLowStockProducts, today]);
 
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 md:gap-6">
+    <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2 xl:grid-cols-4 md:gap-6">
       {/* Today's Sales */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] md:p-6">
-        <div className="flex items-center justify-center w-12 h-12 bg-green-100 rounded-xl dark:bg-green-500/10">
-          <DollarLineIcon className="text-green-600 size-6 dark:text-green-400" />
+      <div className="rounded-xl sm:rounded-2xl border border-gray-200 bg-white p-4 sm:p-5 dark:border-gray-800 dark:bg-white/[0.03] md:p-6">
+        <div className="flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 bg-green-100 rounded-lg sm:rounded-xl dark:bg-green-500/10">
+          <DollarLineIcon className="text-green-600 size-5 sm:size-6 dark:text-green-400" />
         </div>
-        <div className="flex items-end justify-between mt-5">
-          <div>
-            <span className="text-sm text-gray-500 dark:text-gray-400">Today's Sales</span>
-            <h4 className="mt-2 font-bold text-gray-800 text-title-sm dark:text-white/90">
-              Rs. {metrics.todaySales.toLocaleString("en-PK", { minimumFractionDigits: 2 })}
+        <div className="flex items-end justify-between mt-4 sm:mt-5">
+          <div className="w-full">
+            <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Today's Sales</span>
+            <h4 className="mt-1 sm:mt-2 font-bold text-gray-800 text-base sm:text-lg lg:text-xl dark:text-white/90 price-responsive">
+              {formatPriceWithCurrency(metrics.todaySales)}
             </h4>
           </div>
         </div>
       </div>
 
       {/* Total Sales */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] md:p-6">
-        <div className="flex items-center justify-center w-12 h-12 bg-blue-100 rounded-xl dark:bg-blue-500/10">
-          <DollarLineIcon className="text-blue-600 size-6 dark:text-blue-400" />
+      <div className="rounded-xl sm:rounded-2xl border border-gray-200 bg-white p-4 sm:p-5 dark:border-gray-800 dark:bg-white/[0.03] md:p-6">
+        <div className="flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 bg-blue-100 rounded-lg sm:rounded-xl dark:bg-blue-500/10">
+          <DollarLineIcon className="text-blue-600 size-5 sm:size-6 dark:text-blue-400" />
         </div>
-        <div className="flex items-end justify-between mt-5">
-          <div>
-            <span className="text-sm text-gray-500 dark:text-gray-400">Total Sales</span>
-            <h4 className="mt-2 font-bold text-gray-800 text-title-sm dark:text-white/90">
-              Rs. {metrics.totalSales.toLocaleString("en-PK", { minimumFractionDigits: 2 })}
+        <div className="flex items-end justify-between mt-4 sm:mt-5">
+          <div className="w-full">
+            <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Total Sales</span>
+            <h4 className="mt-1 sm:mt-2 font-bold text-gray-800 text-base sm:text-lg lg:text-xl dark:text-white/90 price-responsive">
+              {formatPriceWithCurrency(metrics.totalSales)}
             </h4>
           </div>
         </div>
       </div>
 
       {/* Total Expenses */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] md:p-6">
-        <div className="flex items-center justify-center w-12 h-12 bg-red-100 rounded-xl dark:bg-red-500/10">
-          <FileIcon className="text-red-600 size-6 dark:text-red-400" />
+      <div className="rounded-xl sm:rounded-2xl border border-gray-200 bg-white p-4 sm:p-5 dark:border-gray-800 dark:bg-white/[0.03] md:p-6">
+        <div className="flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 bg-red-100 rounded-lg sm:rounded-xl dark:bg-red-500/10">
+          <FileIcon className="text-red-600 size-5 sm:size-6 dark:text-red-400" />
         </div>
-        <div className="flex items-end justify-between mt-5">
-          <div>
-            <span className="text-sm text-gray-500 dark:text-gray-400">Total Expenses</span>
-            <h4 className="mt-2 font-bold text-gray-800 text-title-sm dark:text-white/90">
-              Rs. {metrics.totalExpenses.toLocaleString("en-PK", { minimumFractionDigits: 2 })}
+        <div className="flex items-end justify-between mt-4 sm:mt-5">
+          <div className="w-full">
+            <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Total Expenses</span>
+            <h4 className="mt-1 sm:mt-2 font-bold text-gray-800 text-base sm:text-lg lg:text-xl dark:text-white/90 price-responsive">
+              {formatPriceWithCurrency(metrics.totalExpenses)}
             </h4>
           </div>
         </div>
       </div>
 
       {/* Low Stock Products */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] md:p-6">
-        <div className="flex items-center justify-center w-12 h-12 bg-orange-100 rounded-xl dark:bg-orange-500/10">
-          <AlertIcon className="text-orange-600 size-6 dark:text-orange-400" />
+      <div className="rounded-xl sm:rounded-2xl border border-gray-200 bg-white p-4 sm:p-5 dark:border-gray-800 dark:bg-white/[0.03] md:p-6">
+        <div className="flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 bg-orange-100 rounded-lg sm:rounded-xl dark:bg-orange-500/10">
+          <AlertIcon className="text-orange-600 size-5 sm:size-6 dark:text-orange-400" />
         </div>
-        <div className="flex items-end justify-between mt-5">
-          <div>
-            <span className="text-sm text-gray-500 dark:text-gray-400">Low Stock Products</span>
-            <h4 className="mt-2 font-bold text-gray-800 text-title-sm dark:text-white/90">
+        <div className="flex items-end justify-between mt-4 sm:mt-5">
+          <div className="w-full">
+            <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Low Stock Products</span>
+            <h4 className="mt-1 sm:mt-2 font-bold text-gray-800 text-base sm:text-lg lg:text-xl dark:text-white/90">
               {metrics.lowStockCount}
             </h4>
             {metrics.lowStockCount > 0 && (
@@ -139,15 +140,15 @@ export default function DashboardMetrics() {
       </div>
 
       {/* Pending Sales Payments */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] md:p-6">
-        <div className="flex items-center justify-center w-12 h-12 bg-yellow-100 rounded-xl dark:bg-yellow-500/10">
-          <DollarLineIcon className="text-yellow-600 size-6 dark:text-yellow-400" />
+      <div className="rounded-xl sm:rounded-2xl border border-gray-200 bg-white p-4 sm:p-5 dark:border-gray-800 dark:bg-white/[0.03] md:p-6">
+        <div className="flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 bg-yellow-100 rounded-lg sm:rounded-xl dark:bg-yellow-500/10">
+          <DollarLineIcon className="text-yellow-600 size-5 sm:size-6 dark:text-yellow-400" />
         </div>
-        <div className="flex items-end justify-between mt-5">
-          <div>
-            <span className="text-sm text-gray-500 dark:text-gray-400">Pending Sales</span>
-            <h4 className="mt-2 font-bold text-gray-800 text-title-sm dark:text-white/90">
-              Rs. {metrics.pendingSalesAmount.toLocaleString("en-PK", { minimumFractionDigits: 2 })}
+        <div className="flex items-end justify-between mt-4 sm:mt-5">
+          <div className="w-full">
+            <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Pending Sales</span>
+            <h4 className="mt-1 sm:mt-2 font-bold text-gray-800 text-base sm:text-lg lg:text-xl dark:text-white/90 price-responsive">
+              {formatPriceWithCurrency(metrics.pendingSalesAmount)}
             </h4>
             {metrics.pendingSalesCount > 0 && (
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
@@ -159,15 +160,15 @@ export default function DashboardMetrics() {
       </div>
 
       {/* Pending Purchase Payments */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] md:p-6">
-        <div className="flex items-center justify-center w-12 h-12 bg-purple-100 rounded-xl dark:bg-purple-500/10">
-          <BoxIconLine className="text-purple-600 size-6 dark:text-purple-400" />
+      <div className="rounded-xl sm:rounded-2xl border border-gray-200 bg-white p-4 sm:p-5 dark:border-gray-800 dark:bg-white/[0.03] md:p-6">
+        <div className="flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 bg-purple-100 rounded-lg sm:rounded-xl dark:bg-purple-500/10">
+          <BoxIconLine className="text-purple-600 size-5 sm:size-6 dark:text-purple-400" />
         </div>
-        <div className="flex items-end justify-between mt-5">
-          <div>
-            <span className="text-sm text-gray-500 dark:text-gray-400">Pending Purchases</span>
-            <h4 className="mt-2 font-bold text-gray-800 text-title-sm dark:text-white/90">
-              Rs. {metrics.pendingPurchasesAmount.toLocaleString("en-PK", { minimumFractionDigits: 2 })}
+        <div className="flex items-end justify-between mt-4 sm:mt-5">
+          <div className="w-full">
+            <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Pending Purchases</span>
+            <h4 className="mt-1 sm:mt-2 font-bold text-gray-800 text-base sm:text-lg lg:text-xl dark:text-white/90 price-responsive">
+              {formatPriceWithCurrency(metrics.pendingPurchasesAmount)}
             </h4>
             {metrics.pendingPurchasesCount > 0 && (
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
@@ -180,35 +181,35 @@ export default function DashboardMetrics() {
       </div>
 
       {/* Net Profit */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] md:p-6">
-        <div className="flex items-center justify-center w-12 h-12 bg-emerald-100 rounded-xl dark:bg-emerald-500/10">
-          <DollarLineIcon className="text-emerald-600 size-6 dark:text-emerald-400" />
+      <div className="rounded-xl sm:rounded-2xl border border-gray-200 bg-white p-4 sm:p-5 dark:border-gray-800 dark:bg-white/[0.03] md:p-6">
+        <div className="flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 bg-emerald-100 rounded-lg sm:rounded-xl dark:bg-emerald-500/10">
+          <DollarLineIcon className="text-emerald-600 size-5 sm:size-6 dark:text-emerald-400" />
         </div>
-        <div className="flex items-end justify-between mt-5">
-          <div>
-            <span className="text-sm text-gray-500 dark:text-gray-400">Net Profit</span>
+        <div className="flex items-end justify-between mt-4 sm:mt-5">
+          <div className="w-full">
+            <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Net Profit</span>
             <h4
-              className={`mt-2 font-bold text-title-sm ${
+              className={`mt-1 sm:mt-2 font-bold text-base sm:text-lg lg:text-xl price-responsive ${
                 metrics.netProfit >= 0
                   ? "text-emerald-600 dark:text-emerald-400"
                   : "text-red-600 dark:text-red-400"
               }`}
             >
-              Rs. {metrics.netProfit.toLocaleString("en-PK", { minimumFractionDigits: 2 })}
+              {formatPriceWithCurrency(metrics.netProfit)}
             </h4>
           </div>
         </div>
       </div>
 
       {/* Total Products */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] md:p-6">
-        <div className="flex items-center justify-center w-12 h-12 bg-indigo-100 rounded-xl dark:bg-indigo-500/10">
-          <BoxIconLine className="text-indigo-600 size-6 dark:text-indigo-400" />
+      <div className="rounded-xl sm:rounded-2xl border border-gray-200 bg-white p-4 sm:p-5 dark:border-gray-800 dark:bg-white/[0.03] md:p-6">
+        <div className="flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 bg-indigo-100 rounded-lg sm:rounded-xl dark:bg-indigo-500/10">
+          <BoxIconLine className="text-indigo-600 size-5 sm:size-6 dark:text-indigo-400" />
         </div>
-        <div className="flex items-end justify-between mt-5">
-          <div>
-            <span className="text-sm text-gray-500 dark:text-gray-400">Total Products</span>
-            <h4 className="mt-2 font-bold text-gray-800 text-title-sm dark:text-white/90">
+        <div className="flex items-end justify-between mt-4 sm:mt-5">
+          <div className="w-full">
+            <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Total Products</span>
+            <h4 className="mt-1 sm:mt-2 font-bold text-gray-800 text-base sm:text-lg lg:text-xl dark:text-white/90">
               {products.length}
             </h4>
           </div>

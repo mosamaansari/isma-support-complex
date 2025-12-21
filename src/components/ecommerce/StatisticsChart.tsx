@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import Chart from "react-apexcharts";
 import { ApexOptions } from "apexcharts";
 import api from "../../services/api";
+import { formatPrice, formatPriceWithCurrency } from "../../utils/priceHelpers";
 
 type TrendData = {
   categories: string[];
@@ -171,7 +172,7 @@ export default function StatisticsChart() {
     tooltip: {
       enabled: true,
       y: {
-        formatter: (val: number) => `Rs. ${(val || 0).toLocaleString("en-PK", { minimumFractionDigits: 2 })}`,
+        formatter: (val: number) => formatPriceWithCurrency(val || 0),
       },
     },
     xaxis: {
@@ -193,7 +194,7 @@ export default function StatisticsChart() {
           fontSize: "12px",
           colors: ["#6B7280"],
         },
-        formatter: (val: number) => `Rs. ${(val || 0).toLocaleString("en-PK", { maximumFractionDigits: 0 })}`,
+        formatter: (val: number) => `Rs. ${formatPrice(val || 0)}`,
       },
       title: {
         text: "",
@@ -222,10 +223,10 @@ export default function StatisticsChart() {
 
   if (loading) {
     return (
-      <div className="rounded-2xl border border-gray-200 bg-white px-5 pb-5 pt-5 dark:border-gray-800 dark:bg-white/[0.03] sm:px-6 sm:pt-6">
+      <div className="rounded-xl sm:rounded-2xl border border-gray-200 bg-white px-3 pb-3 pt-3 sm:px-4 sm:pb-4 sm:pt-4 md:px-5 md:pb-5 md:pt-5 dark:border-gray-800 dark:bg-white/[0.03] md:px-6 md:pt-6">
         <div className="animate-pulse">
-          <div className="h-6 bg-gray-200 rounded w-32 dark:bg-gray-800 mb-4"></div>
-          <div className="h-[310px] bg-gray-200 rounded dark:bg-gray-800"></div>
+          <div className="h-5 sm:h-6 bg-gray-200 rounded w-32 dark:bg-gray-800 mb-4"></div>
+          <div className="h-[250px] sm:h-[310px] bg-gray-200 rounded dark:bg-gray-800"></div>
         </div>
       </div>
     );
@@ -233,33 +234,33 @@ export default function StatisticsChart() {
 
   if (!trendData) {
     return (
-      <div className="rounded-2xl border border-gray-200 bg-white px-5 pb-5 pt-5 dark:border-gray-800 dark:bg-white/[0.03] sm:px-6 sm:pt-6">
-        <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90 mb-4">
+      <div className="rounded-xl sm:rounded-2xl border border-gray-200 bg-white px-3 pb-3 pt-3 sm:px-4 sm:pb-4 sm:pt-4 md:px-5 md:pb-5 md:pt-5 dark:border-gray-800 dark:bg-white/[0.03] md:px-6 md:pt-6">
+        <h3 className="text-base sm:text-lg font-semibold text-gray-800 dark:text-white/90 mb-4">
           Statistics
         </h3>
         <div className="py-8 text-center">
-          <p className="text-sm text-gray-500 dark:text-gray-400">Data not found</p>
+          <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Data not found</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white px-5 pb-5 pt-5 dark:border-gray-800 dark:bg-white/[0.03] sm:px-6 sm:pt-6">
-      <div className="flex flex-col gap-5 mb-6 sm:flex-row sm:justify-between">
+    <div className="rounded-xl sm:rounded-2xl border border-gray-200 bg-white px-3 pb-3 pt-3 sm:px-4 sm:pb-4 sm:pt-4 md:px-5 md:pb-5 md:pt-5 dark:border-gray-800 dark:bg-white/[0.03] md:px-6 md:pt-6">
+      <div className="flex flex-col gap-4 sm:gap-5 mb-4 sm:mb-6 sm:flex-row sm:justify-between">
         <div className="w-full">
-          <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
+          <h3 className="text-base sm:text-lg font-semibold text-gray-800 dark:text-white/90">
             Sales vs Expenses vs Purchases
           </h3>
-          <p className="mt-1 text-gray-500 text-theme-sm dark:text-gray-400">
+          <p className="mt-1 text-xs sm:text-theme-sm text-gray-500 dark:text-gray-400">
             Monthly / Quarterly / Annual comparison
           </p>
         </div>
-        <div className="flex items-start w-full gap-3 sm:justify-end">
-          <div className="flex items-center gap-0.5 rounded-lg bg-gray-100 p-0.5 dark:bg-gray-900">
+        <div className="flex items-start w-full gap-2 sm:gap-3 sm:justify-end">
+          <div className="flex items-center gap-0.5 rounded-lg bg-gray-100 p-0.5 dark:bg-gray-900 w-full sm:w-auto">
             <button
               onClick={() => setView("monthly")}
-              className={`px-3 py-2 font-medium w-full rounded-md text-theme-sm ${
+              className={`px-2 sm:px-3 py-1.5 sm:py-2 font-medium w-full rounded-md text-xs sm:text-theme-sm ${
                 view === "monthly"
                   ? "shadow-theme-xs text-gray-900 dark:text-white bg-white dark:bg-gray-800"
                   : "text-gray-500 dark:text-gray-400"
@@ -269,7 +270,7 @@ export default function StatisticsChart() {
             </button>
             <button
               onClick={() => setView("quarterly")}
-              className={`px-3 py-2 font-medium w-full rounded-md text-theme-sm ${
+              className={`px-2 sm:px-3 py-1.5 sm:py-2 font-medium w-full rounded-md text-xs sm:text-theme-sm ${
                 view === "quarterly"
                   ? "shadow-theme-xs text-gray-900 dark:text-white bg-white dark:bg-gray-800"
                   : "text-gray-500 dark:text-gray-400"
@@ -279,7 +280,7 @@ export default function StatisticsChart() {
             </button>
             <button
               onClick={() => setView("annual")}
-              className={`px-3 py-2 font-medium w-full rounded-md text-theme-sm ${
+              className={`px-2 sm:px-3 py-1.5 sm:py-2 font-medium w-full rounded-md text-xs sm:text-theme-sm ${
                 view === "annual"
                   ? "shadow-theme-xs text-gray-900 dark:text-white bg-white dark:bg-gray-800"
                   : "text-gray-500 dark:text-gray-400"
@@ -291,8 +292,8 @@ export default function StatisticsChart() {
         </div>
       </div>
 
-      <div className="max-w-full overflow-x-auto custom-scrollbar">
-        <div className="min-w-[1000px] xl:min-w-full">
+      <div className="table-container custom-scrollbar">
+        <div className="min-w-[800px] sm:min-w-[1000px] xl:min-w-full">
           <Chart options={options} series={series} type="area" height={310} />
         </div>
       </div>

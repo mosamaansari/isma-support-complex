@@ -273,11 +273,20 @@ layer(base);
   }
 
   &::-webkit-scrollbar-thumb {
-    @apply bg-gray-200 rounded-full dark:bg-gray-700;
+    @apply bg-gray-200 rounded-full;
   }
 }
+
 .dark .custom-scrollbar::-webkit-scrollbar-thumb {
   background-color: #344054;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  @apply bg-gray-100 dark:bg-gray-800 rounded;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  @apply bg-gray-400 dark:bg-gray-500;
 }
 
 @layer utilities {
@@ -288,6 +297,110 @@ layer(base);
   input[type="time"]::-webkit-calendar-picker-indicator {
     display: none;
     -webkit-appearance: none;
+  }
+
+  /* Responsive Font Sizes */
+  .text-responsive-xs {
+    font-size: clamp(0.625rem, 0.5rem + 0.5vw, 0.75rem);
+    line-height: 1.5;
+  }
+
+  .text-responsive-sm {
+    font-size: clamp(0.75rem, 0.625rem + 0.5vw, 0.875rem);
+    line-height: 1.5;
+  }
+
+  .text-responsive-base {
+    font-size: clamp(0.875rem, 0.75rem + 0.5vw, 1rem);
+    line-height: 1.5;
+  }
+
+  .text-responsive-lg {
+    font-size: clamp(1rem, 0.875rem + 0.5vw, 1.125rem);
+    line-height: 1.5;
+  }
+
+  .text-responsive-xl {
+    font-size: clamp(1.125rem, 1rem + 0.5vw, 1.25rem);
+    line-height: 1.5;
+  }
+
+  .text-responsive-2xl {
+    font-size: clamp(1.25rem, 1.125rem + 0.5vw, 1.5rem);
+    line-height: 1.4;
+  }
+
+  .text-responsive-3xl {
+    font-size: clamp(1.5rem, 1.25rem + 1vw, 2rem);
+    line-height: 1.3;
+  }
+
+  /* Responsive Table Container */
+  .table-container {
+    @apply overflow-x-auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+
+  .table-container::-webkit-scrollbar {
+    height: 8px;
+  }
+
+  .table-container::-webkit-scrollbar-track {
+    @apply bg-gray-100 dark:bg-gray-800 rounded;
+  }
+
+  .table-container::-webkit-scrollbar-thumb {
+    @apply bg-gray-300 dark:bg-gray-600 rounded;
+  }
+
+  .table-container::-webkit-scrollbar-thumb:hover {
+    @apply bg-gray-400 dark:bg-gray-500;
+  }
+
+  /* Responsive Table */
+  .responsive-table {
+    @apply w-full;
+    min-width: 100%;
+  }
+
+  @media (max-width: 640px) {
+    .responsive-table {
+      min-width: 600px;
+    }
+  }
+
+  @media (min-width: 641px) and (max-width: 768px) {
+    .responsive-table {
+      min-width: 700px;
+    }
+  }
+
+  @media (min-width: 769px) {
+    .responsive-table {
+      min-width: 100%;
+    }
+  }
+
+  /* Responsive Price Display */
+  .price-responsive {
+    @apply whitespace-nowrap;
+    font-size: clamp(0.875rem, 0.75rem + 0.5vw, 1rem);
+  }
+
+  /* Responsive Padding */
+  .p-responsive {
+    padding: clamp(0.5rem, 0.25rem + 1vw, 1rem);
+  }
+
+  .px-responsive {
+    padding-left: clamp(0.5rem, 0.25rem + 1vw, 1rem);
+    padding-right: clamp(0.5rem, 0.25rem + 1vw, 1rem);
+  }
+
+  .py-responsive {
+    padding-top: clamp(0.5rem, 0.25rem + 1vw, 1rem);
+    padding-bottom: clamp(0.5rem, 0.25rem + 1vw, 1rem);
   }
 }
 

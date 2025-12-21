@@ -137,7 +137,10 @@ export default function PurchaseEntry() {
   // Filter products based on search term - compute directly instead of using useEffect
   const filteredProducts = searchTerm
     ? (products || []).filter((p) =>
-        p && p.name && p.name.toLowerCase().includes(searchTerm.toLowerCase())
+        p && p.name && (
+          p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          (p.brand && p.brand.toLowerCase().includes(searchTerm.toLowerCase()))
+        )
       )
     : (products || []);
 
@@ -501,7 +504,7 @@ export default function PurchaseEntry() {
             <Input
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search products..."
+              placeholder="Search products by name or brand..."
             />
             {filteredProducts.length > 0 && (
               <div className="mt-2 border border-gray-200 rounded-lg dark:border-gray-700 max-h-60 overflow-y-auto">
@@ -517,7 +520,7 @@ export default function PurchaseEntry() {
                           {product.name}
                         </p>
                         <p className="text-sm text-gray-500 dark:text-gray-400">
-                          Current Stock: {(product.shopQuantity || 0) + (product.warehouseQuantity || 0)}
+                          {product.brand || "N/A"} - Stock: {(product.shopQuantity || 0) + (product.warehouseQuantity || 0)}
                         </p>
                       </div>
                       <p className="font-semibold text-brand-600 dark:text-brand-400">

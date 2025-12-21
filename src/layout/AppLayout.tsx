@@ -210,8 +210,8 @@ const LayoutContent: React.FC = () => {
 
   return (
     <>
-      <div className={`min-h-screen xl:flex ${showConfirmationModal ? "pointer-events-none opacity-50" : ""}`}>
-        <div>
+      <div className={`min-h-screen flex flex-col lg:flex-row ${showConfirmationModal ? "pointer-events-none opacity-50" : ""}`}>
+        <div className="flex-shrink-0">
           <AppSidebar />
           <Backdrop />
         </div>
@@ -221,7 +221,7 @@ const LayoutContent: React.FC = () => {
           } ${isMobileOpen ? "ml-0" : ""}`}
         >
           <AppHeader />
-          <div className="p-4 mx-auto max-w-(--breakpoint-2xl) md:p-6">
+          <div className="p-2 sm:p-4 md:p-6 mx-auto max-w-full xl:max-w-[1536px] 2xl:max-w-[1920px]">
             <Outlet />
           </div>
         </div>

@@ -35,7 +35,7 @@ export default function DatePicker({
       defaultDate,
       onChange,
       position: "auto",
-      onReady: (selectedDates, dateStr, instance) => {
+      onReady: (_selectedDates, _dateStr, instance) => {
         // Move calendar to body to avoid overflow clipping
         const calendar = instance.calendarContainer;
         if (calendar && calendar.parentElement !== document.body) {
@@ -45,7 +45,7 @@ export default function DatePicker({
           calendar.style.zIndex = '100000';
         }
       },
-      onOpen: (selectedDates, dateStr, instance) => {
+      onOpen: (_selectedDates, _dateStr, instance) => {
         // Ensure calendar is in body and properly positioned
         const calendar = instance.calendarContainer;
         if (calendar && calendar.parentElement !== document.body) {

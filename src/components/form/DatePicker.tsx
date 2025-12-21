@@ -37,7 +37,7 @@ export default function DatePicker({
   const inputRef = useRef<HTMLInputElement>(null);
   const hiddenInputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [calendarPosition, setCalendarPosition] = useState<{
+  const [_calendarPosition, setCalendarPosition] = useState<{
     top: boolean;
     left: boolean;
     right: boolean;

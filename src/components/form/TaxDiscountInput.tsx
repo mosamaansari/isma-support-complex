@@ -91,7 +91,7 @@ export default function TaxDiscountInput({
           min={min}
           max={effectiveMax}
           step={typeof step === "string" ? parseFloat(step) : step}
-          className="flex-1 rounded-r-none border-r-0"
+          className="flex-1 rounded-r-none border-r-0 min-w-0 max-w-full"
         />
         <div className="flex-shrink-0 -ml-px relative">
           <select

@@ -11,6 +11,7 @@ import api from "../../services/api";
 import { DailyReport, DateRangeReport } from "../../types";
 import { getDateRangeFromType } from "../../utils/dateHelpers";
 import { extractErrorMessage } from "../../utils/errorHandler";
+import { formatPrice, formatPriceWithCurrency } from "../../utils/priceHelpers";
 
 export default function Reports() {
   const { getSalesByDateRange, getExpensesByDateRange, currentUser, bankAccounts } = useData();
@@ -758,13 +759,13 @@ export default function Reports() {
         description="View sales, expenses and profit reports"
       />
       <div className="mb-6" ref={printRef}>
-        <div className="flex items-center justify-between mb-4 no-print">
-          <h1 className="text-2xl font-bold text-gray-800 dark:text-white">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 mb-4 no-print">
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-800 dark:text-white">
             Reports & Analysis
           </h1>
-          <div className="flex gap-2">
-            <Link to="/reports/opening-balance">
-              <Button size="sm" variant="outline">
+          <div className="flex gap-2 w-full sm:w-auto">
+            <Link to="/reports/opening-balance" className="flex-1 sm:flex-none">
+              <Button size="sm" variant="outline" className="w-full sm:w-auto">
               <svg
                     className="w-4 h-4"
                     fill="none"
@@ -779,13 +780,14 @@ export default function Reports() {
                       d="M12 4v16m8-8H4"
                     />
                   </svg>
-                Add Opening Balance
+                <span className="hidden sm:inline">Add Opening Balance</span>
+                <span className="sm:hidden">Add Balance</span>
               </Button>
             </Link>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 mb-6 md:grid-cols-2 no-print">
+        <div className="grid grid-cols-1 gap-4 mb-6 md:grid-cols-3 no-print">
           <div>
             <Label>Report Type</Label>
             <select
@@ -833,33 +835,33 @@ export default function Reports() {
               <>
                 {/* Previous Day Balance Section - Only for daily reports */}
                 {reportType === "daily" && previousDayBalance && (
-                  <div className="mb-6 p-6 bg-gray-50 dark:bg-gray-900/20 rounded-lg border-2 border-gray-200 dark:border-gray-800">
-                    <h2 className="text-lg font-bold text-gray-800 dark:text-white mb-4">
+                  <div className="mb-6 p-4 sm:p-6 bg-gray-50 dark:bg-gray-900/20 rounded-lg border-2 border-gray-200 dark:border-gray-800">
+                    <h2 className="text-base sm:text-lg font-bold text-gray-800 dark:text-white mb-3 sm:mb-4">
                       Previous Day Closing Balance (Opening Balance)
                     </h2>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 border border-blue-200 dark:border-blue-800">
-                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Cash Balance</p>
-                        <p className="text-2xl font-bold text-blue-600">
-                          Rs. {Number(previousDayBalance.cashBalance || 0).toFixed(2)}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                      <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 sm:p-4 border border-blue-200 dark:border-blue-800">
+                        <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mb-1">Cash Balance</p>
+                        <p className="text-lg sm:text-xl lg:text-2xl font-bold text-blue-600 price-responsive">
+                          {formatPriceWithCurrency(Number(previousDayBalance.cashBalance || 0))}
                         </p>
                       </div>
-                      <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4 border border-green-200 dark:border-green-800">
-                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Total Bank Balance</p>
-                        <p className="text-2xl font-bold text-green-600">
-                          Rs. {Number(previousDayBalance.bankBalances?.reduce((sum, b) => sum + Number(b.balance || 0), 0) || 0).toFixed(2)}
+                      <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-3 sm:p-4 border border-green-200 dark:border-green-800">
+                        <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mb-1">Total Bank Balance</p>
+                        <p className="text-lg sm:text-xl lg:text-2xl font-bold text-green-600 price-responsive">
+                          {formatPriceWithCurrency(Number(previousDayBalance.bankBalances?.reduce((sum, b) => sum + Number(b.balance || 0), 0) || 0))}
                         </p>
                       </div>
                     </div>
                     {openingBankBalances.length > 0 && (
                       <div className="mt-4">
                         <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Bank-wise Balances:</p>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                           {openingBankBalances.map((bank) => (
                             <div key={bank.bankAccountId} className="bg-white dark:bg-gray-800 rounded p-2 border border-gray-200 dark:border-gray-700">
                               <p className="text-xs text-gray-500 dark:text-gray-400">{bank.bankName}</p>
                               <p className="text-xs text-gray-400 dark:text-gray-500">{bank.accountNumber}</p>
-                              <p className="text-sm font-bold text-gray-800 dark:text-white">Rs. {Number(bank.balance || 0).toFixed(2)}</p>
+                              <p className="text-xs sm:text-sm font-bold text-gray-800 dark:text-white price-responsive">{formatPriceWithCurrency(Number(bank.balance || 0))}</p>
                             </div>
                           ))}
                         </div>
@@ -870,14 +872,14 @@ export default function Reports() {
 
 
                 {/* Summary Cards */}
-                <div className="grid grid-cols-1 gap-4 mb-6 md:grid-cols-4 no-print">
+                <div className="grid grid-cols-1 gap-3 sm:gap-4 mb-6 sm:grid-cols-2 md:grid-cols-4 no-print">
                   {isUsingBackendData && (
-                    <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                    <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+                      <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
                         Opening Balance
                       </p>
-                      <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                        Rs. {openingBalance.toFixed(2)}
+                      <p className="text-lg sm:text-xl lg:text-2xl font-bold text-blue-600 dark:text-blue-400 price-responsive">
+                        {formatPriceWithCurrency(openingBalance)}
                       </p>
                       {(openingCash > 0 || openingBankTotal > 0) && (
                         <div className="mt-2 text-xs text-gray-500">
@@ -896,52 +898,52 @@ export default function Reports() {
                       )}
                     </div>
                   )}
-                  <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                  <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+                    <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
                       Total Sales
                     </p>
-                    <p className="text-2xl font-bold text-green-600 dark:text-green-400">
-                      Rs. {totalSales.toFixed(2)}
+                    <p className="text-lg sm:text-xl lg:text-2xl font-bold text-green-600 dark:text-green-400 price-responsive">
+                      {formatPriceWithCurrency(totalSales)}
                     </p>
                   </div>
-                  <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                  <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+                    <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
                       Total Purchases
                     </p>
-                    <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
-                      Rs. {totalPurchases.toFixed(2)}
+                    <p className="text-lg sm:text-xl lg:text-2xl font-bold text-orange-600 dark:text-orange-400 price-responsive">
+                      {formatPriceWithCurrency(totalPurchases)}
                     </p>
                   </div>
                   {isUsingBackendData && totalAdditionalBalance > 0 && (
-                    <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                    <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+                      <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
                         Total Additional Balance
                       </p>
-                      <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">
-                        Rs. {totalAdditionalBalance.toFixed(2)}
+                      <p className="text-lg sm:text-xl lg:text-2xl font-bold text-purple-600 dark:text-purple-400 price-responsive">
+                        {formatPriceWithCurrency(totalAdditionalBalance)}
                       </p>
                     </div>
                   )}
-                  <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                  <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+                    <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
                       Total Expenses
                     </p>
-                    <p className="text-2xl font-bold text-red-600 dark:text-red-400">
-                      Rs. {totalExpenses.toFixed(2)}
+                    <p className="text-lg sm:text-xl lg:text-2xl font-bold text-red-600 dark:text-red-400 price-responsive">
+                      {formatPriceWithCurrency(totalExpenses)}
                     </p>
                   </div>
-                  <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                  <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+                    <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
                       {isUsingBackendData ? "Closing Balance" : "Profit/Loss"}
                     </p>
                     <p
-                      className={`text-2xl font-bold ${
+                      className={`text-lg sm:text-xl lg:text-2xl font-bold price-responsive ${
                         (isUsingBackendData ? closingBalance : profit) >= 0
                           ? "text-green-600 dark:text-green-400"
                           : "text-red-600 dark:text-red-400"
                       }`}
                     >
-                      Rs. {(isUsingBackendData ? closingBalance : profit).toFixed(2)}
+                      {formatPriceWithCurrency(isUsingBackendData ? closingBalance : profit)}
                     </p>
                     {isUsingBackendData && (closingCash > 0 || closingBankTotal > 0) ? (
                       <div className="mt-2 text-xs text-gray-500">
@@ -950,11 +952,11 @@ export default function Reports() {
                       </div>
                     ) : null}
                   </div>
-                  <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                  <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+                    <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
                       Total Bills
                     </p>
-                    <p className="text-2xl font-bold text-gray-800 dark:text-white">
+                    <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-800 dark:text-white">
                       {filteredSales.length}
                     </p>
                   </div>
@@ -975,9 +977,9 @@ export default function Reports() {
               <div className="mb-6 bg-white rounded-lg shadow-sm dark:bg-gray-800">
                 <button
                   onClick={() => setIsDateWiseFlowExpanded(!isDateWiseFlowExpanded)}
-                  className="w-full p-6 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors rounded-t-lg"
+                  className="w-full p-4 sm:p-6 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors rounded-t-lg"
                 >
-                  <h2 className="text-xl font-semibold text-gray-800 dark:text-white">
+                  <h2 className="text-lg sm:text-xl font-semibold text-gray-800 dark:text-white">
                     Date-wise Financial Flow Report
                   </h2>
                   <svg
@@ -1001,7 +1003,7 @@ export default function Reports() {
                     isDateWiseFlowExpanded ? "max-h-[600px]" : "max-h-0"
                   }`}
                 >
-                  <div className={`p-6 pt-0 space-y-6 ${isDateWiseFlowExpanded ? "overflow-y-auto h-[600px]" : ""}`}>
+                  <div className={`p-3 sm:p-4 md:p-6 pt-0 space-y-4 sm:space-y-6 ${isDateWiseFlowExpanded ? "overflow-y-auto h-[500px] sm:h-[600px]" : ""}`}>
                   {(reportType === "daily" && dailyReport 
                     ? [dailyReport] 
                     : (dateRangeReport?.dailyReports || [])).map((dailyReportItem: any, idx: number) => {
@@ -1016,144 +1018,150 @@ export default function Reports() {
                     const prevDayBank = prevDayClosing?.banks?.reduce((sum: number, bank: any) => sum + Number(bank.balance || 0), 0) || 0;
                     
                     return (
-                      <div key={reportToUse.date || idx} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-                        <div className="mb-4 pb-3 border-b border-gray-200 dark:border-gray-700">
-                          <h3 className="text-lg font-bold text-gray-800 dark:text-white">
-                            {new Date(reportToUse.date).toLocaleDateString('en-US', { 
-                              weekday: 'long', 
-                              year: 'numeric', 
-                              month: 'long', 
-                              day: 'numeric' 
-                            })}
+                      <div key={reportToUse.date || idx} className="border border-gray-200 dark:border-gray-700 rounded-lg p-3 sm:p-4">
+                        <div className="mb-3 sm:mb-4 pb-2 sm:pb-3 border-b border-gray-200 dark:border-gray-700">
+                          <h3 className="text-base sm:text-lg font-bold text-gray-800 dark:text-white">
+                            <span className="hidden sm:inline">
+                              {new Date(reportToUse.date).toLocaleDateString('en-US', { 
+                                weekday: 'long', 
+                                year: 'numeric', 
+                                month: 'long', 
+                                day: 'numeric' 
+                              })}
+                            </span>
+                            <span className="sm:hidden">
+                              {new Date(reportToUse.date).toLocaleDateString('en-US', { 
+                                month: 'short', 
+                                day: 'numeric',
+                                year: 'numeric'
+                              })}
+                            </span>
                           </h3>
                           {idx > 0 && (
-                            <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+                            <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs sm:text-sm">
                               <div className="bg-blue-50 dark:bg-blue-900/20 rounded p-2">
                                 <span className="text-gray-600 dark:text-gray-400">Previous Day Cash: </span>
-                                <span className="font-semibold text-blue-600">Rs. {prevDayCash.toFixed(2)}</span>
+                                <span className="font-semibold text-blue-600 price-responsive">{formatPriceWithCurrency(prevDayCash)}</span>
                               </div>
                               {prevDayBank > 0 && (
                                 <div className="bg-green-50 dark:bg-green-900/20 rounded p-2">
                                   <span className="text-gray-600 dark:text-gray-400">Previous Day Bank: </span>
-                                  <span className="font-semibold text-green-600">Rs. {prevDayBank.toFixed(2)}</span>
+                                  <span className="font-semibold text-green-600 price-responsive">{formatPriceWithCurrency(prevDayBank)}</span>
                                 </div>
                               )}
                             </div>
                           )}
                         </div>
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-sm">
+                        <div className="table-container">
+                          <table className="responsive-table text-xs sm:text-sm">
                             <thead>
                               <tr className="border-b border-gray-200 dark:border-gray-700">
-                                <th className="p-2 text-left text-xs font-medium text-gray-700 dark:text-gray-300">
+                                <th className="p-2 text-left text-xs font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[150px]">
                                   Description
                                 </th>
-                                <th className="p-2 text-right text-xs font-medium text-gray-700 dark:text-gray-300">
+                                <th className="p-2 text-right text-xs font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
                                   Cash (Rs.)
                                 </th>
-                                <th className="p-2 text-right text-xs font-medium text-gray-700 dark:text-gray-300">
+                                <th className="p-2 text-right text-xs font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
                                   Bank (Rs.)
                                 </th>
-                                <th className="p-2 text-right text-xs font-medium text-gray-700 dark:text-gray-300">
+                                <th className="p-2 text-right text-xs font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
                                   Total (Rs.)
                                 </th>
                               </tr>
                             </thead>
                             <tbody>
                               <tr className="border-b border-gray-100 dark:border-gray-700 bg-blue-50 dark:bg-blue-900/10">
-                                <td className="p-2 font-semibold text-gray-800 dark:text-white">
+                                <td className="p-2 font-semibold text-gray-800 dark:text-white text-xs sm:text-sm">
                                   Opening Balance
                                 </td>
-                                <td className="p-2 text-right font-semibold text-blue-600 dark:text-blue-400">
-                                  {(reportToUse.openingBalance?.cash || 0).toFixed(2)}
+                                <td className="p-2 text-right font-semibold text-blue-600 dark:text-blue-400 price-responsive whitespace-nowrap">
+                                  {formatPrice(reportToUse.openingBalance?.cash || 0)}
                                 </td>
-                                <td className="p-2 text-right font-semibold text-blue-600 dark:text-blue-400">
-                                  {(reportToUse.openingBalance?.banks?.reduce((sum: number, bank: any) => sum + Number(bank.balance || 0), 0) || 0).toFixed(2)}
+                                <td className="p-2 text-right font-semibold text-blue-600 dark:text-blue-400 price-responsive whitespace-nowrap">
+                                  {formatPrice(reportToUse.openingBalance?.banks?.reduce((sum: number, bank: any) => sum + Number(bank.balance || 0), 0) || 0)}
                                 </td>
-                                <td className="p-2 text-right font-semibold text-blue-600 dark:text-blue-400">
-                                  {(reportToUse.openingBalance?.total || 0).toFixed(2)}
+                                <td className="p-2 text-right font-semibold text-blue-600 dark:text-blue-400 price-responsive whitespace-nowrap">
+                                  {formatPrice(reportToUse.openingBalance?.total || 0)}
                                 </td>
                               </tr>
                               {/* Opening Balance Additions */}
                               {reportToUse.openingBalanceAdditions && reportToUse.openingBalanceAdditions.length > 0 && (
                                 <tr className="border-b border-gray-100 dark:border-gray-700 bg-purple-50 dark:bg-purple-900/10">
-                                  <td className="p-2 font-semibold text-gray-800 dark:text-white">
+                                  <td className="p-2 font-semibold text-gray-800 dark:text-white text-xs sm:text-sm">
                                     Opening Balance Additions
                                   </td>
-                                  <td className="p-2 text-right font-semibold text-purple-600 dark:text-purple-400">
-                                    {reportToUse.openingBalanceAdditions
+                                  <td className="p-2 text-right font-semibold text-purple-600 dark:text-purple-400 price-responsive whitespace-nowrap">
+                                    {formatPrice(reportToUse.openingBalanceAdditions
                                       .filter((add: any) => add.paymentType === "cash")
-                                      .reduce((sum: number, add: any) => sum + Number(add.amount || 0), 0)
-                                      .toFixed(2)}
+                                      .reduce((sum: number, add: any) => sum + Number(add.amount || 0), 0))}
                                   </td>
-                                  <td className="p-2 text-right font-semibold text-purple-600 dark:text-purple-400">
-                                    {reportToUse.openingBalanceAdditions
+                                  <td className="p-2 text-right font-semibold text-purple-600 dark:text-purple-400 price-responsive whitespace-nowrap">
+                                    {formatPrice(reportToUse.openingBalanceAdditions
                                       .filter((add: any) => add.paymentType !== "cash")
-                                      .reduce((sum: number, add: any) => sum + Number(add.amount || 0), 0)
-                                      .toFixed(2)}
+                                      .reduce((sum: number, add: any) => sum + Number(add.amount || 0), 0))}
                                   </td>
-                                  <td className="p-2 text-right font-semibold text-purple-600 dark:text-purple-400">
-                                    {reportToUse.openingBalanceAdditions
-                                      .reduce((sum: number, add: any) => sum + Number(add.amount || 0), 0)
-                                      .toFixed(2)}
+                                  <td className="p-2 text-right font-semibold text-purple-600 dark:text-purple-400 price-responsive whitespace-nowrap">
+                                    {formatPrice(reportToUse.openingBalanceAdditions
+                                      .reduce((sum: number, add: any) => sum + Number(add.amount || 0), 0))}
                                   </td>
                                 </tr>
                               )}
                               <tr className="border-b border-gray-100 dark:border-gray-700 bg-green-50 dark:bg-green-900/10">
-                                <td className="p-2 font-semibold text-gray-800 dark:text-white">
+                                <td className="p-2 font-semibold text-gray-800 dark:text-white text-xs sm:text-sm">
                                   Sales
                                 </td>
-                                <td className="p-2 text-right font-semibold text-green-600 dark:text-green-400">
-                                  {(reportToUse.sales?.cash || 0).toFixed(2)}
+                                <td className="p-2 text-right font-semibold text-green-600 dark:text-green-400 price-responsive whitespace-nowrap">
+                                  {formatPrice(reportToUse.sales?.cash || 0)}
                                 </td>
-                                <td className="p-2 text-right font-semibold text-green-600 dark:text-green-400">
-                                  {(reportToUse.sales?.bank_transfer || 0).toFixed(2)}
+                                <td className="p-2 text-right font-semibold text-green-600 dark:text-green-400 price-responsive whitespace-nowrap">
+                                  {formatPrice(reportToUse.sales?.bank_transfer || 0)}
                                 </td>
-                                <td className="p-2 text-right font-semibold text-green-600 dark:text-green-400">
-                                  {(reportToUse.sales?.total || 0).toFixed(2)}
+                                <td className="p-2 text-right font-semibold text-green-600 dark:text-green-400 price-responsive whitespace-nowrap">
+                                  {formatPrice(reportToUse.sales?.total || 0)}
                                 </td>
                               </tr>
                               <tr className="border-b border-gray-100 dark:border-gray-700 bg-orange-50 dark:bg-orange-900/10">
-                                <td className="p-2 font-semibold text-gray-800 dark:text-white">
+                                <td className="p-2 font-semibold text-gray-800 dark:text-white text-xs sm:text-sm">
                                   Purchases
                                 </td>
-                                <td className="p-2 text-right font-semibold text-orange-600 dark:text-orange-400">
-                                  -{(reportToUse.purchases?.cash || 0).toFixed(2)}
+                                <td className="p-2 text-right font-semibold text-orange-600 dark:text-orange-400 price-responsive whitespace-nowrap">
+                                  -{formatPrice(reportToUse.purchases?.cash || 0)}
                                 </td>
-                                <td className="p-2 text-right font-semibold text-orange-600 dark:text-orange-400">
-                                  -{(reportToUse.purchases?.bank_transfer || 0).toFixed(2)}
+                                <td className="p-2 text-right font-semibold text-orange-600 dark:text-orange-400 price-responsive whitespace-nowrap">
+                                  -{formatPrice(reportToUse.purchases?.bank_transfer || 0)}
                                 </td>
-                                <td className="p-2 text-right font-semibold text-orange-600 dark:text-orange-400">
-                                  -{(reportToUse.purchases?.total || 0).toFixed(2)}
+                                <td className="p-2 text-right font-semibold text-orange-600 dark:text-orange-400 price-responsive whitespace-nowrap">
+                                  -{formatPrice(reportToUse.purchases?.total || 0)}
                                 </td>
                               </tr>
                               <tr className="border-b border-gray-100 dark:border-gray-700 bg-red-50 dark:bg-red-900/10">
-                                <td className="p-2 font-semibold text-gray-800 dark:text-white">
+                                <td className="p-2 font-semibold text-gray-800 dark:text-white text-xs sm:text-sm">
                                   Expenses
                                 </td>
-                                <td className="p-2 text-right font-semibold text-red-600 dark:text-red-400">
-                                  -{(reportToUse.expenses?.cash || 0).toFixed(2)}
+                                <td className="p-2 text-right font-semibold text-red-600 dark:text-red-400 price-responsive whitespace-nowrap">
+                                  -{formatPrice(reportToUse.expenses?.cash || 0)}
                                 </td>
-                                <td className="p-2 text-right font-semibold text-red-600 dark:text-red-400">
-                                  -{(reportToUse.expenses?.bank_transfer || 0).toFixed(2)}
+                                <td className="p-2 text-right font-semibold text-red-600 dark:text-red-400 price-responsive whitespace-nowrap">
+                                  -{formatPrice(reportToUse.expenses?.bank_transfer || 0)}
                                 </td>
-                                <td className="p-2 text-right font-semibold text-red-600 dark:text-red-400">
-                                  -{(reportToUse.expenses?.total || 0).toFixed(2)}
+                                <td className="p-2 text-right font-semibold text-red-600 dark:text-red-400 price-responsive whitespace-nowrap">
+                                  -{formatPrice(reportToUse.expenses?.total || 0)}
                                 </td>
                               </tr>
                               <tr className="bg-gray-50 dark:bg-gray-900/20">
-                                <td className="p-2 font-bold text-gray-800 dark:text-white">
+                                <td className="p-2 font-bold text-gray-800 dark:text-white text-xs sm:text-sm">
                                   Closing Balance
                                 </td>
-                                <td className="p-2 text-right font-bold text-green-600 dark:text-green-400">
-                                  {(reportToUse.closingBalance?.cash || 0).toFixed(2)}
+                                <td className="p-2 text-right font-bold text-green-600 dark:text-green-400 price-responsive whitespace-nowrap">
+                                  {formatPrice(reportToUse.closingBalance?.cash || 0)}
                                 </td>
-                                <td className="p-2 text-right font-bold text-green-600 dark:text-green-400">
-                                  {(reportToUse.closingBalance?.banks?.reduce((sum: number, bank: any) => sum + Number(bank.balance || 0), 0) || 
-                                    reportToUse.closingBalance?.cards?.reduce((sum: number, card: any) => sum + (card.balance || 0), 0) || 0).toFixed(2)}
+                                <td className="p-2 text-right font-bold text-green-600 dark:text-green-400 price-responsive whitespace-nowrap">
+                                  {formatPrice(reportToUse.closingBalance?.banks?.reduce((sum: number, bank: any) => sum + Number(bank.balance || 0), 0) || 
+                                    reportToUse.closingBalance?.cards?.reduce((sum: number, card: any) => sum + (card.balance || 0), 0) || 0)}
                                 </td>
-                                <td className="p-2 text-right font-bold text-green-600 dark:text-green-400">
-                                  {(reportToUse.closingBalance?.total || 0).toFixed(2)}
+                                <td className="p-2 text-right font-bold text-green-600 dark:text-green-400 price-responsive whitespace-nowrap">
+                                  {formatPrice(reportToUse.closingBalance?.total || 0)}
                                 </td>
                               </tr>
                             </tbody>
@@ -1169,24 +1177,24 @@ export default function Reports() {
 
             {/* Purchases Report Table - Full Width */}
             {filteredPurchases.length > 0 ? (
-              <div className="mb-6 p-6 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-                <h2 className="mb-4 text-xl font-semibold text-gray-800 dark:text-white">
+              <div className="mb-6 p-3 sm:p-4 md:p-6 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+                <h2 className="mb-4 text-lg sm:text-xl font-semibold text-gray-800 dark:text-white">
                   Purchases Report
                 </h2>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
+                <div className="table-container">
+                  <table className="responsive-table">
                     <thead>
                       <tr className="border-b border-gray-200 dark:border-gray-700">
-                        <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                        <th className="p-2 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[120px]">
                           Date
                         </th>
-                        <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                        <th className="p-2 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[150px]">
                           Supplier
                         </th>
-                        <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                        <th className="p-2 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[200px]">
                           Items
                         </th>
-                        <th className="p-2 text-right text-sm font-medium text-gray-700 dark:text-gray-300">
+                        <th className="p-2 text-right text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
                           Amount
                         </th>
                       </tr>
@@ -1244,7 +1252,7 @@ export default function Reports() {
                               </div>
                             </td>
                             <td className="p-2 text-right font-semibold text-gray-800 dark:text-white whitespace-nowrap">
-                              <div>Rs. {Number(displayAmount || 0).toFixed(2)}</div>
+                              <div className="price-responsive">Rs. {Number(displayAmount || 0).toFixed(2)}</div>
                               <div className="text-xs text-gray-500 mt-1">
                                 {paymentType.toUpperCase()}
                               </div>
@@ -1275,26 +1283,26 @@ export default function Reports() {
               </div>
             )}
 
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
               {/* Sales Report Table - Left Side */}
-              <div className="p-6 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-                <h2 className="mb-4 text-xl font-semibold text-gray-800 dark:text-white">
+              <div className="p-3 sm:p-4 md:p-6 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+                <h2 className="mb-4 text-lg sm:text-xl font-semibold text-gray-800 dark:text-white">
                   Sales Report
                 </h2>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
+                <div className="table-container">
+                  <table className="responsive-table">
                     <thead>
                       <tr className="border-b border-gray-200 dark:border-gray-700">
-                        <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                        <th className="p-2 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
                           Bill #
                         </th>
-                        <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                        <th className="p-2 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[120px]">
                           Date
                         </th>
-                        <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                        <th className="p-2 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[150px]">
                           Customer
                         </th>
-                        <th className="p-2 text-right text-sm font-medium text-gray-700 dark:text-gray-300">
+                        <th className="p-2 text-right text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
                           Amount
                         </th>
                       </tr>
@@ -1405,24 +1413,24 @@ export default function Reports() {
               </div>
 
               {/* Expenses Report Table - Right Side */}
-              <div className="p-6 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-                <h2 className="mb-4 text-xl font-semibold text-gray-800 dark:text-white">
+              <div className="p-3 sm:p-4 md:p-6 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+                <h2 className="mb-4 text-lg sm:text-xl font-semibold text-gray-800 dark:text-white">
                   Expenses Report
                 </h2>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
+                <div className="table-container">
+                  <table className="responsive-table">
                     <thead>
                       <tr className="border-b border-gray-200 dark:border-gray-700">
-                        <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                        <th className="p-2 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
                           Date
                         </th>
-                        <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                        <th className="p-2 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
                           Category
                         </th>
-                        <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                        <th className="p-2 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[200px]">
                           Description
                         </th>
-                        <th className="p-2 text-right text-sm font-medium text-gray-700 dark:text-gray-300">
+                        <th className="p-2 text-right text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
                           Amount
                         </th>
                       </tr>
@@ -1459,7 +1467,7 @@ export default function Reports() {
                                   {expense.description || ""}
                                 </div>
                               </td>
-                              <td className="p-2 text-right font-semibold text-gray-800 dark:text-white whitespace-nowrap">
+                              <td className="p-2 text-right font-semibold text-gray-800 dark:text-white whitespace-nowrap price-responsive">
                                 Rs. {Number(expense.amount || 0).toFixed(2)}
                               </td>
                             </tr>

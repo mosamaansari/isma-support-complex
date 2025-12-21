@@ -51,7 +51,7 @@ export const Modal: React.FC<ModalProps> = ({
 
   const contentClasses = isFullscreen
     ? "w-full h-full"
-    : "relative w-full max-w-lg rounded-2xl bg-white dark:bg-gray-900";
+    : "relative w-full max-w-[95vw] sm:max-w-md md:max-w-lg lg:max-w-2xl xl:max-w-3xl rounded-lg sm:rounded-2xl bg-white dark:bg-gray-900 m-2 sm:m-4";
 
   return (
     <>
@@ -61,7 +61,7 @@ export const Modal: React.FC<ModalProps> = ({
           onClick={onClose}
         ></div>
       )}
-      <div className="fixed inset-0 flex items-center justify-center overflow-y-auto py-8 z-[99999] pointer-events-none bg-black/30">
+      <div className="fixed inset-0 flex items-center justify-center overflow-y-auto py-2 sm:py-4 md:py-8 z-[99999] pointer-events-none bg-black/30">
         <div
           ref={modalRef}
           className={`${contentClasses} pointer-events-auto ${className}`}

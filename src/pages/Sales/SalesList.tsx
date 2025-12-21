@@ -17,6 +17,7 @@ import { FaEye, FaCreditCard, FaListAlt } from "react-icons/fa";
 import { SalePayment } from "../../types";
 import { extractErrorMessage } from "../../utils/errorHandler";
 import { getTodayDate } from "../../utils/dateHelpers";
+import { formatPriceWithCurrency } from "../../utils/priceHelpers";
 
 export default function SalesList() {
   const { sales, salesPagination, cancelSale, addPaymentToSale, currentUser, bankAccounts, refreshSales, loading } = useData();
@@ -196,55 +197,55 @@ export default function SalesList() {
         description="View all sales and bills"
       />
       <div className="mb-6">
-        <div className="flex items-center justify-between mb-4">
-          <h1 className="text-2xl font-bold text-gray-800 dark:text-white">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 mb-4">
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-800 dark:text-white">
             Sales List
           </h1>
-          <Link to="/sales/entry">
-            <Button size="sm">New Sale</Button>
+          <Link to="/sales/entry" className="w-full sm:w-auto">
+            <Button size="sm" className="w-full sm:w-auto">New Sale</Button>
           </Link>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 mb-6 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-            <p className="text-sm text-gray-600 dark:text-gray-400">Total Sales</p>
-            <p className="text-2xl font-bold text-gray-800 dark:text-white">
-              Rs. {totalSales.toFixed(2)}
+        <div className="grid grid-cols-1 gap-3 sm:gap-4 mb-6 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+            <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Total Sales</p>
+            <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-800 dark:text-white price-responsive">
+              {formatPriceWithCurrency(totalSales)}
             </p>
           </div>
-          <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-            <p className="text-sm text-gray-600 dark:text-gray-400">Total Paid</p>
-            <p className="text-2xl font-bold text-green-600 dark:text-green-400">
-              Rs. {totalPaid.toFixed(2)}
+          <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+            <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Total Paid</p>
+            <p className="text-lg sm:text-xl lg:text-2xl font-bold text-green-600 dark:text-green-400 price-responsive">
+              {formatPriceWithCurrency(totalPaid)}
             </p>
           </div>
-          <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-            <p className="text-sm text-gray-600 dark:text-gray-400">Total Remaining</p>
-            <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
-              Rs. {totalRemaining.toFixed(2)}
+          <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+            <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Total Remaining</p>
+            <p className="text-lg sm:text-xl lg:text-2xl font-bold text-orange-600 dark:text-orange-400 price-responsive">
+              {formatPriceWithCurrency(totalRemaining)}
             </p>
           </div>
-          <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-            <p className="text-sm text-gray-600 dark:text-gray-400">Completed Sales</p>
-            <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-              Rs. {completedSales.toFixed(2)}
+          <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+            <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Completed Sales</p>
+            <p className="text-lg sm:text-xl lg:text-2xl font-bold text-blue-600 dark:text-blue-400 price-responsive">
+              {formatPriceWithCurrency(completedSales)}
             </p>
           </div>
-          <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-            <p className="text-sm text-gray-600 dark:text-gray-400">Total Bills</p>
-            <p className="text-2xl font-bold text-gray-800 dark:text-white">
+          <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+            <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Total Bills</p>
+            <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-800 dark:text-white">
               {filteredSales.length}
             </p>
           </div>
-          <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-            <p className="text-sm text-gray-600 dark:text-gray-400">Completed</p>
-            <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+          <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+            <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Completed</p>
+            <p className="text-lg sm:text-xl lg:text-2xl font-bold text-green-600 dark:text-green-400">
               {filteredSales.filter((s) => s && s.status === "completed").length}
             </p>
           </div>
-          <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-            <p className="text-sm text-gray-600 dark:text-gray-400">Pending</p>
-            <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+          <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+            <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Pending</p>
+            <p className="text-lg sm:text-xl lg:text-2xl font-bold text-orange-600 dark:text-orange-400">
               {filteredSales.filter((s) => s && s.status === "pending").length}
             </p>
           </div>
@@ -287,35 +288,35 @@ export default function SalesList() {
       )}
 
       {!loading && sales && sales.length > 0 && (
-      <div className="overflow-x-auto bg-white rounded-lg shadow-sm dark:bg-gray-800">
-        <table className="w-full min-w-[800px]">
+      <div className="table-container bg-white rounded-lg shadow-sm dark:bg-gray-800">
+        <table className="responsive-table">
           <thead>
             <tr className="border-b border-gray-200 dark:border-gray-700">
-              <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+              <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
                 Bill Number
               </th>
-              <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+              <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[120px]">
                 Date
               </th>
-              <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+              <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[150px]">
                 Customer
               </th>
-              <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+              <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[80px]">
                 Items
               </th>
-              <th className="p-4 text-right text-sm font-medium text-gray-700 dark:text-gray-300">
+              <th className="p-2 sm:p-3 md:p-4 text-right text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
                 Total
               </th>
-              <th className="p-4 text-right text-sm font-medium text-gray-700 dark:text-gray-300">
+              <th className="p-2 sm:p-3 md:p-4 text-right text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
                 Paid
               </th>
-              <th className="p-4 text-right text-sm font-medium text-gray-700 dark:text-gray-300">
+              <th className="p-2 sm:p-3 md:p-4 text-right text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[110px]">
                 Remaining
               </th>
-              <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+              <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[90px]">
                 Status
               </th>
-              <th className="p-4 text-center text-sm font-medium text-gray-700 dark:text-gray-300">
+              <th className="p-2 sm:p-3 md:p-4 text-center text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[140px]">
                 Actions
               </th>
             </tr>
@@ -323,7 +324,7 @@ export default function SalesList() {
           <tbody>
             {filteredSales.length === 0 ? (
               <tr>
-                <td colSpan={9} className="p-8 text-center text-gray-500">
+                <td colSpan={9} className="p-4 sm:p-6 md:p-8 text-center text-gray-500 text-sm sm:text-base">
                   No sales found
                 </td>
               </tr>
@@ -341,36 +342,44 @@ export default function SalesList() {
                     key={sale.id}
                     className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50"
                   >
-                    <td className="p-4 font-medium text-gray-800 dark:text-white whitespace-nowrap">
+                    <td className="p-2 sm:p-3 md:p-4 font-medium text-gray-800 dark:text-white whitespace-nowrap text-xs sm:text-sm">
                       {sale.billNumber}
                     </td>
-                    <td className="p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                      {new Date(sale.date || sale.createdAt).toLocaleString('en-US', { 
-                        year: 'numeric', 
-                        month: 'short', 
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })}
+                    <td className="p-2 sm:p-3 md:p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap text-xs sm:text-sm">
+                      <span className="hidden sm:inline">
+                        {new Date(sale.date || sale.createdAt).toLocaleString('en-US', { 
+                          year: 'numeric', 
+                          month: 'short', 
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </span>
+                      <span className="sm:hidden">
+                        {new Date(sale.date || sale.createdAt).toLocaleDateString('en-US', { 
+                          month: 'short', 
+                          day: 'numeric'
+                        })}
+                      </span>
                     </td>
-                    <td className="p-4 text-gray-700 dark:text-gray-300 max-w-[200px]">
-                      <div className="line-clamp-3">
-                        <div className="font-medium">{sale.customerName || "Walk-in"}</div>
+                    <td className="p-2 sm:p-3 md:p-4 text-gray-700 dark:text-gray-300 max-w-[150px] sm:max-w-[200px]">
+                      <div className="line-clamp-2 sm:line-clamp-3">
+                        <div className="font-medium text-xs sm:text-sm">{sale.customerName || "Walk-in"}</div>
                         {sale.customerPhone && sale.customerPhone !== "0000000000" && sale.customerPhone.trim() !== "" && (
                           <div className="text-xs text-gray-500 mt-1">{sale.customerPhone}</div>
                         )}
                       </div>
                     </td>
-                    <td className="p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                    <td className="p-2 sm:p-3 md:p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap text-xs sm:text-sm">
                       {(sale.items || []).length} item(s)
                     </td>
-                    <td className="p-4 text-right font-semibold text-gray-800 dark:text-white whitespace-nowrap">
+                    <td className="p-2 sm:p-3 md:p-4 text-right font-semibold text-gray-800 dark:text-white whitespace-nowrap price-responsive">
                       Rs. {(sale.total || 0).toFixed(2)}
                     </td>
-                    <td className="p-4 text-right text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                    <td className="p-2 sm:p-3 md:p-4 text-right text-gray-700 dark:text-gray-300 whitespace-nowrap price-responsive">
                       Rs. {totalPaid.toFixed(2)}
                     </td>
-                    <td className="p-4 text-right font-semibold text-gray-800 dark:text-white whitespace-nowrap">
+                    <td className="p-2 sm:p-3 md:p-4 text-right font-semibold text-gray-800 dark:text-white whitespace-nowrap price-responsive">
                       {remainingBalance > 0 ? (
                         <span className="text-orange-600 dark:text-orange-400">
                           Rs. {remainingBalance.toFixed(2)}
@@ -379,9 +388,9 @@ export default function SalesList() {
                         <span className="text-green-600 dark:text-green-400">Rs. 0.00</span>
                       )}
                     </td>
-                    <td className="p-4 whitespace-nowrap">
+                    <td className="p-2 sm:p-3 md:p-4 whitespace-nowrap">
                       <span
-                        className={`px-2 py-1 text-xs font-medium rounded ${
+                        className={`px-1.5 sm:px-2 py-0.5 sm:py-1 text-xs font-medium rounded ${
                           sale.status === "completed"
                             ? "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400"
                             : sale.status === "pending"
@@ -392,25 +401,25 @@ export default function SalesList() {
                         {sale.status || "completed"}
                       </span>
                     </td>
-                    <td className="p-4">
-                      <div className="flex items-center justify-center gap-2 flex-nowrap whitespace-nowrap">
+                    <td className="p-2 sm:p-3 md:p-4">
+                      <div className="flex items-center justify-center gap-1 sm:gap-2 flex-nowrap whitespace-nowrap">
                         {/* View Bill Button */}
                         <Link to={`/sales/bill/${sale.billNumber}`}>
                         <button 
-                            className="p-2 text-gray-600 hover:bg-gray-50 rounded dark:hover:bg-gray-900/20 border border-gray-300 dark:border-gray-600"
+                            className="p-1.5 sm:p-2 text-gray-600 hover:bg-gray-50 rounded dark:hover:bg-gray-900/20 border border-gray-300 dark:border-gray-600 flex-shrink-0"
                             title="View Bill"
                           >
-                            <FaEye className="w-4 h-4 text-blue-500" />
+                            <FaEye className="w-3 h-3 sm:w-4 sm:h-4 text-blue-500" />
                           </button>
                         </Link>
                         {/* View Payments Button */}
                         {sale.payments && sale.payments.length > 0 && (
                           <button
                             onClick={() => handleViewPayments(sale)}
-                            className="p-2 text-indigo-500 hover:bg-indigo-50 rounded dark:hover:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 flex-shrink-0"
+                            className="p-1.5 sm:p-2 text-indigo-500 hover:bg-indigo-50 rounded dark:hover:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 flex-shrink-0"
                             title="View Payments"
                           >
-                            <FaListAlt className="w-4 h-4" />
+                            <FaListAlt className="w-3 h-3 sm:w-4 sm:h-4" />
                           </button>
                         )}
 
@@ -418,10 +427,10 @@ export default function SalesList() {
                         {sale.status === "pending" && remainingBalance > 0 && (
                           <button
                             onClick={() => handleAddPayment(sale)}
-                            className="p-2 text-green-500 hover:bg-green-50 rounded dark:hover:bg-green-900/20 border border-green-200 dark:border-green-800 flex-shrink-0"
+                            className="p-1.5 sm:p-2 text-green-500 hover:bg-green-50 rounded dark:hover:bg-green-900/20 border border-green-200 dark:border-green-800 flex-shrink-0"
                             title="Add Payment"
                           >
-                            <FaCreditCard className="w-4 h-4" />
+                            <FaCreditCard className="w-3 h-3 sm:w-4 sm:h-4" />
                           </button>
                         )}
                         {/* Cancel Sale Button */}
@@ -431,10 +440,10 @@ export default function SalesList() {
                             currentUser?.id === sale.userId) && (
                             <button
                               onClick={() => handleCancelSaleClick(sale.id)}
-                              className="p-2 text-red-600 hover:bg-red-50 rounded dark:hover:bg-red-900/20 border border-red-200 dark:border-red-800 flex-shrink-0"
+                              className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded dark:hover:bg-red-900/20 border border-red-200 dark:border-red-800 flex-shrink-0"
                               title="Cancel Sale"
                             >
-                              <TrashBinIcon className="w-4 h-4" />
+                              <TrashBinIcon className="w-3 h-3 sm:w-4 sm:h-4" />
                             </button>
                           )}
                       </div>
@@ -669,13 +678,13 @@ export default function SalesList() {
       </Modal>
 
       {/* Pagination Controls */}
-      <div className="mt-6 flex flex-col gap-4 bg-white rounded-lg shadow-sm p-4 dark:bg-gray-800">
-        <div className="flex items-center justify-between">
+      <div className="mt-4 sm:mt-6 flex flex-col gap-3 sm:gap-4 bg-white rounded-lg shadow-sm p-3 sm:p-4 dark:bg-gray-800">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0">
           <PageSizeSelector
             pageSize={salesPagination?.pageSize || 10}
             onPageSizeChange={handlePageSizeChange}
           />
-          <span className="text-sm text-gray-600 dark:text-gray-400">
+          <span className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
             Showing {((salesPagination.page - 1) * salesPagination.pageSize) + 1} to{" "}
             {Math.min(salesPagination.page * salesPagination.pageSize, salesPagination.total)} of{" "}
             {salesPagination.total} sales

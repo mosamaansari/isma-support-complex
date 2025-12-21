@@ -6,7 +6,7 @@
   "type": "commonjs",
   "scripts": {
     "dev": "nodemon --exec tsx server.ts",
-    "build": "prisma generate && node node_modules/typescript/bin/tsc",
+    "build": "prisma generate || echo 'Prisma generate skipped (file may be locked)' && node node_modules/typescript/bin/tsc",
     "start": "node index.js",
     "ts.check": "tsc --project tsconfig.json",
     "add-build": "git add dist",

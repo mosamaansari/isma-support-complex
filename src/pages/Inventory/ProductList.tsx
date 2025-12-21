@@ -9,6 +9,7 @@ import Pagination from "../../components/ui/Pagination";
 import PageSizeSelector from "../../components/ui/PageSizeSelector";
 import { Modal } from "../../components/ui/modal";
 import { PencilIcon, TrashBinIcon, AlertIcon } from "../../icons";
+import { formatPriceWithCurrency } from "../../utils/priceHelpers";
 
 export default function ProductList() {
   const {
@@ -52,7 +53,7 @@ export default function ProductList() {
     if (!product || !product.name) return false;
     const matchesSearch =
       product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (product.category && product.category.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (product.brand && product.brand.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (product.brand && product.brand.toLowerCase().includes(searchTerm.toLowerCase()));
     const shopMin = (product as any).shopMinStockLevel ?? product.minStockLevel ?? 0;
     const warehouseMin = (product as any).warehouseMinStockLevel ?? product.minStockLevel ?? 0;
@@ -126,50 +127,50 @@ export default function ProductList() {
         description="Manage products and inventory"
       />
       <div className="mb-6">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-800 dark:text-white">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 mb-4">
+          <div className="flex-1">
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-800 dark:text-white">
               Products & Inventory
             </h1>
             {(lowStockProducts || []).length > 0 && (
               <div className="flex items-center gap-2 mt-2 text-orange-600 dark:text-orange-400">
-                <AlertIcon className="w-5 h-5" />
-                <span className="text-sm">
+                <AlertIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+                <span className="text-xs sm:text-sm">
                   {(lowStockProducts || []).length} product(s) are low in stock
                 </span>
               </div>
             )}
           </div>
-          <Link to="/inventory/product/add">
-            <Button size="sm">Add Product</Button>
+          <Link to="/inventory/product/add" className="w-full sm:w-auto">
+            <Button size="sm" className="w-full sm:w-auto">Add Product</Button>
           </Link>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 mb-6 md:grid-cols-3">
-          <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-            <p className="text-sm text-gray-600 dark:text-gray-400">Total Products</p>
-            <p className="text-2xl font-bold text-gray-800 dark:text-white">
+        <div className="grid grid-cols-1 gap-3 sm:gap-4 mb-6 sm:grid-cols-2 md:grid-cols-3">
+          <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+            <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Total Products</p>
+            <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-800 dark:text-white">
               {(products || []).length}
             </p>
           </div>
-          <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-            <p className="text-sm text-gray-600 dark:text-gray-400">Low Stock</p>
-            <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+          <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+            <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Low Stock</p>
+            <p className="text-lg sm:text-xl lg:text-2xl font-bold text-orange-600 dark:text-orange-400">
               {(lowStockProducts || []).length}
             </p>
           </div>
-          <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-            <p className="text-sm text-gray-600 dark:text-gray-400">Total Stock Value</p>
-            <p className="text-2xl font-bold text-gray-800 dark:text-white">
-              Rs.{" "}
-              {(products || [])
-                .reduce((sum, p) => {
-                  if (!p) return sum;
-                  const totalQuantity = (p.shopQuantity || 0) + (p.warehouseQuantity || 0);
-                  const price = p.salePrice || 0;
-                  return sum + totalQuantity * price;
-                }, 0)
-                .toFixed(2)}
+          <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+            <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Total Stock Value</p>
+            <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-800 dark:text-white price-responsive">
+              {formatPriceWithCurrency(
+                (products || [])
+                  .reduce((sum, p) => {
+                    if (!p) return sum;
+                    const totalQuantity = (p.shopQuantity || 0) + (p.warehouseQuantity || 0);
+                    const price = p.salePrice || 0;
+                    return sum + totalQuantity * price;
+                  }, 0)
+              )}
             </p>
           </div>
         </div>
@@ -178,7 +179,7 @@ export default function ProductList() {
           <Input
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search products by name or category..."
+            placeholder="Search products by name or brand..."
           />
           <label className="flex items-center gap-2 p-2 bg-white rounded-lg shadow-sm cursor-pointer dark:bg-gray-800">
             <input
@@ -194,38 +195,38 @@ export default function ProductList() {
         </div>
       </div>
 
-      <div className="overflow-x-auto bg-white rounded-lg shadow-sm dark:bg-gray-800">
-        <table className="w-full min-w-[1000px]">
+      <div className="table-container bg-white rounded-lg shadow-sm dark:bg-gray-800">
+        <table className="responsive-table">
           <thead>
             <tr className="border-b border-gray-200 dark:border-gray-700">
-                      <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                      <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[80px]">
                         Image
                       </th>
-                      <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                      <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[150px]">
                         Product Name
                       </th>
-                      <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
-                        Category
-                      </th>
-                      <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                      <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
                         Brand
                       </th>
-              <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                      <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
+                        Brand
+                      </th>
+              <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
                 Sale Price
               </th>
-              <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+              <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[110px]">
                 Shop Stock
               </th>
-              <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+              <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[130px]">
                 Warehouse Stock
               </th>
-              <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+              <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
                 Total Stock
               </th>
-              <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+              <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[90px]">
                 Status
               </th>
-              <th className="p-4 text-center text-sm font-medium text-gray-700 dark:text-gray-300">
+              <th className="p-2 sm:p-3 md:p-4 text-center text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
                 Actions
               </th>
             </tr>
@@ -233,7 +234,7 @@ export default function ProductList() {
           <tbody>
             {filteredProducts.length === 0 ? (
               <tr>
-                <td colSpan={10} className="p-8 text-center text-gray-500">
+                <td colSpan={10} className="p-4 sm:p-6 md:p-8 text-center text-gray-500 text-sm sm:text-base">
                   {products.length === 0
                     ? "No products available. Add your first product!"
                     : "No products match your search criteria"}
@@ -252,66 +253,66 @@ export default function ProductList() {
                     key={product.id}
                     className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50"
                   >
-                    <td className="p-4">
+                    <td className="p-2 sm:p-3 md:p-4">
                       {product.image ? (
                         <img
                           src={product.image}
                           alt={product.name}
-                          className="w-12 h-12 object-cover rounded"
+                          className="w-10 h-10 sm:w-12 sm:h-12 object-cover rounded"
                         />
                       ) : (
-                        <div className="w-12 h-12 bg-gray-200 rounded flex items-center justify-center dark:bg-gray-700">
+                        <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gray-200 rounded flex items-center justify-center dark:bg-gray-700">
                           <span className="text-xs text-gray-500">No Image</span>
                         </div>
                       )}
                     </td>
-                    <td className="p-4 font-medium text-gray-800 dark:text-white max-w-[250px]">
-                      <div className="line-clamp-3">{product.name}</div>
+                    <td className="p-2 sm:p-3 md:p-4 font-medium text-gray-800 dark:text-white max-w-[150px] sm:max-w-[250px]">
+                      <div className="line-clamp-2 sm:line-clamp-3 text-xs sm:text-sm">{product.name}</div>
                     </td>
-                    <td className="p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                      {product.category || "-"}
-                    </td>
-                    <td className="p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                    <td className="p-2 sm:p-3 md:p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap text-xs sm:text-sm">
                       {product.brand || "-"}
                     </td>
-                    <td className="p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                    <td className="p-2 sm:p-3 md:p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap text-xs sm:text-sm">
+                      {product.brand || "-"}
+                    </td>
+                    <td className="p-2 sm:p-3 md:p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap price-responsive">
                       Rs. {Number(product.salePrice || 0).toFixed(2)}
                     </td>
-                    <td className="p-4 whitespace-nowrap">
+                    <td className="p-2 sm:p-3 md:p-4 whitespace-nowrap">
                       <span
-                        className={`font-semibold ${shopLow ? "text-orange-600 dark:text-orange-400" : "text-gray-800 dark:text-white"}`}
+                        className={`font-semibold text-xs sm:text-sm ${shopLow ? "text-orange-600 dark:text-orange-400" : "text-gray-800 dark:text-white"}`}
                       >
                         {(product.shopQuantity || 0)}{" "}
                         <span className="text-xs text-gray-500 dark:text-gray-400">(min {shopMin})</span>
                       </span>
                     </td>
-                    <td className="p-4 whitespace-nowrap">
+                    <td className="p-2 sm:p-3 md:p-4 whitespace-nowrap">
                       <span
-                        className={`font-semibold ${warehouseLow ? "text-orange-600 dark:text-orange-400" : "text-gray-800 dark:text-white"}`}
+                        className={`font-semibold text-xs sm:text-sm ${warehouseLow ? "text-orange-600 dark:text-orange-400" : "text-gray-800 dark:text-white"}`}
                       >
                         {(product.warehouseQuantity || 0)}{" "}
                         <span className="text-xs text-gray-500 dark:text-gray-400">(min {warehouseMin})</span>
                       </span>
                     </td>
-                    <td className="p-4 font-semibold text-gray-800 dark:text-white whitespace-nowrap">
+                    <td className="p-2 sm:p-3 md:p-4 font-semibold text-gray-800 dark:text-white whitespace-nowrap text-xs sm:text-sm">
                       {totalQuantity}
                     </td>
-                    <td className="p-4 whitespace-nowrap">
+                    <td className="p-2 sm:p-3 md:p-4 whitespace-nowrap">
                       {isLowStock ? (
-                        <span className="px-2 py-1 text-xs font-medium rounded bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400">
+                        <span className="px-1.5 sm:px-2 py-0.5 sm:py-1 text-xs font-medium rounded bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400">
                           Low Stock
                         </span>
                       ) : (
-                        <span className="px-2 py-1 text-xs font-medium rounded bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400">
+                        <span className="px-1.5 sm:px-2 py-0.5 sm:py-1 text-xs font-medium rounded bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400">
                           In Stock
                         </span>
                       )}
                     </td>
-                    <td className="p-4 whitespace-nowrap">
-                      <div className="flex items-center justify-center gap-2 flex-nowrap">
+                    <td className="p-2 sm:p-3 md:p-4 whitespace-nowrap">
+                      <div className="flex items-center justify-center gap-1 sm:gap-2 flex-nowrap">
                         <Link to={`/inventory/product/edit/${product.id}`}>
-                          <button className="p-2 text-blue-600 hover:bg-blue-50 rounded dark:hover:bg-blue-900/20 flex-shrink-0">
-                            <PencilIcon className="w-4 h-4" />
+                          <button className="p-1.5 sm:p-2 text-blue-600 hover:bg-blue-50 rounded dark:hover:bg-blue-900/20 flex-shrink-0">
+                            <PencilIcon className="w-3 h-3 sm:w-4 sm:h-4" />
                           </button>
                         </Link>
                         {(currentUser?.role === "admin" ||
@@ -320,9 +321,9 @@ export default function ProductList() {
                           <button
                             onClick={() => handleDeleteClick(product.id)}
                             disabled={isDeleting === product.id}
-                            className="p-2 text-red-600 hover:bg-red-50 rounded dark:hover:bg-red-900/20 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+                            className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded dark:hover:bg-red-900/20 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
                           >
-                            <TrashBinIcon className="w-4 h-4" />
+                            <TrashBinIcon className="w-3 h-3 sm:w-4 sm:h-4" />
                           </button>
                         )}
                       </div>
@@ -336,13 +337,13 @@ export default function ProductList() {
       </div>
 
       {/* Pagination Controls */}
-      <div className="mt-6 flex flex-col gap-4 bg-white rounded-lg shadow-sm p-4 dark:bg-gray-800">
-        <div className="flex items-center justify-between">
+      <div className="mt-4 sm:mt-6 flex flex-col gap-3 sm:gap-4 bg-white rounded-lg shadow-sm p-3 sm:p-4 dark:bg-gray-800">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0">
           <PageSizeSelector
             pageSize={productsPagination?.pageSize || 10}
             onPageSizeChange={handlePageSizeChange}
           />
-          <span className="text-sm text-gray-600 dark:text-gray-400">
+          <span className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
             Showing {((productsPagination.page - 1) * productsPagination.pageSize) + 1} to{" "}
             {Math.min(productsPagination.page * productsPagination.pageSize, productsPagination.total)} of{" "}
             {productsPagination.total} products

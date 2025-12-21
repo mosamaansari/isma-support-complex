@@ -5,6 +5,7 @@ import { Dropdown } from "../ui/dropdown/Dropdown";
 import { DropdownItem } from "../ui/dropdown/DropdownItem";
 import { MoreDotIcon } from "../../icons";
 import api from "../../services/api";
+import { formatPriceWithCurrency } from "../../utils/priceHelpers";
 
 type TrendData = {
   categories: string[];
@@ -183,7 +184,7 @@ export default function MonthlySalesChart() {
         show: false,
       },
       y: {
-        formatter: (val: number) => `Rs. ${(val || 0).toLocaleString("en-PK", { minimumFractionDigits: 2 })}`,
+        formatter: (val: number) => formatPriceWithCurrency(val || 0),
       },
     },
   }), [activeCategories]);
@@ -213,10 +214,10 @@ export default function MonthlySalesChart() {
 
   if (loading) {
     return (
-      <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white px-5 pt-5 dark:border-gray-800 dark:bg-white/[0.03] sm:px-6 sm:pt-6">
+      <div className="overflow-hidden rounded-xl sm:rounded-2xl border border-gray-200 bg-white px-3 pt-3 sm:px-4 sm:pt-4 md:px-5 md:pt-5 dark:border-gray-800 dark:bg-white/[0.03] md:px-6 md:pt-6">
         <div className="animate-pulse">
-          <div className="h-6 bg-gray-200 rounded w-32 dark:bg-gray-800 mb-4"></div>
-          <div className="h-[180px] bg-gray-200 rounded dark:bg-gray-800"></div>
+          <div className="h-5 sm:h-6 bg-gray-200 rounded w-32 dark:bg-gray-800 mb-4"></div>
+          <div className="h-[150px] sm:h-[180px] bg-gray-200 rounded dark:bg-gray-800"></div>
         </div>
       </div>
     );
@@ -224,26 +225,26 @@ export default function MonthlySalesChart() {
 
   if (!monthlyData || !activeCategories || activeCategories.length === 0) {
     return (
-      <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white px-5 pt-5 dark:border-gray-800 dark:bg-white/[0.03] sm:px-6 sm:pt-6">
-        <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90 mb-4">
+      <div className="overflow-hidden rounded-xl sm:rounded-2xl border border-gray-200 bg-white px-3 pt-3 sm:px-4 sm:pt-4 md:px-5 md:pt-5 dark:border-gray-800 dark:bg-white/[0.03] md:px-6 md:pt-6">
+        <h3 className="text-base sm:text-lg font-semibold text-gray-800 dark:text-white/90 mb-4">
           Sales vs Expenses vs Purchases
         </h3>
         <div className="py-8 text-center">
-          <p className="text-sm text-gray-500 dark:text-gray-400">Data not found</p>
+          <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Data not found</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white px-5 pt-5 dark:border-gray-800 dark:bg-white/[0.03] sm:px-6 sm:pt-6">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
+    <div className="overflow-hidden rounded-xl sm:rounded-2xl border border-gray-200 bg-white px-3 pt-3 sm:px-4 sm:pt-4 md:px-5 md:pt-5 dark:border-gray-800 dark:bg-white/[0.03] md:px-6 md:pt-6">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0 mb-4">
+        <h3 className="text-base sm:text-lg font-semibold text-gray-800 dark:text-white/90">
           Sales vs Expenses vs Purchases
         </h3>
         <div className="relative inline-block">
           <button className="dropdown-toggle" onClick={toggleDropdown}>
-            <MoreDotIcon className="text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 size-6" />
+            <MoreDotIcon className="text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 size-5 sm:size-6" />
           </button>
           <Dropdown
             isOpen={isOpen}
@@ -281,8 +282,8 @@ export default function MonthlySalesChart() {
         </div>
       </div>
 
-      <div className="max-w-full overflow-x-auto custom-scrollbar">
-        <div className="-ml-5 min-w-[650px] xl:min-w-full pl-2">
+      <div className="table-container custom-scrollbar">
+        <div className="min-w-[600px] sm:min-w-[650px] xl:min-w-full">
           {monthlyData && (
             <Chart options={options} series={series} type="bar" height={220} />
           )}

@@ -174,8 +174,10 @@ export interface DailyReport {
   openingBalance: {
     cash: number;
     cards: Array<{ cardId: string; cardName: string; balance: number }>;
+    banks?: Array<{ bankAccountId: string; bankName: string; accountNumber: string; balance: number }>;
     total: number;
   };
+  openingBalanceAdditions?: Array<{ amount: number; paymentType: string; date: string }>;
   sales: {
     total: number;
     cash: number;
@@ -204,6 +206,7 @@ export interface DailyReport {
   closingBalance: {
     cash: number;
     cards: Array<{ cardId: string; cardName: string; balance: number }>;
+    banks?: Array<{ bankAccountId: string; bankName: string; accountNumber: string; balance: number }>;
     total: number;
   };
 }
@@ -211,6 +214,7 @@ export interface DailyReport {
 export interface DateRangeReport {
   startDate: string;
   endDate: string;
+  openingBalanceAdditions?: Array<{ amount: number; paymentType: string; date: string }>;
   summary: {
     openingBalance: {
       cash: number;

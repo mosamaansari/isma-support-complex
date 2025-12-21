@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { DollarLineIcon, BoxIconLine } from "../../icons";
+import { DollarLineIcon, BoxIconLine, FileIcon } from "../../icons";
 import api from "../../services/api";
+import { formatPriceWithCurrency } from "../../utils/priceHelpers";
 
 interface DashboardStats {
   metrics: {
@@ -56,19 +57,26 @@ export default function EcommerceMetrics() {
 
   if (loading) {
     return (
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:gap-6">
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] md:p-6">
+      <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2 xl:grid-cols-3 md:gap-6">
+        <div className="rounded-xl sm:rounded-2xl border border-gray-200 bg-white p-4 sm:p-5 dark:border-gray-800 dark:bg-white/[0.03] md:p-6">
           <div className="animate-pulse">
-            <div className="h-12 w-12 bg-gray-200 rounded-xl dark:bg-gray-800"></div>
-            <div className="mt-5 h-4 bg-gray-200 rounded w-20 dark:bg-gray-800"></div>
-            <div className="mt-2 h-8 bg-gray-200 rounded w-24 dark:bg-gray-800"></div>
+            <div className="h-10 w-10 sm:h-12 sm:w-12 bg-gray-200 rounded-lg sm:rounded-xl dark:bg-gray-800"></div>
+            <div className="mt-4 sm:mt-5 h-4 bg-gray-200 rounded w-20 dark:bg-gray-800"></div>
+            <div className="mt-1 sm:mt-2 h-6 sm:h-8 bg-gray-200 rounded w-24 dark:bg-gray-800"></div>
           </div>
         </div>
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] md:p-6">
+        <div className="rounded-xl sm:rounded-2xl border border-gray-200 bg-white p-4 sm:p-5 dark:border-gray-800 dark:bg-white/[0.03] md:p-6">
           <div className="animate-pulse">
-            <div className="h-12 w-12 bg-gray-200 rounded-xl dark:bg-gray-800"></div>
-            <div className="mt-5 h-4 bg-gray-200 rounded w-20 dark:bg-gray-800"></div>
-            <div className="mt-2 h-8 bg-gray-200 rounded w-24 dark:bg-gray-800"></div>
+            <div className="h-10 w-10 sm:h-12 sm:w-12 bg-gray-200 rounded-lg sm:rounded-xl dark:bg-gray-800"></div>
+            <div className="mt-4 sm:mt-5 h-4 bg-gray-200 rounded w-20 dark:bg-gray-800"></div>
+            <div className="mt-1 sm:mt-2 h-6 sm:h-8 bg-gray-200 rounded w-24 dark:bg-gray-800"></div>
+          </div>
+        </div>
+        <div className="rounded-xl sm:rounded-2xl border border-gray-200 bg-white p-4 sm:p-5 dark:border-gray-800 dark:bg-white/[0.03] md:p-6">
+          <div className="animate-pulse">
+            <div className="h-10 w-10 sm:h-12 sm:w-12 bg-gray-200 rounded-lg sm:rounded-xl dark:bg-gray-800"></div>
+            <div className="mt-4 sm:mt-5 h-4 bg-gray-200 rounded w-20 dark:bg-gray-800"></div>
+            <div className="mt-1 sm:mt-2 h-6 sm:h-8 bg-gray-200 rounded w-24 dark:bg-gray-800"></div>
           </div>
         </div>
       </div>
@@ -77,9 +85,9 @@ export default function EcommerceMetrics() {
 
   if (!stats) {
     return (
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:gap-6">
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] md:p-6">
-          <p className="text-sm text-gray-500 dark:text-gray-400">No data available</p>
+      <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2 xl:grid-cols-3 md:gap-6">
+        <div className="rounded-xl sm:rounded-2xl border border-gray-200 bg-white p-4 sm:p-5 dark:border-gray-800 dark:bg-white/[0.03] md:p-6">
+          <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">No data available</p>
         </div>
       </div>
     );
@@ -121,25 +129,31 @@ export default function EcommerceMetrics() {
       icon: <BoxIconLine className="text-purple-600 size-6 dark:text-purple-400" />,
       bg: "bg-purple-100 dark:bg-purple-500/10",
     },
+    {
+      title: "Total Expenses",
+      value: safeMetrics.totalExpenses,
+      icon: <FileIcon className="text-red-600 size-6 dark:text-red-400" />,
+      bg: "bg-red-100 dark:bg-red-500/10",
+    },
   ];
 
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 md:gap-6">
+    <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2 xl:grid-cols-3 md:gap-6">
       {cards.map((card, idx) => (
         <div
           key={idx}
-          className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] md:p-6"
+          className="rounded-xl sm:rounded-2xl border border-gray-200 bg-white p-4 sm:p-5 dark:border-gray-800 dark:bg-white/[0.03] md:p-6"
         >
-          <div className={`flex items-center justify-center w-12 h-12 rounded-xl ${card.bg}`}>
+          <div className={`flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl ${card.bg}`}>
             {card.icon}
           </div>
-          <div className="flex items-end justify-between mt-5">
-            <div>
-              <span className="text-sm text-gray-500 dark:text-gray-400">{card.title}</span>
-              <h4 className="mt-2 font-bold text-gray-800 text-title-sm dark:text-white/90">
+          <div className="flex items-end justify-between mt-4 sm:mt-5">
+            <div className="w-full">
+              <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">{card.title}</span>
+              <h4 className="mt-1 sm:mt-2 font-bold text-gray-800 text-base sm:text-lg lg:text-xl dark:text-white/90 price-responsive">
                 {card.suffix
                   ? `${card.value} ${card.suffix}`
-                  : `Rs. ${(card.value || 0).toLocaleString("en-PK", { minimumFractionDigits: 2 })}`}
+                  : formatPriceWithCurrency(card.value || 0)}
               </h4>
             </div>
           </div>

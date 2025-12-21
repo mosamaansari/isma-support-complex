@@ -14,6 +14,7 @@ import { FaEye, FaListAlt, FaCreditCard } from "react-icons/fa";
 import Select from "../../components/form/Select";
 import Label from "../../components/form/Label";
 import { extractErrorMessage, extractValidationErrors } from "../../utils/errorHandler";
+import { formatPriceWithCurrency } from "../../utils/priceHelpers";
 
 export default function PurchaseList() {
   const { purchases, purchasesPagination, refreshPurchases, cards, refreshCards, bankAccounts, refreshBankAccounts, addPaymentToPurchase, loading, error } = useData();
@@ -189,55 +190,55 @@ export default function PurchaseList() {
         description="View and manage purchases"
       />
       <div className="mb-6">
-        <div className="flex items-center justify-between mb-4">
-          <h1 className="text-2xl font-bold text-gray-800 dark:text-white">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 mb-4">
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-800 dark:text-white">
             Purchases
           </h1>
-          <Link to="/inventory/purchase">
-            <Button size="sm">Add Purchase</Button>
+          <Link to="/inventory/purchase" className="w-full sm:w-auto">
+            <Button size="sm" className="w-full sm:w-auto">Add Purchase</Button>
           </Link>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 mb-6 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-            <p className="text-sm text-gray-600 dark:text-gray-400">Total Purchases</p>
-            <p className="text-2xl font-bold text-gray-800 dark:text-white">
-              Rs. {totalPurchases.toFixed(2)}
+        <div className="grid grid-cols-1 gap-3 sm:gap-4 mb-6 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+            <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Total Purchases</p>
+            <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-800 dark:text-white price-responsive">
+              {formatPriceWithCurrency(totalPurchases)}
             </p>
           </div>
-          <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-            <p className="text-sm text-gray-600 dark:text-gray-400">Total Paid</p>
-            <p className="text-2xl font-bold text-green-600 dark:text-green-400">
-              Rs. {totalPaid.toFixed(2)}
+          <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+            <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Total Paid</p>
+            <p className="text-lg sm:text-xl lg:text-2xl font-bold text-green-600 dark:text-green-400 price-responsive">
+              {formatPriceWithCurrency(totalPaid)}
             </p>
           </div>
-          <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-            <p className="text-sm text-gray-600 dark:text-gray-400">Total Remaining</p>
-            <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
-              Rs. {totalRemaining.toFixed(2)}
+          <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+            <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Total Remaining</p>
+            <p className="text-lg sm:text-xl lg:text-2xl font-bold text-orange-600 dark:text-orange-400 price-responsive">
+              {formatPriceWithCurrency(totalRemaining)}
             </p>
           </div>
-          <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-            <p className="text-sm text-gray-600 dark:text-gray-400">Completed Purchases</p>
-            <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-              Rs. {completedPurchases.toFixed(2)}
+          <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+            <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Completed Purchases</p>
+            <p className="text-lg sm:text-xl lg:text-2xl font-bold text-blue-600 dark:text-blue-400 price-responsive">
+              {formatPriceWithCurrency(completedPurchases)}
             </p>
           </div>
-          <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-            <p className="text-sm text-gray-600 dark:text-gray-400">Total Bills</p>
-            <p className="text-2xl font-bold text-gray-800 dark:text-white">
+          <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+            <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Total Bills</p>
+            <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-800 dark:text-white">
               {filteredPurchases.length}
             </p>
           </div>
-          <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-            <p className="text-sm text-gray-600 dark:text-gray-400">Completed</p>
-            <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+          <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+            <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Completed</p>
+            <p className="text-lg sm:text-xl lg:text-2xl font-bold text-green-600 dark:text-green-400">
               {filteredPurchases.filter((p) => p && p.status === "completed").length}
             </p>
           </div>
-          <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-            <p className="text-sm text-gray-600 dark:text-gray-400">Pending</p>
-            <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+          <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+            <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Pending</p>
+            <p className="text-lg sm:text-xl lg:text-2xl font-bold text-orange-600 dark:text-orange-400">
               {filteredPurchases.filter((p) => p && p.status === "pending").length}
             </p>
           </div>
@@ -286,38 +287,38 @@ export default function PurchaseList() {
       )}
 
       {!loading && purchases && purchases.length > 0 && (
-      <div className="overflow-x-auto bg-white rounded-lg shadow-sm dark:bg-gray-800">
-        <table className="w-full min-w-[900px]">
+      <div className="table-container bg-white rounded-lg shadow-sm dark:bg-gray-800">
+        <table className="responsive-table">
           <thead>
             <tr className="border-b border-gray-200 dark:border-gray-700">
-              <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+              <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
                 Date
               </th>
-              <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+              <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[150px]">
                 Supplier
               </th>
-              <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+              <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[80px]">
                 Items
               </th>
-              <th className="p-4 text-right text-sm font-medium text-gray-700 dark:text-gray-300">
+              <th className="p-2 sm:p-3 md:p-4 text-right text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
                 Subtotal
               </th>
-              <th className="p-4 text-right text-sm font-medium text-gray-700 dark:text-gray-300">
+              <th className="p-2 sm:p-3 md:p-4 text-right text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[90px]">
                 Tax
               </th>
-              <th className="p-4 text-right text-sm font-medium text-gray-700 dark:text-gray-300">
+              <th className="p-2 sm:p-3 md:p-4 text-right text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
                 Total
               </th>
-              <th className="p-4 text-right text-sm font-medium text-gray-700 dark:text-gray-300">
+              <th className="p-2 sm:p-3 md:p-4 text-right text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
                 Paid
               </th>
-              <th className="p-4 text-right text-sm font-medium text-gray-700 dark:text-gray-300">
+              <th className="p-2 sm:p-3 md:p-4 text-right text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[110px]">
                 Remaining
               </th>
-              <th className="p-4 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+              <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[90px]">
                 Status
               </th>
-              <th className="p-4 text-center text-sm font-medium text-gray-700 dark:text-gray-300">
+              <th className="p-2 sm:p-3 md:p-4 text-center text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[160px]">
                 Actions
               </th>
             </tr>
@@ -325,7 +326,7 @@ export default function PurchaseList() {
           <tbody>
             {filteredPurchases.length === 0 ? (
               <tr>
-                <td colSpan={10} className="p-8 text-center text-gray-500">
+                <td colSpan={10} className="p-4 sm:p-6 md:p-8 text-center text-gray-500 text-sm sm:text-base">
                   No purchases found
                 </td>
               </tr>
@@ -340,12 +341,13 @@ export default function PurchaseList() {
                     key={purchase.id}
                     className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50"
                   >
-                    <td className="p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                      {new Date(purchase.date).toLocaleDateString()}
+                    <td className="p-2 sm:p-3 md:p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap text-xs sm:text-sm">
+                      <span className="hidden sm:inline">{new Date(purchase.date).toLocaleDateString()}</span>
+                      <span className="sm:hidden">{new Date(purchase.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
                     </td>
-                    <td className="p-4 max-w-[200px]">
-                      <div className="line-clamp-3">
-                        <div className="font-medium text-gray-800 dark:text-white">
+                    <td className="p-2 sm:p-3 md:p-4 max-w-[150px] sm:max-w-[200px]">
+                      <div className="line-clamp-2 sm:line-clamp-3">
+                        <div className="font-medium text-gray-800 dark:text-white text-xs sm:text-sm">
                           {purchase.supplierName}
                         </div>
                         {purchase.supplierPhone && (
@@ -353,20 +355,20 @@ export default function PurchaseList() {
                         )}
                       </div>
                     </td>
-                    <td className="p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                    <td className="p-2 sm:p-3 md:p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap text-xs sm:text-sm">
                       {(purchase.items || []).length} item(s)
                     </td>
-                    <td className="p-4 text-right text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                    <td className="p-2 sm:p-3 md:p-4 text-right text-gray-700 dark:text-gray-300 whitespace-nowrap price-responsive">
                       Rs. {(purchase.subtotal || 0).toFixed(2)}
                     </td>
-                    <td className="p-4 text-right text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                    <td className="p-2 sm:p-3 md:p-4 text-right text-gray-700 dark:text-gray-300 whitespace-nowrap price-responsive">
                       Rs. {(purchase.tax || 0).toFixed(2)}
                     </td>
-                    <td className="p-4 text-right font-semibold text-gray-800 dark:text-white whitespace-nowrap">
+                    <td className="p-2 sm:p-3 md:p-4 text-right font-semibold text-gray-800 dark:text-white whitespace-nowrap price-responsive">
                       Rs. {(purchase.total || 0).toFixed(2)}
                     </td>
-                    <td className="p-4 text-right text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                      <div>
+                    <td className="p-2 sm:p-3 md:p-4 text-right text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                      <div className="price-responsive">
                         <div>Rs. {totalPaid.toFixed(2)}</div>
                         {payments.length > 0 && (
                           <div className="text-xs text-gray-500">
@@ -375,7 +377,7 @@ export default function PurchaseList() {
                         )}
                       </div>
                     </td>
-                    <td className="p-4 text-right font-semibold text-gray-800 dark:text-white whitespace-nowrap">
+                    <td className="p-2 sm:p-3 md:p-4 text-right font-semibold text-gray-800 dark:text-white whitespace-nowrap price-responsive">
                       {(purchase.remainingBalance || 0) > 0 ? (
                         <span className="text-orange-600 dark:text-orange-400">
                           Rs. {(purchase.remainingBalance || 0).toFixed(2)}
@@ -384,9 +386,9 @@ export default function PurchaseList() {
                         <span className="text-green-600 dark:text-green-400">Rs. 0.00</span>
                       )}
                     </td>
-                    <td className="p-4 whitespace-nowrap">
+                    <td className="p-2 sm:p-3 md:p-4 whitespace-nowrap">
                       <span
-                        className={`px-2 py-1 text-xs font-medium rounded ${
+                        className={`px-1.5 sm:px-2 py-0.5 sm:py-1 text-xs font-medium rounded ${
                           purchase.status === "completed"
                             ? "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400"
                             : purchase.status === "pending"
@@ -397,41 +399,41 @@ export default function PurchaseList() {
                         {purchase.status || ((purchase.remainingBalance || 0) > 0 ? "pending" : "completed")}
                       </span>
                     </td>
-                    <td className="p-4 whitespace-nowrap">
-                      <div className="flex items-center justify-center gap-2 flex-nowrap">
+                    <td className="p-2 sm:p-3 md:p-4 whitespace-nowrap">
+                      <div className="flex items-center justify-center gap-1 sm:gap-2 flex-nowrap">
                         <Link to={`/inventory/purchase/view/${purchase.id}`}>
                           <button 
-                            className="p-2 text-gray-600 hover:bg-gray-50 rounded dark:hover:bg-gray-900/20 border border-gray-300 dark:border-gray-600 flex-shrink-0"
+                            className="p-1.5 sm:p-2 text-gray-600 hover:bg-gray-50 rounded dark:hover:bg-gray-900/20 border border-gray-300 dark:border-gray-600 flex-shrink-0"
                             title="View Purchase"
                           >
-                            <FaEye className="w-4 h-4 text-blue-500" />
+                            <FaEye className="w-3 h-3 sm:w-4 sm:h-4 text-blue-500" />
                           </button>
                         </Link>
                         {/* View Payments Button */}
                         {purchase.payments && purchase.payments.length > 0 && (
                           <button
                             onClick={() => handleViewPayments(purchase)}
-                            className="p-2 text-indigo-500 hover:bg-indigo-50 rounded dark:hover:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 flex-shrink-0"
+                            className="p-1.5 sm:p-2 text-indigo-500 hover:bg-indigo-50 rounded dark:hover:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 flex-shrink-0"
                             title="View Payments"
                           >
-                            <FaListAlt className="w-4 h-4" />
+                            <FaListAlt className="w-3 h-3 sm:w-4 sm:h-4" />
                           </button>
                         )}
                         {purchase.status === "pending" && (purchase.remainingBalance || 0) > 0 && (
                           <button
                             onClick={() => handleAddPayment(purchase)}
-                            className="p-2 text-green-500 hover:bg-green-50 rounded dark:hover:bg-green-900/20 border border-green-200 dark:border-green-800 flex-shrink-0"
+                            className="p-1.5 sm:p-2 text-green-500 hover:bg-green-50 rounded dark:hover:bg-green-900/20 border border-green-200 dark:border-green-800 flex-shrink-0"
                             title="Add Payment"
                           >
-                            <FaCreditCard className="w-4 h-4" />
+                            <FaCreditCard className="w-3 h-3 sm:w-4 sm:h-4" />
                           </button>
                         )}
                         <Link to={`/inventory/purchase/edit/${purchase.id}`}>
                           <button 
-                            className="p-2 text-blue-600 hover:bg-blue-50 rounded dark:hover:bg-blue-900/20 flex-shrink-0"
+                            className="p-1.5 sm:p-2 text-blue-600 hover:bg-blue-50 rounded dark:hover:bg-blue-900/20 flex-shrink-0"
                             title="Edit Purchase"
                           >
-                            <PencilIcon className="w-4 h-4" />
+                            <PencilIcon className="w-3 h-3 sm:w-4 sm:h-4" />
                           </button>
                         </Link>
                       </div>
@@ -786,13 +788,13 @@ export default function PurchaseList() {
 
       {/* Pagination Controls */}
       {!loading && purchases && purchases.length > 0 && (
-        <div className="mt-6 flex flex-col gap-4 bg-white rounded-lg shadow-sm p-4 dark:bg-gray-800">
-          <div className="flex items-center justify-between">
+        <div className="mt-4 sm:mt-6 flex flex-col gap-3 sm:gap-4 bg-white rounded-lg shadow-sm p-3 sm:p-4 dark:bg-gray-800">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0">
             <PageSizeSelector
               pageSize={purchasesPagination?.pageSize || 10}
               onPageSizeChange={handlePageSizeChange}
             />
-            <span className="text-sm text-gray-600 dark:text-gray-400">
+            <span className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
               Showing {((purchasesPagination?.page || 1) - 1) * (purchasesPagination?.pageSize || 10) + 1} to{" "}
               {Math.min((purchasesPagination?.page || 1) * (purchasesPagination?.pageSize || 10), purchasesPagination?.total || 0)} of{" "}
               {purchasesPagination?.total || 0} purchases
