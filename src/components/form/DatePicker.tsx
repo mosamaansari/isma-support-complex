@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 
 interface DatePickerProps {
   name?: string;
@@ -78,7 +79,9 @@ export default function DatePicker({
     }
   }, [value]);
 
-  // Calculate calendar position based on available space
+  // Calculate calendar position based on available space using fixed positioning
+  const [calendarStyle, setCalendarStyle] = useState<React.CSSProperties>({});
+  
   useEffect(() => {
     if (!isOpen || !inputRef.current) return;
 
@@ -87,7 +90,7 @@ export default function DatePicker({
 
       // Use setTimeout to ensure DOM is updated
       setTimeout(() => {
-        if (!inputRef.current || !calendarRef.current) return;
+        if (!inputRef.current) return;
 
         const inputRect = inputRef.current.getBoundingClientRect();
         const viewportHeight = window.innerHeight;
@@ -101,25 +104,43 @@ export default function DatePicker({
         const spaceAbove = inputRect.top - padding;
 
         // Determine vertical position: show below if enough space, otherwise above
-        const positionTop = spaceBelow < calendarHeight && spaceAbove >= calendarHeight;
+        const showOnTop = spaceBelow < calendarHeight && spaceAbove >= calendarHeight;
+        
+        // Calculate top position using fixed positioning
+        let top = showOnTop 
+          ? inputRect.top - calendarHeight - padding 
+          : inputRect.bottom + padding;
 
-        // Determine horizontal position: align left by default, right if needed
-        // Try to keep calendar aligned with input's left edge
-        let positionRight = false;
-        if (inputRect.left + calendarWidth > viewportWidth - padding) {
-          // Calendar would overflow on right, try right alignment
-          if (inputRect.right >= calendarWidth + padding) {
-            positionRight = true;
-          }
-        } else if (inputRect.right - calendarWidth < padding) {
-          // If aligning left would overflow left edge, align right
-          positionRight = true;
+        // Ensure calendar doesn't go off screen
+        if (top < padding) top = padding;
+        if (top + calendarHeight > viewportHeight - padding) {
+          top = viewportHeight - calendarHeight - padding;
         }
 
+        // Determine horizontal position: align with input left edge
+        let left = inputRect.left;
+        
+        // Check if calendar would overflow on right
+        if (left + calendarWidth > viewportWidth - padding) {
+          left = viewportWidth - calendarWidth - padding;
+        }
+        
+        // Check if calendar would overflow on left
+        if (left < padding) {
+          left = padding;
+        }
+
+        setCalendarStyle({
+          position: 'fixed',
+          top: `${top}px`,
+          left: `${left}px`,
+          zIndex: 100000,
+        });
+
         setCalendarPosition({
-          top: positionTop,
+          top: showOnTop,
           left: false,
-          right: positionRight,
+          right: false,
         });
       }, 0);
     };
@@ -345,21 +366,11 @@ export default function DatePicker({
         max={max}
       />
 
-      {isOpen && !disabled && (
+      {isOpen && !disabled && createPortal(
         <div
           ref={calendarRef}
-          className={`absolute z-50 bg-white rounded-lg shadow-xl border border-gray-200 dark:bg-gray-800 dark:border-gray-700 p-4 w-[320px] ${
-            calendarPosition.top ? "bottom-full mb-2" : "top-full mt-2"
-          } ${
-            calendarPosition.right ? "right-0" : calendarPosition.left ? "left-0" : "left-0"
-          }`}
-          style={{
-            ...(calendarPosition.right && calendarPosition.left
-              ? { right: 0 }
-              : calendarPosition.right
-              ? { right: 0 }
-              : {}),
-          }}
+          className="bg-white rounded-lg shadow-xl border border-gray-200 dark:bg-gray-800 dark:border-gray-700 p-4 w-[320px]"
+          style={calendarStyle}
         >
           {/* Header with month navigation */}
           <div className="flex items-center justify-between mb-4">
@@ -470,6 +481,7 @@ export default function DatePicker({
             )}
           </div>
         </div>
+        , document.body
       )}
 
       {hint && (

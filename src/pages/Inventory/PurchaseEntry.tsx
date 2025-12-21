@@ -17,6 +17,7 @@ import api from "../../services/api";
 import { hasPermission } from "../../utils/permissions";
 import { AVAILABLE_PERMISSIONS } from "../../utils/availablePermissions";
 import { extractErrorMessage } from "../../utils/errorHandler";
+import { getTodayDate, formatDateToString } from "../../utils/dateHelpers";
 
 const purchaseEntrySchema = yup.object().shape({
   supplierName: yup
@@ -50,7 +51,7 @@ export default function PurchaseEntry() {
     (PurchaseItem & { product: Product })[]
   >([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [date, setDate] = useState(getTodayDate());
   const [tax, setTax] = useState<number | null>(null);
   const [taxType, setTaxType] = useState<"percent" | "value">("percent");
   const [payments, setPayments] = useState<PurchasePayment[]>([]);
@@ -68,7 +69,7 @@ export default function PurchaseEntry() {
     defaultValues: {
       supplierName: "",
       supplierPhone: "",
-      date: new Date().toISOString().split("T")[0],
+      date: getTodayDate(),
       tax: null,
     },
   });
@@ -102,7 +103,9 @@ export default function PurchaseEntry() {
         .then((purchase: any) => {
           setValue("supplierName", purchase.supplierName);
           setValue("supplierPhone", purchase.supplierPhone || "");
-          setDate(new Date(purchase.date).toISOString().split("T")[0]);
+          // Format date to YYYY-MM-DD (accurate, no timezone issues)
+          const purchaseDate = new Date(purchase.date);
+          setDate(formatDateToString(purchaseDate));
           setTax(purchase.tax ? Number(purchase.tax) : null);
           setTaxType((purchase.taxType as "percent" | "value") || "percent");
           setPayments((purchase.payments || []) as PurchasePayment[]);

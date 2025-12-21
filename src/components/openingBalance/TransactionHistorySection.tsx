@@ -4,6 +4,7 @@ import api from "../../services/api";
 import { useData } from "../../context/DataContext";
 import DatePicker from "../form/DatePicker";
 import Label from "../form/Label";
+import { getTodayDate, formatDateToString } from "../../utils/dateHelpers";
 
 interface Transaction {
   id: string;
@@ -65,7 +66,7 @@ export default function TransactionHistorySection({
   const { bankAccounts } = useData();
   const [dailyGroups, setDailyGroups] = useState<DailyGroup[]>([]);
   const [loading, setLoading] = useState(false);
-  const today = new Date().toISOString().split('T')[0];
+  const today = getTodayDate();
   const [startDate, setStartDate] = useState(today);
   const [endDate, setEndDate] = useState(today);
   const [openingBalances, setOpeningBalances] = useState<Record<string, any>>({});
@@ -189,7 +190,7 @@ export default function TransactionHistorySection({
           const current = new Date(start);
           
           while (current <= end) {
-            const dateStr = current.toISOString().split('T')[0];
+            const dateStr = formatDateToString(current);
             allDates.push(dateStr);
             current.setDate(current.getDate() + 1);
           }
@@ -265,7 +266,7 @@ export default function TransactionHistorySection({
             const current = new Date(start);
             
             while (current <= end) {
-              const dateStr = current.toISOString().split('T')[0];
+              const dateStr = formatDateToString(current);
               allDates.push(dateStr);
               current.setDate(current.getDate() + 1);
             }
@@ -331,7 +332,7 @@ export default function TransactionHistorySection({
       const end = new Date(endDate);
       const current = new Date(start);
       while (current <= end) {
-        const dateStr = current.toISOString().split('T')[0];
+        const dateStr = formatDateToString(current);
         datesToShow.push(dateStr);
         current.setDate(current.getDate() + 1);
       }

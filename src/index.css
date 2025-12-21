@@ -397,6 +397,11 @@ layer(base);
   @apply mt-2 !bg-white !rounded-xl !p-5 !border !border-gray-200 !text-gray-500 dark:!bg-gray-dark dark:!border-gray-700 dark:!text-gray-400 dark:!shadow-theme-xl 2xsm:!w-auto;
 }
 
+/* Ensure flatpickr calendar appears above all content */
+.flatpickr-calendar.open {
+  z-index: 100000 !important;
+}
+
 .flatpickr-months .flatpickr-prev-month:hover svg,
 .flatpickr-months .flatpickr-next-month:hover svg {
   @apply stroke-brand-500;

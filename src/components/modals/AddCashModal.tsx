@@ -7,6 +7,7 @@ import Select from "../form/Select";
 import api from "../../services/api";
 import { useAlert } from "../../context/AlertContext";
 import { useData } from "../../context/DataContext";
+import { getTodayDate } from "../../utils/dateHelpers";
 
 interface AddCashModalProps {
   isOpen: boolean;
@@ -77,9 +78,7 @@ export default function AddCashModal({
     setIsSubmitting(true);
     try {
       // Use selected date or today's date (ensure we use the correct date format)
-      const targetDate = selectedDate || new Date().toISOString().split('T')[0];
-      // Ensure date is in YYYY-MM-DD format (handle timezone issues)
-      const dateStr = targetDate.includes('T') ? targetDate.split('T')[0] : targetDate;
+      const dateStr = selectedDate || getTodayDate();
       let todayBalance = await api.getOpeningBalance(dateStr).catch(() => null);
 
       if (!todayBalance) {

@@ -41,7 +41,11 @@ export default function DailyConfirmationModal({
     try {
       await api.confirmDaily();
       // Store today's date in cookie after successful confirmation
-      const today = new Date().toISOString().split('T')[0];
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      const today = `${year}-${month}-${day}`;
       setCookie("daily_confirmation_date", today, 1);
       onConfirm();
     } catch (error: any) {
@@ -57,7 +61,11 @@ export default function DailyConfirmationModal({
     try {
       await api.confirmDaily();
       // Store today's date in cookie after successful confirmation
-      const today = new Date().toISOString().split('T')[0];
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      const today = `${year}-${month}-${day}`;
       setCookie("daily_confirmation_date", today, 1);
       onConfirm();
       navigate("/reports/opening-balance");

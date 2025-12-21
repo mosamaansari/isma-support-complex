@@ -16,6 +16,7 @@ import {TrashBinIcon, DownloadIcon } from "../../icons";
 import { FaEye, FaCreditCard, FaListAlt } from "react-icons/fa";
 import { SalePayment } from "../../types";
 import { extractErrorMessage } from "../../utils/errorHandler";
+import { getTodayDate } from "../../utils/dateHelpers";
 
 export default function SalesList() {
   const { sales, salesPagination, cancelSale, addPaymentToSale, currentUser, bankAccounts, refreshSales, loading } = useData();
@@ -509,7 +510,7 @@ export default function SalesList() {
             <div>
               <Label>Date</Label>
               <DatePicker
-                value={paymentData.date || new Date().toISOString().split("T")[0]}
+                value={paymentData.date || getTodayDate()}
                 onChange={(e) => setPaymentData({ ...paymentData, date: e.target.value })}
               />
             </div>

@@ -110,6 +110,14 @@ export default function Reports() {
   let profit = 0;
   let openingBankBalances: Array<{ bankAccountId: string; bankName: string; accountNumber: string; balance: number }> = [];
 
+  // Get opening balance additions from daily or date range report
+  const openingBalanceAdditions = (reportType === "daily" && dailyReport?.openingBalanceAdditions) 
+    ? dailyReport.openingBalanceAdditions 
+    : (dateRangeReport?.openingBalanceAdditions || []);
+  
+  // Calculate total additional balance (opening balance additions)
+  const totalAdditionalBalance = openingBalanceAdditions.reduce((sum: number, add: any) => sum + Number(add.amount || 0), 0);
+
   if (isUsingBackendData && reportType === "daily" && dailyReport) {
     filteredSales = dailyReport.sales?.items || [];
     filteredExpenses = dailyReport.expenses?.items || [];
@@ -119,9 +127,16 @@ export default function Reports() {
     totalPurchases = dailyReport.purchases?.total || 0;
     openingBalance = dailyReport.openingBalance?.total || 0;
     openingCash = dailyReport.openingBalance?.cash || 0;
-    // Backend now returns banks properly
+    // Backend now returns banks properly with bankName and accountNumber
     const openingBanks = (dailyReport.openingBalance as any)?.banks || [];
     openingBankTotal = openingBanks.reduce((sum: number, bank: any) => sum + Number(bank.balance || 0), 0);
+    // Map opening banks with details for display
+    openingBankBalances = openingBanks.map((bank: any) => ({
+      bankAccountId: bank.bankAccountId,
+      bankName: bank.bankName || "Unknown",
+      accountNumber: bank.accountNumber || "",
+      balance: Number(bank.balance || 0),
+    }));
     
     closingBalance = dailyReport.closingBalance?.total || 0;
     closingCash = dailyReport.closingBalance?.cash || 0;
@@ -130,18 +145,91 @@ export default function Reports() {
     
     profit = totalSales - totalExpenses - totalPurchases;
   } else if (isUsingBackendData && dateRangeReport) {
-    filteredSales = dateRangeReport.sales || [];
-    filteredExpenses = dateRangeReport.expenses || [];
-    filteredPurchases = dateRangeReport.purchases || [];
-    totalSales = dateRangeReport.summary?.sales?.total || 0;
-    totalExpenses = dateRangeReport.summary?.expenses?.total || 0;
-    totalPurchases = dateRangeReport.summary?.purchases?.total || 0;
-    openingBalance = dateRangeReport.summary?.openingBalance?.total || 0;
-    openingCash = dateRangeReport.summary?.openingBalance?.cash || 0;
-    openingBankTotal = dateRangeReport.summary?.openingBalance?.cards || 0;
-    closingBalance = dateRangeReport.summary?.closingBalance?.total || 0;
-    closingCash = dateRangeReport.summary?.closingBalance?.cash || 0;
-    closingBankTotal = dateRangeReport.summary?.closingBalance?.cards || 0;
+    // Aggregate data from all dailyReports
+    const allSales: any[] = [];
+    const allPurchases: any[] = [];
+    const allExpenses: any[] = [];
+    
+    if (dateRangeReport.dailyReports && dateRangeReport.dailyReports.length > 0) {
+      dateRangeReport.dailyReports.forEach((dailyReport: any) => {
+        if (dailyReport.sales?.items) {
+          allSales.push(...dailyReport.sales.items);
+        }
+        if (dailyReport.purchases?.items) {
+          allPurchases.push(...dailyReport.purchases.items);
+        }
+        if (dailyReport.expenses?.items) {
+          allExpenses.push(...dailyReport.expenses.items);
+        }
+      });
+    }
+    
+    filteredSales = allSales;
+    filteredExpenses = allExpenses;
+    filteredPurchases = allPurchases;
+    
+    // Calculate totals from aggregated data (use dailyReports totals which are more accurate)
+    // First try to sum from dailyReports, then fallback to summary or calculate from items
+    const calculatedSalesTotal = dateRangeReport.dailyReports?.reduce((sum: number, dr: any) => sum + (dr.sales?.total || 0), 0) || 0;
+    const calculatedPurchasesTotal = dateRangeReport.dailyReports?.reduce((sum: number, dr: any) => sum + (dr.purchases?.total || 0), 0) || 0;
+    const calculatedExpensesTotal = dateRangeReport.dailyReports?.reduce((sum: number, dr: any) => sum + (dr.expenses?.total || 0), 0) || 0;
+    
+    totalSales = calculatedSalesTotal || dateRangeReport.summary?.sales?.total || allSales.reduce((sum: number, sale: any) => sum + Number(sale.paymentAmount || sale.total || 0), 0);
+    totalExpenses = calculatedExpensesTotal || dateRangeReport.summary?.expenses?.total || allExpenses.reduce((sum: number, expense: any) => sum + Number(expense.amount || 0), 0);
+    totalPurchases = calculatedPurchasesTotal || dateRangeReport.summary?.purchases?.total || allPurchases.reduce((sum: number, purchase: any) => sum + Number(purchase.paymentAmount || purchase.total || 0), 0);
+    
+    // For opening balance, use first daily report's opening balance
+    const firstDailyReport = dateRangeReport.dailyReports?.[0];
+    openingBalance = firstDailyReport?.openingBalance?.total || dateRangeReport.summary?.openingBalance?.total || 0;
+    openingCash = firstDailyReport?.openingBalance?.cash || dateRangeReport.summary?.openingBalance?.cash || 0;
+    // For date range report, get banks from summary openingBalance.banks
+    const summaryOpeningBanks = (dateRangeReport.summary?.openingBalance as any)?.banks || [];
+    if (summaryOpeningBanks.length > 0) {
+      openingBankTotal = summaryOpeningBanks.reduce((sum: number, bank: any) => sum + Number(bank.balance || 0), 0);
+      openingBankBalances = summaryOpeningBanks.map((bank: any) => ({
+        bankAccountId: bank.bankAccountId,
+        bankName: bank.bankName || "Unknown",
+        accountNumber: bank.accountNumber || "",
+        balance: Number(bank.balance || 0),
+      }));
+    } else {
+      // Fallback: check first daily report if available
+      const firstDailyReport = dateRangeReport.dailyReports?.[0];
+      if (firstDailyReport?.openingBalance?.banks) {
+        const openingBanks = firstDailyReport.openingBalance.banks || [];
+        openingBankTotal = openingBanks.reduce((sum: number, bank: any) => sum + Number(bank.balance || 0), 0);
+        openingBankBalances = openingBanks.map((bank: any) => ({
+          bankAccountId: bank.bankAccountId,
+          bankName: bank.bankName || "Unknown",
+          accountNumber: bank.accountNumber || "",
+          balance: Number(bank.balance || 0),
+        }));
+      } else {
+        // Fallback to cards if banks not available (legacy)
+        openingBankTotal = dateRangeReport.summary?.openingBalance?.cards || 0;
+      }
+    }
+    // Calculate closing balance from last daily report or use summary
+    const lastDailyReport = dateRangeReport.dailyReports && dateRangeReport.dailyReports.length > 0 
+      ? dateRangeReport.dailyReports[dateRangeReport.dailyReports.length - 1]
+      : null;
+    
+    closingBalance = lastDailyReport?.closingBalance?.total || dateRangeReport.summary?.closingBalance?.total || 0;
+    closingCash = lastDailyReport?.closingBalance?.cash || dateRangeReport.summary?.closingBalance?.cash || 0;
+    
+    // For date range report, get closing bank balance from last daily report or summary
+    if (lastDailyReport?.closingBalance?.banks && lastDailyReport.closingBalance.banks.length > 0) {
+      const closingBanks = lastDailyReport.closingBalance.banks || [];
+      closingBankTotal = closingBanks.reduce((sum: number, bank: any) => sum + Number(bank.balance || 0), 0);
+    } else {
+      const summaryClosingBanks = (dateRangeReport.summary?.closingBalance as any)?.banks || [];
+      if (summaryClosingBanks.length > 0) {
+        closingBankTotal = summaryClosingBanks.reduce((sum: number, bank: any) => sum + Number(bank.balance || 0), 0);
+      } else {
+        // Fallback to cards if banks not available (legacy)
+        closingBankTotal = dateRangeReport.summary?.closingBalance?.cards || 0;
+      }
+    }
     profit = totalSales - totalExpenses - totalPurchases;
   } else if (dateRange) {
     // Fallback to frontend data
@@ -154,8 +242,8 @@ export default function Reports() {
     closingCash = profit;
   }
 
-  // Map bank balances from previous day balance
-  if (previousDayBalance && bankAccounts) {
+  // Map bank balances from previous day balance (only if not already set from report)
+  if (previousDayBalance && bankAccounts && openingBankBalances.length === 0) {
     openingBankBalances = bankAccounts.map((bank) => {
       const bankBalance = previousDayBalance.bankBalances.find(
         (b) => b.bankAccountId === bank.id
@@ -199,45 +287,6 @@ export default function Reports() {
     .filter((item) => item.count > 1) // Only show combined rows if customer has multiple sales
     .sort((a, b) => b.total - a.total);
 
-  const exportToExcel = async () => {
-    if (!dateRange) return;
-
-    try {
-      const reportData = {
-        summary: {
-          "Opening Balance": openingBalance > 0 ? openingBalance.toFixed(2) : "0.00",
-          "Total Sales": totalSales.toFixed(2),
-          "Total Purchases": totalPurchases > 0 ? totalPurchases.toFixed(2) : "0.00",
-          "Total Expenses": totalExpenses.toFixed(2),
-          "Net Profit/Loss": profit.toFixed(2),
-          "Closing Balance": isUsingBackendData && closingBalance ? closingBalance.toFixed(2) : profit.toFixed(2),
-        },
-        sales: filteredSales || [],
-        expenses: filteredExpenses || [],
-        purchases: filteredPurchases || [],
-        dateRange: {
-          start: dateRange.start,
-          end: dateRange.end,
-        },
-      };
-
-      const response = await api.exportReportToExcel(reportData);
-      const blob = new Blob([response], {
-        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `report_${dateRange.start}_${dateRange.end}.xlsx`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    } catch (error: any) {
-      console.error("Error exporting to Excel:", error);
-      showError("Failed to export to Excel. Please try again.");
-    }
-  };
 
   const exportToPDF = async () => {
     if (!dateRange) return;
@@ -271,12 +320,354 @@ export default function Reports() {
       return;
     }
 
-    // Clone the content and remove no-print classes for printing
-    const contentClone = printRef.current.cloneNode(true) as HTMLElement;
-    const noPrintElements = contentClone.querySelectorAll('.no-print');
-    noPrintElements.forEach((el) => el.remove());
+    // Fetch all balance transactions for the date range to get before/after balances
+    let allBalanceTransactions: any[] = [];
+    try {
+      const transactionsResponse = await api.getTransactions({
+        startDate: dateRange.start,
+        endDate: dateRange.end,
+      });
+      // Ensure it's an array
+      allBalanceTransactions = Array.isArray(transactionsResponse) ? transactionsResponse : (transactionsResponse?.data || []);
+      // Sort by creation time
+      if (Array.isArray(allBalanceTransactions)) {
+        allBalanceTransactions.sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      }
+    } catch (e) {
+      console.error("Error fetching balance transactions for print:", e);
+      allBalanceTransactions = [];
+    }
 
-    const reportContent = contentClone.innerHTML;
+    // Create a map of balance transactions by source, sourceId, and paymentType
+    const balanceTxMap = new Map<string, any[]>();
+    // Ensure allBalanceTransactions is an array before iterating
+    if (Array.isArray(allBalanceTransactions)) {
+      allBalanceTransactions.forEach((tx: any) => {
+        if (tx && typeof tx === 'object') {
+          const key = `${tx.source || ''}_${tx.sourceId || ''}_${tx.paymentType || 'cash'}`;
+          if (!balanceTxMap.has(key)) {
+            balanceTxMap.set(key, []);
+          }
+          balanceTxMap.get(key)!.push(tx);
+        }
+      });
+    }
+
+    // Build comprehensive chronological report for print
+    const reportsToProcess = reportType === "daily" && dailyReport 
+      ? [dailyReport] 
+      : (dateRangeReport?.dailyReports || []);
+    
+    let printContent = '';
+    
+    reportsToProcess.forEach((report: any, reportIdx: number) => {
+      const reportDate = report.date || (reportType === "daily" ? dateRange.start : '');
+      
+      // Calculate opening bank total once per report
+      const openingBankTotal = report.openingBalance?.banks?.reduce((sum: number, bank: any) => sum + Number(bank.balance || 0), 0) || 0;
+      
+      printContent += `<h2>Date: ${new Date(reportDate).toLocaleDateString('en-US', { 
+        weekday: 'long', 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+      })}</h2>`;
+      
+      // Opening Balance - Simple header before transaction table
+      printContent += `<div style="margin-bottom: 15px;">
+        <p style="font-size: 12px; color: #6b7280; margin: 5px 0;"><strong>Opening Balance:</strong> Cash: Rs. ${(report.openingBalance?.cash || 0).toFixed(2)}, Bank: Rs. ${openingBankTotal.toFixed(2)}, Total: Rs. ${(report.openingBalance?.total || 0).toFixed(2)}</p>
+      </div>`;
+      
+      // Build chronological transaction table
+      const allTransactions: any[] = [];
+      
+      // Add opening balance additions
+      if (report.openingBalanceAdditions && report.openingBalanceAdditions.length > 0) {
+        report.openingBalanceAdditions.forEach((add: any) => {
+        const addDateTime = add.time ? new Date(add.time) : (add.date ? new Date(add.date) : new Date(reportDate));
+        allTransactions.push({
+          type: 'Additional Balance',
+          datetime: addDateTime,
+          date: add.date || add.time || reportDate,
+          time: add.time || new Date(add.date || reportDate).toTimeString(),
+          paymentType: add.paymentType,
+          amount: Number(add.amount || 0),
+          beforeBalance: add.beforeBalance,
+          afterBalance: add.afterBalance,
+          description: add.description || 'Opening Balance Addition',
+          bankName: add.bankAccount?.bankName || '',
+        });
+        });
+      }
+      
+      // Add purchases with balance transaction data
+      if (report.purchases?.items && report.purchases.items.length > 0) {
+        report.purchases.items.forEach((purchase: any) => {
+          const payments = (purchase.payments as Array<any> | null) || [];
+          if (payments.length > 0) {
+            payments.forEach((p: any, idx: number) => {
+              const paymentDate = p.date || purchase.date || purchase.createdAt;
+              const paymentDateTime = new Date(paymentDate);
+              const key = `purchase_payment_${purchase.id}_${p.type || 'cash'}`;
+              let balanceTxs = balanceTxMap.get(key) || [];
+              if (balanceTxs.length === 0) {
+                const key2 = `purchase_${purchase.id}_${p.type || 'cash'}`;
+                balanceTxs = balanceTxMap.get(key2) || [];
+              }
+              const balanceTx = balanceTxs.length > idx ? balanceTxs[idx] : (balanceTxs.length > 0 ? balanceTxs[0] : null);
+              
+              allTransactions.push({
+                type: 'Purchase',
+                datetime: paymentDateTime,
+                date: paymentDate,
+                time: paymentDateTime.toLocaleTimeString(),
+                paymentType: p.type || 'cash',
+                amount: Number(p.amount || 0),
+                beforeBalance: balanceTx?.beforeBalance !== null && balanceTx?.beforeBalance !== undefined ? Number(balanceTx.beforeBalance) : null,
+                afterBalance: balanceTx?.afterBalance !== null && balanceTx?.afterBalance !== undefined ? Number(balanceTx.afterBalance) : null,
+                description: `Purchase - ${purchase.supplierName || 'N/A'}`,
+                bankName: p.bankAccountId ? 'Bank Transfer' : '',
+              });
+            });
+          } else {
+            const purchaseDate = purchase.date || purchase.createdAt;
+            const purchaseDateTime = new Date(purchaseDate);
+            const key = `purchase_${purchase.id}_${purchase.paymentType || 'cash'}`;
+            const balanceTxs = balanceTxMap.get(key) || [];
+            const balanceTx = balanceTxs.length > 0 ? balanceTxs[0] : null;
+            
+            allTransactions.push({
+              type: 'Purchase',
+              datetime: purchaseDateTime,
+              date: purchaseDate,
+              time: purchaseDateTime.toLocaleTimeString(),
+              paymentType: purchase.paymentType || 'cash',
+              amount: Number(purchase.total || 0),
+              beforeBalance: balanceTx?.beforeBalance !== null && balanceTx?.beforeBalance !== undefined ? Number(balanceTx.beforeBalance) : null,
+              afterBalance: balanceTx?.afterBalance !== null && balanceTx?.afterBalance !== undefined ? Number(balanceTx.afterBalance) : null,
+              description: `Purchase - ${purchase.supplierName || 'N/A'}`,
+            });
+          }
+        });
+      }
+      
+      // Add sales with balance transaction data
+      if (report.sales?.items && report.sales.items.length > 0) {
+        report.sales.items.forEach((sale: any) => {
+          const payments = (sale.payments as Array<any> | null) || [];
+          if (payments.length > 0) {
+            payments.forEach((p: any, idx: number) => {
+              const paymentDate = p.date || sale.date || sale.createdAt;
+              const paymentDateTime = new Date(paymentDate);
+              const key = `sale_payment_${sale.id}_${p.type || 'cash'}`;
+              let balanceTxs = balanceTxMap.get(key) || [];
+              if (balanceTxs.length === 0) {
+                const key2 = `sale_${sale.id}_${p.type || 'cash'}`;
+                balanceTxs = balanceTxMap.get(key2) || [];
+              }
+              const balanceTx = balanceTxs.length > idx ? balanceTxs[idx] : (balanceTxs.length > 0 ? balanceTxs[0] : null);
+              
+              allTransactions.push({
+                type: 'Sale',
+                datetime: paymentDateTime,
+                date: paymentDate,
+                time: paymentDateTime.toLocaleTimeString(),
+                paymentType: p.type || 'cash',
+                amount: Number(p.amount || 0),
+                beforeBalance: balanceTx?.beforeBalance !== null && balanceTx?.beforeBalance !== undefined ? Number(balanceTx.beforeBalance) : null,
+                afterBalance: balanceTx?.afterBalance !== null && balanceTx?.afterBalance !== undefined ? Number(balanceTx.afterBalance) : null,
+                description: `Sale - Bill #${sale.billNumber || 'N/A'} - ${sale.customerName || 'Walk-in'}`,
+                bankName: p.bankAccountId ? 'Bank Transfer' : '',
+              });
+            });
+          } else {
+            const saleDate = sale.date || sale.createdAt;
+            const saleDateTime = new Date(saleDate);
+            const key = `sale_${sale.id}_${sale.paymentType || 'cash'}`;
+            const balanceTxs = balanceTxMap.get(key) || [];
+            const balanceTx = balanceTxs.length > 0 ? balanceTxs[0] : null;
+            
+            allTransactions.push({
+              type: 'Sale',
+              datetime: saleDateTime,
+              date: saleDate,
+              time: saleDateTime.toLocaleTimeString(),
+              paymentType: sale.paymentType || 'cash',
+              amount: Number(sale.total || 0),
+              beforeBalance: balanceTx?.beforeBalance !== null && balanceTx?.beforeBalance !== undefined ? Number(balanceTx.beforeBalance) : null,
+              afterBalance: balanceTx?.afterBalance !== null && balanceTx?.afterBalance !== undefined ? Number(balanceTx.afterBalance) : null,
+              description: `Sale - Bill #${sale.billNumber || 'N/A'} - ${sale.customerName || 'Walk-in'}`,
+            });
+          }
+        });
+      }
+      
+      // Add expenses with balance transaction data
+      if (report.expenses?.items && report.expenses.items.length > 0) {
+        report.expenses.items.forEach((expense: any) => {
+          const expenseDate = expense.date || expense.createdAt;
+          const expenseDateTime = new Date(expenseDate);
+          const key = `expense_${expense.id}_${expense.paymentType || 'cash'}`;
+          const balanceTxs = balanceTxMap.get(key) || [];
+          const balanceTx = balanceTxs.length > 0 ? balanceTxs[0] : null;
+          
+          allTransactions.push({
+            type: 'Expense',
+            datetime: expenseDateTime,
+            date: expenseDate,
+            time: expenseDateTime.toLocaleTimeString(),
+            paymentType: expense.paymentType || 'cash',
+            amount: Number(expense.amount || 0),
+            beforeBalance: balanceTx?.beforeBalance !== null && balanceTx?.beforeBalance !== undefined ? Number(balanceTx.beforeBalance) : null,
+            afterBalance: balanceTx?.afterBalance !== null && balanceTx?.afterBalance !== undefined ? Number(balanceTx.afterBalance) : null,
+            description: expense.description || expense.category || 'Expense',
+            bankName: expense.bankAccountId ? 'Bank Transfer' : '',
+          });
+        });
+      }
+      
+      // Sort all transactions by datetime
+      allTransactions.sort((a, b) => {
+        const dateTimeA = a.datetime ? a.datetime.getTime() : new Date(a.date).getTime();
+        const dateTimeB = b.datetime ? b.datetime.getTime() : new Date(b.date).getTime();
+        return dateTimeA - dateTimeB;
+      });
+      
+      // Create chronological table matching opening balance design
+      if (allTransactions.length > 0) {
+        printContent += `<h3 style="margin-top: 20px; margin-bottom: 15px; font-size: 16px; font-weight: bold;">Chronological Transaction Details</h3>`;
+        printContent += `<table style="width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 11px;">`;
+        printContent += `<thead><tr style="background-color: #f3f4f6; border-bottom: 2px solid #d1d5db;">
+          <th style="border: 1px solid #d1d5db; padding: 8px; text-align: left; font-weight: 600;">Time</th>
+          <th style="border: 1px solid #d1d5db; padding: 8px; text-align: left; font-weight: 600;">Type</th>
+          <th style="border: 1px solid #d1d5db; padding: 8px; text-align: left; font-weight: 600;">Source</th>
+          <th style="border: 1px solid #d1d5db; padding: 8px; text-align: left; font-weight: 600;">Description</th>
+          <th style="border: 1px solid #d1d5db; padding: 8px; text-align: left; font-weight: 600;">Payment Type</th>
+          <th style="border: 1px solid #d1d5db; padding: 8px; text-align: left; font-weight: 600;">Bank</th>
+          <th style="border: 1px solid #d1d5db; padding: 8px; text-align: right; font-weight: 600;">Before Balance</th>
+          <th style="border: 1px solid #d1d5db; padding: 8px; text-align: right; font-weight: 600;">Change</th>
+          <th style="border: 1px solid #d1d5db; padding: 8px; text-align: right; font-weight: 600;">After Balance</th>
+        </tr></thead><tbody>`;
+        
+        // Helper function to get source label
+        const getSourceLabel = (type: string) => {
+          const labels: Record<string, string> = {
+            'Sale': 'Sale Payment',
+            'Purchase': 'Purchase Payment',
+            'Expense': 'Expense Payment',
+            'Additional Balance': 'Add to Opening Balance',
+          };
+          return labels[type] || type;
+        };
+        
+        // Helper function to format currency
+        const formatCurrency = (amount: number) => {
+          return `Rs. ${amount.toFixed(2)}`;
+        };
+        
+        allTransactions.forEach((tran) => {
+          const isIncome = tran.type === 'Sale' || tran.type === 'Additional Balance';
+          const dateTime = tran.datetime || (tran.date ? new Date(tran.date) : new Date());
+          
+          // Determine row background color based on income/expense
+          const rowBgColor = isIncome ? '#f0fdf4' : '#fef2f2'; // green-50 or red-50
+          const typeBadgeColor = isIncome ? '#dcfce7' : '#fee2e2'; // green-200 or red-200
+          const typeTextColor = isIncome ? '#166534' : '#991b1b'; // green-800 or red-800
+          const amountColor = isIncome ? '#16a34a' : '#dc2626'; // green-600 or red-600
+          
+          printContent += `<tr style="background-color: ${rowBgColor}; border-bottom: 1px solid #e5e7eb;">
+            <td style="border: 1px solid #e5e7eb; padding: 8px; white-space: nowrap;">${dateTime.toLocaleString('en-US', {
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit'
+            })}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 8px;">
+              <span style="background-color: ${typeBadgeColor}; color: ${typeTextColor}; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600;">
+                ${isIncome ? 'Income' : 'Expense'}
+              </span>
+            </td>
+            <td style="border: 1px solid #e5e7eb; padding: 8px;">${getSourceLabel(tran.type)}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 8px; max-width: 200px; overflow: hidden; text-overflow: ellipsis;">${tran.description || '-'}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-transform: capitalize;">${tran.paymentType === 'cash' ? 'Cash' : 'Bank Transfer'}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 8px; font-size: 10px;">${tran.bankName || '-'}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right;">${tran.beforeBalance !== null && tran.beforeBalance !== undefined ? formatCurrency(Number(tran.beforeBalance)) : '-'}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; color: ${amountColor}; font-weight: 600;">
+              ${isIncome ? '+' : '-'}${formatCurrency(tran.amount)}
+            </td>
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right;">${tran.afterBalance !== null && tran.afterBalance !== undefined ? formatCurrency(Number(tran.afterBalance)) : '-'}</td>
+          </tr>`;
+        });
+        
+        printContent += `</tbody></table>`;
+      }
+      
+      // Summary - Simple table format matching date-wise financial flow design
+      const additionalTotal = report.openingBalanceAdditions?.reduce((sum: number, add: any) => sum + Number(add.amount || 0), 0) || 0;
+      const closingBankTotal = report.closingBalance?.banks?.reduce((sum: number, bank: any) => sum + Number(bank.balance || 0), 0) || 0;
+      // Reuse openingBankTotal calculated at the start of the loop
+      
+      printContent += `<h3 style="margin-top: 20px; margin-bottom: 10px; font-size: 16px; font-weight: bold;">Summary</h3>`;
+      printContent += `<table style="width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 11px;">
+        <thead>
+          <tr style="background-color: #f3f4f6; border-bottom: 2px solid #d1d5db;">
+            <th style="border: 1px solid #d1d5db; padding: 8px; text-align: left; font-weight: 600;">Description</th>
+            <th style="border: 1px solid #d1d5db; padding: 8px; text-align: right; font-weight: 600;">Cash (Rs.)</th>
+            <th style="border: 1px solid #d1d5db; padding: 8px; text-align: right; font-weight: 600;">Bank (Rs.)</th>
+            <th style="border: 1px solid #d1d5db; padding: 8px; text-align: right; font-weight: 600;">Total (Rs.)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="background-color: #dbeafe; border-bottom: 1px solid #e5e7eb;">
+            <td style="border: 1px solid #e5e7eb; padding: 8px; font-weight: 600;">Opening Balance</td>
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #2563eb;">${(report.openingBalance?.cash || 0).toFixed(2)}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #2563eb;">${openingBankTotal.toFixed(2)}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #2563eb;">${(report.openingBalance?.total || 0).toFixed(2)}</td>
+          </tr>`;
+      
+      if (additionalTotal > 0) {
+        const additionalCash = report.openingBalanceAdditions?.filter((add: any) => add.paymentType === "cash").reduce((sum: number, add: any) => sum + Number(add.amount || 0), 0) || 0;
+        const additionalBank = additionalTotal - additionalCash;
+        printContent += `
+          <tr style="background-color: #f3e8ff; border-bottom: 1px solid #e5e7eb;">
+            <td style="border: 1px solid #e5e7eb; padding: 8px; font-weight: 600;">Opening Balance Additions</td>
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #9333ea;">${additionalCash.toFixed(2)}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #9333ea;">${additionalBank.toFixed(2)}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #9333ea;">${additionalTotal.toFixed(2)}</td>
+          </tr>`;
+      }
+      
+      printContent += `
+          <tr style="background-color: #d1fae5; border-bottom: 1px solid #e5e7eb;">
+            <td style="border: 1px solid #e5e7eb; padding: 8px; font-weight: 600;">Sales</td>
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #16a34a;">${(report.sales?.cash || 0).toFixed(2)}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #16a34a;">${(report.sales?.bank_transfer || 0).toFixed(2)}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #16a34a;">${(report.sales?.total || 0).toFixed(2)}</td>
+          </tr>
+          <tr style="background-color: #fed7aa; border-bottom: 1px solid #e5e7eb;">
+            <td style="border: 1px solid #e5e7eb; padding: 8px; font-weight: 600;">Purchases</td>
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #ea580c;">-${(report.purchases?.cash || 0).toFixed(2)}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #ea580c;">-${(report.purchases?.bank_transfer || 0).toFixed(2)}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #ea580c;">-${(report.purchases?.total || 0).toFixed(2)}</td>
+          </tr>
+          <tr style="background-color: #fee2e2; border-bottom: 1px solid #e5e7eb;">
+            <td style="border: 1px solid #e5e7eb; padding: 8px; font-weight: 600;">Expenses</td>
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #dc2626;">-${(report.expenses?.cash || 0).toFixed(2)}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #dc2626;">-${(report.expenses?.bank_transfer || 0).toFixed(2)}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #dc2626;">-${(report.expenses?.total || 0).toFixed(2)}</td>
+          </tr>
+          <tr style="background-color: #e0e7ff; border-top: 2px solid #6366f1; border-bottom: 2px solid #6366f1;">
+            <td style="border: 1px solid #e5e7eb; padding: 8px; font-weight: bold; font-size: 12px;">Closing Balance</td>
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: bold; font-size: 12px; color: #4f46e5;">${(report.closingBalance?.cash || 0).toFixed(2)}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: bold; font-size: 12px; color: #4f46e5;">${closingBankTotal.toFixed(2)}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: bold; font-size: 12px; color: #4f46e5;">${(report.closingBalance?.total || 0).toFixed(2)}</td>
+          </tr>
+        </tbody>
+      </table>`;
+      
+      if (reportIdx < reportsToProcess.length - 1) {
+        printContent += `<div style="page-break-after: always;"></div>`;
+      }
+    });
 
     printWindow.document.write(`
       <!DOCTYPE html>
@@ -345,7 +736,7 @@ export default function Reports() {
         <body>
           <h1>Isma Sports Complex - Financial Report</h1>
           <p><strong>Date Range:</strong> ${dateRange.start}${dateRange.start !== dateRange.end ? ` to ${dateRange.end}` : ""}</p>
-          ${reportContent}
+          ${printContent}
           <script>
             window.onload = function() {
               window.print();
@@ -444,7 +835,7 @@ export default function Reports() {
                 {reportType === "daily" && previousDayBalance && (
                   <div className="mb-6 p-6 bg-gray-50 dark:bg-gray-900/20 rounded-lg border-2 border-gray-200 dark:border-gray-800">
                     <h2 className="text-lg font-bold text-gray-800 dark:text-white mb-4">
-                      Previous Day Closing Balance
+                      Previous Day Closing Balance (Opening Balance)
                     </h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 border border-blue-200 dark:border-blue-800">
@@ -477,9 +868,10 @@ export default function Reports() {
                   </div>
                 )}
 
+
                 {/* Summary Cards */}
                 <div className="grid grid-cols-1 gap-4 mb-6 md:grid-cols-4 no-print">
-                  {openingBalance > 0 && (
+                  {isUsingBackendData && (
                     <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
                       <p className="text-sm text-gray-600 dark:text-gray-400">
                         Opening Balance
@@ -487,12 +879,21 @@ export default function Reports() {
                       <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
                         Rs. {openingBalance.toFixed(2)}
                       </p>
-                      {openingCash > 0 || openingBankTotal > 0 ? (
+                      {(openingCash > 0 || openingBankTotal > 0) && (
                         <div className="mt-2 text-xs text-gray-500">
                           <div>Cash: Rs. {openingCash.toFixed(2)}</div>
                           {openingBankTotal > 0 && <div>Bank: Rs. {openingBankTotal.toFixed(2)}</div>}
                         </div>
-                      ) : null}
+                      )}
+                      {openingBankBalances.length > 0 && (
+                        <div className="mt-2 text-xs text-gray-500 space-y-1">
+                          {openingBankBalances.map((bank) => (
+                            <div key={bank.bankAccountId}>
+                              {bank.bankName}: Rs. {bank.balance.toFixed(2)}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
                   <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
@@ -503,13 +904,21 @@ export default function Reports() {
                       Rs. {totalSales.toFixed(2)}
                     </p>
                   </div>
-                  {totalPurchases > 0 && (
+                  <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                      Total Purchases
+                    </p>
+                    <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+                      Rs. {totalPurchases.toFixed(2)}
+                    </p>
+                  </div>
+                  {isUsingBackendData && totalAdditionalBalance > 0 && (
                     <div className="p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
                       <p className="text-sm text-gray-600 dark:text-gray-400">
-                        Total Purchases
+                        Total Additional Balance
                       </p>
-                      <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
-                        Rs. {totalPurchases.toFixed(2)}
+                      <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">
+                        Rs. {totalAdditionalBalance.toFixed(2)}
                       </p>
                     </div>
                   )}
@@ -554,11 +963,6 @@ export default function Reports() {
             )}
 
             <div className="mb-6 flex gap-2 no-print flex-wrap">
- 
-              <Button onClick={exportToExcel} size="sm" variant="outline">
-                <DownloadIcon className="w-4 h-4 mr-2" />
-                Export Excel
-              </Button>
               <Button onClick={exportToPDF} size="sm">
                 <DownloadIcon className="w-4 h-4 mr-2" />
                 Print / PDF
@@ -566,127 +970,8 @@ export default function Reports() {
              
             </div>
 
-            {/* Financial Flow Table - Summary */}
-            <div className="mb-6 p-6 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-              <h2 className="mb-4 text-xl font-semibold text-gray-800 dark:text-white">
-                Financial Flow Report - Summary
-              </h2>
-              {loading ? (
-                <div className="text-center py-8">
-                  <p className="text-gray-500">Loading report...</p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-gray-200 dark:border-gray-700">
-                        <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
-                          Description
-                        </th>
-                        <th className="p-2 text-right text-sm font-medium text-gray-700 dark:text-gray-300">
-                          Amount (Rs.)
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {isUsingBackendData && (
-                        <>
-                          <tr className="border-b border-gray-100 dark:border-gray-700">
-                            <td className="p-2 font-semibold text-gray-800 dark:text-white">
-                              Opening Balance (Cash)
-                            </td>
-                            <td className="p-2 text-right font-semibold text-blue-600 dark:text-blue-400">
-                              + Rs. {openingCash.toFixed(2)}
-                            </td>
-                          </tr>
-                          {openingBankTotal > 0 && (
-                            <tr className="border-b border-gray-100 dark:border-gray-700">
-                              <td className="p-2 font-semibold text-gray-800 dark:text-white">
-                                Opening Balance (Bank)
-                              </td>
-                              <td className="p-2 text-right font-semibold text-blue-600 dark:text-blue-400">
-                                + Rs. {openingBankTotal.toFixed(2)}
-                              </td>
-                            </tr>
-                          )}
-                          <tr className="border-b border-gray-100 dark:border-gray-700">
-                            <td className="p-2 font-semibold text-gray-800 dark:text-white">
-                              Opening Balance (Total)
-                            </td>
-                            <td className="p-2 text-right font-semibold text-blue-600 dark:text-blue-400">
-                              + Rs. {openingBalance.toFixed(2)}
-                            </td>
-                          </tr>
-                        </>
-                      )}
-                      <tr className="border-b border-gray-100 dark:border-gray-700">
-                        <td className="p-2 font-semibold text-gray-800 dark:text-white">
-                          Total Sales
-                        </td>
-                        <td className="p-2 text-right font-semibold text-green-600 dark:text-green-400">
-                          + Rs. {totalSales.toFixed(2)}
-                        </td>
-                      </tr>
-                      {totalPurchases > 0 && (
-                        <tr className="border-b border-gray-100 dark:border-gray-700">
-                          <td className="p-2 font-semibold text-gray-800 dark:text-white">
-                            Total Purchases
-                          </td>
-                          <td className="p-2 text-right font-semibold text-red-600 dark:text-red-400">
-                            - Rs. {totalPurchases.toFixed(2)}
-                          </td>
-                        </tr>
-                      )}
-                      <tr className="border-b border-gray-100 dark:border-gray-700">
-                        <td className="p-2 font-semibold text-gray-800 dark:text-white">
-                          Total Expenses
-                        </td>
-                        <td className="p-2 text-right font-semibold text-red-600 dark:text-red-400">
-                          - Rs. {totalExpenses.toFixed(2)}
-                        </td>
-                      </tr>
-                      {isUsingBackendData && (
-                        <>
-                          <tr className="border-b border-gray-100 dark:border-gray-700">
-                            <td className="p-2 font-semibold text-gray-800 dark:text-white">
-                              Closing Balance (Cash)
-                            </td>
-                            <td className="p-2 text-right font-semibold text-green-600 dark:text-green-400">
-                              Rs. {closingCash.toFixed(2)}
-                            </td>
-                          </tr>
-                          {closingBankTotal > 0 && (
-                            <tr className="border-b border-gray-100 dark:border-gray-700">
-                              <td className="p-2 font-semibold text-gray-800 dark:text-white">
-                                Closing Balance (Bank)
-                              </td>
-                              <td className="p-2 text-right font-semibold text-green-600 dark:text-green-400">
-                                Rs. {closingBankTotal.toFixed(2)}
-                              </td>
-                            </tr>
-                          )}
-                        </>
-                      )}
-                      <tr>
-                        <td className="p-2 font-bold text-lg text-gray-800 dark:text-white">
-                          {isUsingBackendData ? "Closing Balance (Total)" : "Net Profit/Loss"}
-                        </td>
-                        <td className={`p-2 text-right font-bold text-lg ${
-                          (isUsingBackendData ? closingBalance : profit) >= 0
-                            ? "text-green-600 dark:text-green-400"
-                            : "text-red-600 dark:text-red-400"
-                        }`}>
-                          Rs. {(isUsingBackendData ? closingBalance : profit).toFixed(2)}
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-
-            {/* Date-wise Financial Flow - For Custom Range and Weekly/Monthly */}
-            {isUsingBackendData && dateRangeReport && dateRangeReport.dailyReports && dateRangeReport.dailyReports.length > 0 && (
+            {/* Date-wise Financial Flow - For Daily, Custom Range, Weekly/Monthly */}
+            {isUsingBackendData && ((reportType === "daily" && dailyReport) || (dateRangeReport && dateRangeReport.dailyReports && dateRangeReport.dailyReports.length > 0)) && (
               <div className="mb-6 bg-white rounded-lg shadow-sm dark:bg-gray-800">
                 <button
                   onClick={() => setIsDateWiseFlowExpanded(!isDateWiseFlowExpanded)}
@@ -717,18 +1002,24 @@ export default function Reports() {
                   }`}
                 >
                   <div className={`p-6 pt-0 space-y-6 ${isDateWiseFlowExpanded ? "overflow-y-auto h-[600px]" : ""}`}>
-                  {dateRangeReport.dailyReports.map((dailyReport, idx) => {
+                  {(reportType === "daily" && dailyReport 
+                    ? [dailyReport] 
+                    : (dateRangeReport?.dailyReports || [])).map((dailyReportItem: any, idx: number) => {
+                    // For daily reports, use the current dailyReport
+                    const reportToUse = reportType === "daily" ? dailyReport : dailyReportItem;
+                    const dailyReports = reportType === "daily" ? [dailyReport] : (dateRangeReport?.dailyReports || []);
+                    
                     const prevDayClosing = idx > 0 
-                      ? dateRangeReport.dailyReports[idx - 1].closingBalance
+                      ? dailyReports[idx - 1]?.closingBalance
                       : null;
                     const prevDayCash = prevDayClosing?.cash || 0;
-                    const prevDayBank = prevDayClosing?.cards?.reduce((sum: number, card: any) => sum + (card.balance || 0), 0) || 0;
+                    const prevDayBank = prevDayClosing?.banks?.reduce((sum: number, bank: any) => sum + Number(bank.balance || 0), 0) || 0;
                     
                     return (
-                      <div key={dailyReport.date} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+                      <div key={reportToUse.date || idx} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
                         <div className="mb-4 pb-3 border-b border-gray-200 dark:border-gray-700">
                           <h3 className="text-lg font-bold text-gray-800 dark:text-white">
-                            {new Date(dailyReport.date).toLocaleDateString('en-US', { 
+                            {new Date(reportToUse.date).toLocaleDateString('en-US', { 
                               weekday: 'long', 
                               year: 'numeric', 
                               month: 'long', 
@@ -774,73 +1065,95 @@ export default function Reports() {
                                   Opening Balance
                                 </td>
                                 <td className="p-2 text-right font-semibold text-blue-600 dark:text-blue-400">
-                                  {dailyReport.openingBalance?.cash?.toFixed(2) || "0.00"}
+                                  {(reportToUse.openingBalance?.cash || 0).toFixed(2)}
                                 </td>
                                 <td className="p-2 text-right font-semibold text-blue-600 dark:text-blue-400">
-                                  {(dailyReport.openingBalance?.cards?.reduce((sum: number, card: any) => sum + (card.balance || 0), 0) || 0).toFixed(2)}
+                                  {(reportToUse.openingBalance?.banks?.reduce((sum: number, bank: any) => sum + Number(bank.balance || 0), 0) || 0).toFixed(2)}
                                 </td>
                                 <td className="p-2 text-right font-semibold text-blue-600 dark:text-blue-400">
-                                  {(dailyReport.openingBalance?.total || 0).toFixed(2)}
+                                  {(reportToUse.openingBalance?.total || 0).toFixed(2)}
                                 </td>
                               </tr>
+                              {/* Opening Balance Additions */}
+                              {reportToUse.openingBalanceAdditions && reportToUse.openingBalanceAdditions.length > 0 && (
+                                <tr className="border-b border-gray-100 dark:border-gray-700 bg-purple-50 dark:bg-purple-900/10">
+                                  <td className="p-2 font-semibold text-gray-800 dark:text-white">
+                                    Opening Balance Additions
+                                  </td>
+                                  <td className="p-2 text-right font-semibold text-purple-600 dark:text-purple-400">
+                                    {reportToUse.openingBalanceAdditions
+                                      .filter((add: any) => add.paymentType === "cash")
+                                      .reduce((sum: number, add: any) => sum + Number(add.amount || 0), 0)
+                                      .toFixed(2)}
+                                  </td>
+                                  <td className="p-2 text-right font-semibold text-purple-600 dark:text-purple-400">
+                                    {reportToUse.openingBalanceAdditions
+                                      .filter((add: any) => add.paymentType !== "cash")
+                                      .reduce((sum: number, add: any) => sum + Number(add.amount || 0), 0)
+                                      .toFixed(2)}
+                                  </td>
+                                  <td className="p-2 text-right font-semibold text-purple-600 dark:text-purple-400">
+                                    {reportToUse.openingBalanceAdditions
+                                      .reduce((sum: number, add: any) => sum + Number(add.amount || 0), 0)
+                                      .toFixed(2)}
+                                  </td>
+                                </tr>
+                              )}
                               <tr className="border-b border-gray-100 dark:border-gray-700 bg-green-50 dark:bg-green-900/10">
                                 <td className="p-2 font-semibold text-gray-800 dark:text-white">
                                   Sales
                                 </td>
                                 <td className="p-2 text-right font-semibold text-green-600 dark:text-green-400">
-                                  {(dailyReport.sales?.cash || 0).toFixed(2)}
+                                  {(reportToUse.sales?.cash || 0).toFixed(2)}
                                 </td>
                                 <td className="p-2 text-right font-semibold text-green-600 dark:text-green-400">
-                                  {(dailyReport.sales?.bank_transfer || 0).toFixed(2)}
+                                  {(reportToUse.sales?.bank_transfer || 0).toFixed(2)}
                                 </td>
                                 <td className="p-2 text-right font-semibold text-green-600 dark:text-green-400">
-                                  {(dailyReport.sales?.total || 0).toFixed(2)}
+                                  {(reportToUse.sales?.total || 0).toFixed(2)}
                                 </td>
                               </tr>
-                              {dailyReport.purchases && dailyReport.purchases.total > 0 && (
-                                <tr className="border-b border-gray-100 dark:border-gray-700 bg-orange-50 dark:bg-orange-900/10">
-                                  <td className="p-2 font-semibold text-gray-800 dark:text-white">
-                                    Purchases
-                                  </td>
-                                  <td className="p-2 text-right font-semibold text-orange-600 dark:text-orange-400">
-                                    -{(dailyReport.purchases?.cash || 0).toFixed(2)}
-                                  </td>
-                                  <td className="p-2 text-right font-semibold text-orange-600 dark:text-orange-400">
-                                    -{(dailyReport.purchases?.bank_transfer || 0).toFixed(2)}
-                                  </td>
-                                  <td className="p-2 text-right font-semibold text-orange-600 dark:text-orange-400">
-                                    -{(dailyReport.purchases?.total || 0).toFixed(2)}
-                                  </td>
-                                </tr>
-                              )}
-                              {dailyReport.expenses && dailyReport.expenses.total > 0 && (
-                                <tr className="border-b border-gray-100 dark:border-gray-700 bg-red-50 dark:bg-red-900/10">
-                                  <td className="p-2 font-semibold text-gray-800 dark:text-white">
-                                    Expenses
-                                  </td>
-                                  <td className="p-2 text-right font-semibold text-red-600 dark:text-red-400">
-                                    -{(dailyReport.expenses?.cash || 0).toFixed(2)}
-                                  </td>
-                                  <td className="p-2 text-right font-semibold text-red-600 dark:text-red-400">
-                                    -{(dailyReport.expenses?.bank_transfer || 0).toFixed(2)}
-                                  </td>
-                                  <td className="p-2 text-right font-semibold text-red-600 dark:text-red-400">
-                                    -{(dailyReport.expenses?.total || 0).toFixed(2)}
-                                  </td>
-                                </tr>
-                              )}
+                              <tr className="border-b border-gray-100 dark:border-gray-700 bg-orange-50 dark:bg-orange-900/10">
+                                <td className="p-2 font-semibold text-gray-800 dark:text-white">
+                                  Purchases
+                                </td>
+                                <td className="p-2 text-right font-semibold text-orange-600 dark:text-orange-400">
+                                  -{(reportToUse.purchases?.cash || 0).toFixed(2)}
+                                </td>
+                                <td className="p-2 text-right font-semibold text-orange-600 dark:text-orange-400">
+                                  -{(reportToUse.purchases?.bank_transfer || 0).toFixed(2)}
+                                </td>
+                                <td className="p-2 text-right font-semibold text-orange-600 dark:text-orange-400">
+                                  -{(reportToUse.purchases?.total || 0).toFixed(2)}
+                                </td>
+                              </tr>
+                              <tr className="border-b border-gray-100 dark:border-gray-700 bg-red-50 dark:bg-red-900/10">
+                                <td className="p-2 font-semibold text-gray-800 dark:text-white">
+                                  Expenses
+                                </td>
+                                <td className="p-2 text-right font-semibold text-red-600 dark:text-red-400">
+                                  -{(reportToUse.expenses?.cash || 0).toFixed(2)}
+                                </td>
+                                <td className="p-2 text-right font-semibold text-red-600 dark:text-red-400">
+                                  -{(reportToUse.expenses?.bank_transfer || 0).toFixed(2)}
+                                </td>
+                                <td className="p-2 text-right font-semibold text-red-600 dark:text-red-400">
+                                  -{(reportToUse.expenses?.total || 0).toFixed(2)}
+                                </td>
+                              </tr>
                               <tr className="bg-gray-50 dark:bg-gray-900/20">
                                 <td className="p-2 font-bold text-gray-800 dark:text-white">
                                   Closing Balance
                                 </td>
                                 <td className="p-2 text-right font-bold text-green-600 dark:text-green-400">
-                                  {(dailyReport.closingBalance?.cash || 0).toFixed(2)}
+                                  {(reportToUse.closingBalance?.cash || 0).toFixed(2)}
                                 </td>
                                 <td className="p-2 text-right font-bold text-green-600 dark:text-green-400">
-                                  {(dailyReport.closingBalance?.cards?.reduce((sum: number, card: any) => sum + (card.balance || 0), 0) || 0).toFixed(2)}
+                                  {(reportToUse.closingBalance?.banks?.reduce((sum: number, bank: any) => sum + Number(bank.balance || 0), 0) || 
+                                    reportToUse.closingBalance?.cards?.reduce((sum: number, card: any) => sum + (card.balance || 0), 0) || 0).toFixed(2)}
                                 </td>
                                 <td className="p-2 text-right font-bold text-green-600 dark:text-green-400">
-                                  {(dailyReport.closingBalance?.total || 0).toFixed(2)}
+                                  {(reportToUse.closingBalance?.total || 0).toFixed(2)}
                                 </td>
                               </tr>
                             </tbody>
@@ -854,8 +1167,8 @@ export default function Reports() {
               </div>
             )}
 
-            {/* Purchases Report Table - Full Width if exists */}
-            {filteredPurchases.length > 0 && (
+            {/* Purchases Report Table - Full Width */}
+            {filteredPurchases.length > 0 ? (
               <div className="mb-6 p-6 bg-white rounded-lg shadow-sm dark:bg-gray-800">
                 <h2 className="mb-4 text-xl font-semibold text-gray-800 dark:text-white">
                   Purchases Report
@@ -879,26 +1192,49 @@ export default function Reports() {
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredPurchases.map((purchase) => {
-                        if (!purchase || !purchase.id) return null;
-                        const purchaseDate = purchase.date ? new Date(purchase.date) : (purchase.createdAt ? new Date(purchase.createdAt) : new Date());
-                        const items = (purchase.items || []) as Array<{ productName: string; quantity: number }>;
+                      {filteredPurchases.map((purchaseRow: any, index: number) => {
+                        if (!purchaseRow || !purchaseRow.id) return null;
+                        
+                        // Backend sends payment rows with paymentAmount and paymentDate
+                        // If it's already a payment row (has paymentAmount), use it directly
+                        // Otherwise, treat as legacy purchase format
+                        const isPaymentRow = purchaseRow.paymentAmount !== undefined;
+                        const paymentDate = isPaymentRow 
+                          ? (purchaseRow.paymentDate ? new Date(purchaseRow.paymentDate) : (purchaseRow.date ? new Date(purchaseRow.date) : new Date()))
+                          : (purchaseRow.date ? new Date(purchaseRow.date) : (purchaseRow.createdAt ? new Date(purchaseRow.createdAt) : new Date()));
+                        
+                        const displayAmount = isPaymentRow 
+                          ? purchaseRow.paymentAmount 
+                          : (purchaseRow.total || 0);
+                        
+                        const paymentType = isPaymentRow 
+                          ? purchaseRow.paymentType 
+                          : 'cash';
+                        
+                        const paymentIndex = isPaymentRow ? purchaseRow.paymentIndex : 0;
+                        const hasMultiplePayments = isPaymentRow && paymentIndex > 0;
+                        
+                        const items = (purchaseRow.items || []) as Array<{ productName: string; quantity: number }>;
+                        
                         return (
                           <tr
-                            key={purchase.id}
+                            key={isPaymentRow ? `${purchaseRow.id}-payment-${paymentIndex}-${index}` : `${purchaseRow.id}-${index}`}
                             className="border-b border-gray-100 dark:border-gray-700"
                           >
                             <td className="p-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                              {purchaseDate.toLocaleString('en-US', { 
+                              {paymentDate.toLocaleString('en-US', { 
                                 year: 'numeric', 
                                 month: 'short', 
                                 day: 'numeric',
                                 hour: '2-digit',
                                 minute: '2-digit'
                               })}
+                              {hasMultiplePayments && (
+                                <span className="text-xs text-gray-500 ml-1">(Payment {paymentIndex + 1})</span>
+                              )}
                             </td>
                             <td className="p-2 text-gray-700 dark:text-gray-300">
-                              {purchase.supplierName || "N/A"}
+                              {purchaseRow.supplierName || "N/A"}
                             </td>
                             <td className="p-2 text-gray-700 dark:text-gray-300 max-w-[200px]">
                               <div className="line-clamp-2 truncate">
@@ -908,7 +1244,10 @@ export default function Reports() {
                               </div>
                             </td>
                             <td className="p-2 text-right font-semibold text-gray-800 dark:text-white whitespace-nowrap">
-                              Rs. {Number(purchase.total || 0).toFixed(2)}
+                              <div>Rs. {Number(displayAmount || 0).toFixed(2)}</div>
+                              <div className="text-xs text-gray-500 mt-1">
+                                {paymentType.toUpperCase()}
+                              </div>
                             </td>
                           </tr>
                         );
@@ -923,6 +1262,15 @@ export default function Reports() {
                       </tr>
                     </tbody>
                   </table>
+                </div>
+              </div>
+            ) : (
+              <div className="mb-6 p-6 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+                <h2 className="mb-4 text-xl font-semibold text-gray-800 dark:text-white">
+                  Purchases Report
+                </h2>
+                <div className="text-center py-8 text-gray-500">
+                  No purchases found for the selected date range
                 </div>
               </div>
             )}
@@ -960,87 +1308,63 @@ export default function Reports() {
                         </tr>
                       ) : (
                         <>
-                          {/* Individual Sales */}
-                          {(filteredSales || []).map((sale) => {
-                            if (!sale || !sale.id) return null;
-                            const saleDate = sale.date ? new Date(sale.date) : (sale.createdAt ? new Date(sale.createdAt) : new Date());
-                            const payments = (sale.payments as Array<{ type: string; amount: number; date?: string }> | null) || [];
-                            const hasMultiplePayments = payments.length > 1;
+                          {/* Payment Rows - Backend now sends payment rows, each payment is a separate row */}
+                          {(filteredSales || []).map((paymentRow: any, index: number) => {
+                            if (!paymentRow || !paymentRow.id) return null;
                             
-                            // If no payments or single payment, show as before
-                            if (payments.length === 0 || !hasMultiplePayments) {
-                              return (
-                                <tr
-                                  key={sale.id}
-                                  className="border-b border-gray-100 dark:border-gray-700"
-                                >
-                                  <td className="p-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                                    {sale.billNumber || ""}
-                                  </td>
-                                  <td className="p-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                                    {saleDate.toLocaleString('en-US', { 
-                                      year: 'numeric', 
-                                      month: 'short', 
-                                      day: 'numeric',
-                                      hour: '2-digit',
-                                      minute: '2-digit'
-                                    })}
-                                  </td>
-                                  <td className="p-2 text-gray-700 dark:text-gray-300 max-w-[150px]">
-                                    <div className="line-clamp-3 truncate">
-                                      {sale.customerName || "Walk-in"}
-                                    </div>
-                                  </td>
-                                  <td className="p-2 text-right font-semibold text-gray-800 dark:text-white whitespace-nowrap">
-                                    Rs. {Number(sale.total || 0).toFixed(2)}
-                                    {payments.length > 0 && (
-                                      <div className="text-xs text-gray-500 mt-1">
-                                        {payments[0].type.toUpperCase()}
-                                      </div>
-                                    )}
-                                  </td>
-                                </tr>
-                              );
-                            }
+                            // Backend sends payment rows with paymentAmount and paymentDate
+                            // If it's already a payment row (has paymentAmount), use it directly
+                            // Otherwise, treat as legacy sale format
+                            const isPaymentRow = paymentRow.paymentAmount !== undefined;
+                            const paymentDate = isPaymentRow 
+                              ? (paymentRow.paymentDate ? new Date(paymentRow.paymentDate) : (paymentRow.date ? new Date(paymentRow.date) : new Date()))
+                              : (paymentRow.date ? new Date(paymentRow.date) : (paymentRow.createdAt ? new Date(paymentRow.createdAt) : new Date()));
                             
-                            // If multiple payments, show each payment as a separate row
-                            return payments.map((payment, paymentIdx) => {
-                              const paymentDate = payment.date ? new Date(payment.date) : saleDate;
-                              return (
-                                <tr
-                                  key={`${sale.id}-payment-${paymentIdx}`}
-                                  className="border-b border-gray-100 dark:border-gray-700"
-                                >
-                                  <td className="p-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                                    {sale.billNumber || ""}
-                                    {paymentIdx > 0 && (
-                                      <span className="text-xs text-gray-500 ml-1">(Payment {paymentIdx + 1})</span>
-                                    )}
-                                  </td>
-                                  <td className="p-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                                    {paymentDate.toLocaleString('en-US', { 
-                                      year: 'numeric', 
-                                      month: 'short', 
-                                      day: 'numeric',
-                                      hour: '2-digit',
-                                      minute: '2-digit'
-                                    })}
-                                  </td>
-                                  <td className="p-2 text-gray-700 dark:text-gray-300 max-w-[150px]">
-                                    <div className="line-clamp-3 truncate">
-                                      {sale.customerName || "Walk-in"}
-                                    </div>
-                                  </td>
-                                  <td className="p-2 text-right font-semibold text-gray-800 dark:text-white whitespace-nowrap">
-                                    <div>Rs. {Number(payment.amount || 0).toFixed(2)}</div>
-                                    <div className="text-xs text-gray-500 mt-1">
-                                      {payment.type.toUpperCase()}
-                                    </div>
-                                  </td>
-                                </tr>
-                              );
-                            });
-                          }).flat().filter(Boolean)}
+                            const displayAmount = isPaymentRow 
+                              ? paymentRow.paymentAmount 
+                              : (paymentRow.total || 0);
+                            
+                            const paymentType = isPaymentRow 
+                              ? paymentRow.paymentType 
+                              : (paymentRow.paymentType || 'cash');
+                            
+                            const paymentIndex = isPaymentRow ? paymentRow.paymentIndex : 0;
+                            const hasMultiplePayments = isPaymentRow && paymentIndex > 0;
+                            
+                            return (
+                              <tr
+                                key={isPaymentRow ? `${paymentRow.id}-payment-${paymentIndex}-${index}` : `${paymentRow.id}-${index}`}
+                                className="border-b border-gray-100 dark:border-gray-700"
+                              >
+                                <td className="p-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                                  {paymentRow.billNumber || ""}
+                                  {hasMultiplePayments && (
+                                    <span className="text-xs text-gray-500 ml-1">(Payment {paymentIndex + 1})</span>
+                                  )}
+                                </td>
+                                <td className="p-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                                  {paymentDate.toLocaleString('en-US', { 
+                                    year: 'numeric', 
+                                    month: 'short', 
+                                    day: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })}
+                                </td>
+                                <td className="p-2 text-gray-700 dark:text-gray-300 max-w-[150px]">
+                                  <div className="line-clamp-3 truncate">
+                                    {paymentRow.customerName || "Walk-in"}
+                                  </div>
+                                </td>
+                                <td className="p-2 text-right font-semibold text-gray-800 dark:text-white whitespace-nowrap">
+                                  <div>Rs. {Number(displayAmount || 0).toFixed(2)}</div>
+                                  <div className="text-xs text-gray-500 mt-1">
+                                    {paymentType.toUpperCase()}
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
                           
                           {/* Combined Customer Totals - Only show if customer has multiple sales */}
                           {customerTotals.length > 0 && (

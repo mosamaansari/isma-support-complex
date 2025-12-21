@@ -60,24 +60,39 @@ const LayoutContent: React.FC = () => {
 
       if (!hasRelevantPermission) return;
 
-      // Get today's date
-      const today = new Date().toISOString().split('T')[0];
+      // Get today's date in YYYY-MM-DD format
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      const today = `${year}-${month}-${day}`;
       const cookieName = "daily_confirmation_date";
       
       // Check if already confirmed today (check cookie first)
       const confirmedDate = getCookie(cookieName);
+      console.log("Daily Confirmation Check - Cookie date:", confirmedDate, "Today:", today);
+      
+      // Only skip API call if cookie date exactly matches today's date
       if (confirmedDate === today) {
         // Already confirmed today, skip API call
-        console.log("Daily confirmation already done today (from cookie)");
+        console.log("Daily confirmation already done today (from cookie), skipping API call");
         setIsCheckingConfirmation(false);
         return;
+      }
+      
+      // If cookie has old date (not today) or no cookie, proceed to check API
+      // This ensures modal shows for new day even if old cookie exists
+      if (confirmedDate && confirmedDate !== today) {
+        console.log("Cookie has old date (" + confirmedDate + "), checking API for today (" + today + ")");
+      } else {
+        console.log("No cookie found, checking API for confirmation status");
       }
 
       setIsCheckingConfirmation(true);
       try {
-        // API call only if not confirmed in cookie
+        // API call to check if confirmation is needed
         const status = await api.checkDailyConfirmation();
-        console.log("Daily confirmation status:", status);
+        console.log("Daily confirmation status from API:", status);
         
         // If already confirmed, store in cookie and don't show modal
         if (status && status.confirmed) {
@@ -88,6 +103,15 @@ const LayoutContent: React.FC = () => {
 
         // If needs confirmation, show modal
         if (status && status.needsConfirmation) {
+          console.log("Showing confirmation modal - needsConfirmation is true");
+          setConfirmationData({
+            previousCashBalance: status.previousCashBalance || 0,
+            bankBalances: status.bankBalances || [],
+          });
+          setShowConfirmationModal(true);
+        } else if (status && !status.confirmed) {
+          // If status exists but not confirmed, show modal (this handles edge cases)
+          console.log("Showing confirmation modal - status exists but not confirmed");
           setConfirmationData({
             previousCashBalance: status.previousCashBalance || 0,
             bankBalances: status.bankBalances || [],
@@ -105,13 +129,15 @@ const LayoutContent: React.FC = () => {
 
           // If no opening balance for today and not confirmed, show modal for first time setup
           if (!todayBalance && (!status || !status.confirmed)) {
+            console.log("Showing confirmation modal - no opening balance and not confirmed");
             setConfirmationData({
-              previousCashBalance: 0,
-              bankBalances: [],
+              previousCashBalance: status?.previousCashBalance || 0,
+              bankBalances: status?.bankBalances || [],
             });
             setShowConfirmationModal(true);
           } else if (status && status.confirmed) {
             // If confirmed, store in cookie
+            console.log("Already confirmed, storing cookie");
             setCookie(cookieName, today, 1);
           }
         }

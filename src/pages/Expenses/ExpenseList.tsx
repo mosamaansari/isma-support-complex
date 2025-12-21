@@ -12,6 +12,7 @@ import PageSizeSelector from "../../components/ui/PageSizeSelector";
 import { PencilIcon, TrashBinIcon } from "../../icons";
 import { Modal } from "../../components/ui/modal";
 import api from "../../services/api";
+import { formatDateToString } from "../../utils/dateHelpers";
 
 export default function ExpenseList() {
   const { expenses, expensesPagination, deleteExpense, currentUser, loading, error, refreshExpenses } = useData();
@@ -116,7 +117,7 @@ export default function ExpenseList() {
       expense.userName.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = filterCategory === "all" || expense.category === filterCategory;
     // Compare date part only (YYYY-MM-DD)
-    const expenseDateStr = expense.date ? new Date(expense.date).toISOString().split('T')[0] : '';
+    const expenseDateStr = expense.date ? formatDateToString(new Date(expense.date)) : '';
     const matchesDate = !filterDate || expenseDateStr === filterDate;
     return matchesSearch && matchesCategory && matchesDate;
   });

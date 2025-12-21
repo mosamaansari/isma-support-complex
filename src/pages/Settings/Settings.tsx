@@ -8,6 +8,7 @@ import Button from "../../components/ui/button/Button";
 import { Modal } from "../../components/ui/modal";
 import { DownloadIcon, TrashBinIcon, PencilIcon } from "../../icons";
 import api from "../../services/api";
+import { getTodayDate } from "../../utils/dateHelpers";
 
 export default function Settings() {
   const {
@@ -133,7 +134,7 @@ export default function Settings() {
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `isma-sports-backup-${new Date().toISOString().split("T")[0]}.json`;
+      link.download = `isma-sports-backup-${getTodayDate()}.json`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);

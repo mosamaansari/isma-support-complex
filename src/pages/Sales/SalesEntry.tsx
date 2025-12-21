@@ -14,7 +14,7 @@ import Select from "../../components/form/Select";
 import TaxDiscountInput from "../../components/form/TaxDiscountInput";
 import Button from "../../components/ui/button/Button";
 import { TrashBinIcon, PlusIcon } from "../../icons";
-import { getTodayDate } from "../../utils/dateHelpers";
+import { getTodayDate, formatDateToString } from "../../utils/dateHelpers";
 import { extractErrorMessage, extractValidationErrors } from "../../utils/errorHandler";
 
 const salesEntrySchema = yup.object().shape({
@@ -381,7 +381,7 @@ export default function SalesEntry() {
 
   const generateBillNumber = () => {
     const today = new Date();
-    const dateStr = today.toISOString().split("T")[0].replace(/-/g, "");
+    const dateStr = formatDateToString(today).replace(/-/g, "");
     const count = sales.filter((s) =>
       s.billNumber.startsWith(`BILL-${dateStr}`)
     ).length;
