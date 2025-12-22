@@ -24,15 +24,15 @@ const splitPurchaseQuantities = (item: {
     splitTotal > 0
       ? rawShop
       : item.toWarehouse === false
-      ? totalQuantity
-      : 0;
+        ? totalQuantity
+        : 0;
 
   const warehouseQuantity =
     splitTotal > 0
       ? rawWarehouse
       : item.toWarehouse === false
-      ? 0
-      : totalQuantity;
+        ? 0
+        : totalQuantity;
 
   return {
     shopQuantity,
@@ -304,16 +304,16 @@ class PurchaseService {
     // Update balances atomically for payments using balance management service
     // This must happen after purchase creation to get the purchase ID
     const balanceManagementService = (await import("./balanceManagement.service")).default;
-    
+
     for (const payment of data.payments) {
       // Skip payments with invalid amounts
       if (!payment.amount || payment.amount <= 0 || isNaN(Number(payment.amount))) {
         logger.warn(`Skipping invalid payment amount: ${payment.amount} for purchase ${purchase.id}`);
         continue;
       }
-      
+
       const amount = Number(payment.amount);
-      
+
       try {
         // Purchase payments can be cash, card, or bank_transfer
         if (payment.type === "cash") {
@@ -351,8 +351,19 @@ class PurchaseService {
         }
       } catch (error: any) {
         logger.error(`Error updating balance for payment type ${payment.type} in purchase ${purchase.id}:`, error);
+
+        // Rollback: Delete the created purchase since balance update failed
+        try {
+          await prisma.purchase.delete({
+            where: { id: purchase.id },
+          });
+          logger.info(`Rolled back purchase creation for ${purchase.id} due to balance error`);
+        } catch (deleteError) {
+          logger.error(`Failed to rollback purchase ${purchase.id}:`, deleteError);
+        }
+
         // Re-throw to ensure the error is propagated
-        throw new Error(`Failed to update balance for purchase payment: ${error.message}`);
+        throw new Error(`${error.message}`);
       }
     }
 
@@ -462,11 +473,11 @@ class PurchaseService {
         if (product) {
           const revertShopQty = Number(
             (oldItem as any).shopQuantity ??
-              (oldItem.toWarehouse === false ? oldItem.quantity : 0)
+            (oldItem.toWarehouse === false ? oldItem.quantity : 0)
           );
           const revertWarehouseQty = Number(
             (oldItem as any).warehouseQuantity ??
-              (oldItem.toWarehouse === false ? 0 : oldItem.quantity)
+            (oldItem.toWarehouse === false ? 0 : oldItem.quantity)
           );
 
           if (revertWarehouseQty > 0) {
@@ -554,7 +565,10 @@ class PurchaseService {
 
     // Update totals
     if (data.subtotal !== undefined) updateData.subtotal = data.subtotal;
+    if (data.discount !== undefined) updateData.discount = data.discount;
+    if (data.discountType !== undefined) updateData.discountType = data.discountType;
     if (data.tax !== undefined) updateData.tax = data.tax;
+    if (data.taxType !== undefined) updateData.taxType = data.taxType;
     if (data.total !== undefined) updateData.total = data.total;
     if (data.payments) {
       updateData.payments = data.payments as any;
@@ -650,7 +664,7 @@ class PurchaseService {
     // Update balances atomically for the new payment using balance management service
     try {
       const balanceManagementService = (await import("./balanceManagement.service")).default;
-      
+
       // Get user info
       let user: any = null;
       let userName = "System";
@@ -718,7 +732,7 @@ class PurchaseService {
     } catch (error: any) {
       logger.error("Error updating balance for purchase payment:", error);
       // Re-throw to ensure the error is propagated
-      throw new Error(`Failed to update balance for purchase payment: ${error.message}`);
+      throw new Error(`${error.message}`);
     }
 
     // Supplier table is maintained for listing only, not linked to purchases via ID

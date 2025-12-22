@@ -59,3 +59,4 @@ class DailyConfirmationController {
 
 export default new DailyConfirmationController();
 
+

@@ -64,6 +64,13 @@ export default function ProductList() {
     return matchesSearch && matchesLowStock;
   });
 
+  const totalStockValue = (products || []).reduce((sum, p) => {
+    if (!p) return sum;
+    const totalQuantity = (p.shopQuantity || 0) + (p.warehouseQuantity || 0);
+    const price = p.salePrice || 0;
+    return sum + totalQuantity * price;
+  }, 0);
+
   const handleDeleteClick = (id: string) => {
     setProductToDelete(id);
     setDeleteModalOpen(true);
@@ -71,7 +78,7 @@ export default function ProductList() {
 
   const confirmDelete = async () => {
     if (!productToDelete) return;
-    
+
     setIsDeleting(productToDelete);
     try {
       await deleteProduct(productToDelete);
@@ -162,15 +169,9 @@ export default function ProductList() {
           <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
             <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Total Stock Value</p>
             <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-800 dark:text-white price-responsive">
-              {formatPriceWithCurrency(
-                (products || [])
-                  .reduce((sum, p) => {
-                    if (!p) return sum;
-                    const totalQuantity = (p.shopQuantity || 0) + (p.warehouseQuantity || 0);
-                    const price = p.salePrice || 0;
-                    return sum + totalQuantity * price;
-                  }, 0)
-              )}
+              {totalStockValue >= 1000000
+                ? formatPriceWithCurrency(totalStockValue)
+                : `Rs. ${totalStockValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
             </p>
           </div>
         </div>
@@ -199,18 +200,18 @@ export default function ProductList() {
         <table className="responsive-table">
           <thead>
             <tr className="border-b border-gray-200 dark:border-gray-700">
-                      <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[80px]">
-                        Image
-                      </th>
-                      <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[150px]">
-                        Product Name
-                      </th>
-                      <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
-                        Brand
-                      </th>
-                      <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
-                        Brand
-                      </th>
+              <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[80px]">
+                Image
+              </th>
+              <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[150px]">
+                Product Name
+              </th>
+              <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
+                Brand
+              </th>
+              <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
+                Brand
+              </th>
               <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
                 Sale Price
               </th>
@@ -318,14 +319,14 @@ export default function ProductList() {
                         {(currentUser?.role === "admin" ||
                           currentUser?.role === "warehouse_manager" ||
                           currentUser?.role === "superadmin") && (
-                          <button
-                            onClick={() => handleDeleteClick(product.id)}
-                            disabled={isDeleting === product.id}
-                            className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded dark:hover:bg-red-900/20 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
-                          >
-                            <TrashBinIcon className="w-3 h-3 sm:w-4 sm:h-4" />
-                          </button>
-                        )}
+                            <button
+                              onClick={() => handleDeleteClick(product.id)}
+                              disabled={isDeleting === product.id}
+                              className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded dark:hover:bg-red-900/20 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+                            >
+                              <TrashBinIcon className="w-3 h-3 sm:w-4 sm:h-4" />
+                            </button>
+                          )}
                       </div>
                     </td>
                   </tr>

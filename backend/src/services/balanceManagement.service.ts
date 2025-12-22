@@ -147,7 +147,7 @@ class BalanceManagementService {
 
       // Ensure balance doesn't go negative
       if (afterBalance < 0) {
-        throw new Error(`Insufficient cash balance. Current: ${beforeBalance}, Required: ${amount}`);
+        throw new Error(`Insufficient cash balance. Available Balance: ${beforeBalance}, Required Amount: ${amount}`);
       }
 
       // Get or create opening balance for today
@@ -283,7 +283,7 @@ class BalanceManagementService {
 
       // Ensure balance doesn't go negative
       if (afterBalance < 0) {
-        throw new Error(`Insufficient bank balance. Current: ${beforeBalance}, Required: ${amount}`);
+        throw new Error(`Insufficient bank balance. Available Balance: ${beforeBalance}, Required Amount: ${amount}`);
       }
 
       // Get or create opening balance for today

@@ -146,53 +146,38 @@ class AuthService {
   }
 
   async forgotPassword(email: string, userType: "user" | "admin" = "user") {
-    let user: { id: string; name: string; email: string } | null = null;
-
-    if (userType === "admin") {
-      user = await prisma.adminUser.findFirst({
-        where: { email },
-        select: { id: true, name: true, email: true },
-      });
-    } else {
-      user = await prisma.user.findFirst({
-        where: { email },
-        select: { id: true, name: true, email: true },
-      });
+    // Only allow users to reset password
+    if (userType !== "user") {
+      throw new Error("Forgot password is only available for users");
     }
 
+    const user = await prisma.user.findFirst({
+      where: { email },
+      select: { id: true, name: true, email: true },
+    });
+
     if (!user) {
-      // Don't reveal if email exists or not for security
-      return { message: "If the email exists, a password reset link has been sent." };
+      // User explicitly requested to know if account exists or not
+      throw new Error("Account not found");
     }
 
     // Generate reset token
     const resetToken = crypto.randomBytes(32).toString("hex");
     const resetTokenExpiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
-    // Store reset token in database
-    if (userType === "admin") {
-      await prisma.adminUser.update({
-        where: { id: user.id },
-        data: {
-          resetToken,
-          resetTokenExpiry,
-        },
-      });
-    } else {
-      // Add resetToken and resetTokenExpiry to User model if not exists
-      await prisma.user.update({
-        where: { id: user.id },
-        data: {
-          resetToken,
-          resetTokenExpiry,
-        } as any,
-      });
-    }
+    // Add resetToken and resetTokenExpiry to User model
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        resetToken,
+        resetTokenExpiry,
+      } as any,
+    });
 
     // Send email
     await emailService.sendForgotPasswordEmail(user.email, user.name, resetToken);
 
-    return { message: "If the email exists, a password reset link has been sent." };
+    return { message: "Password reset link has been sent to your email." };
   }
 
   async resetPassword(token: string, newPassword: string, userType: "user" | "admin" = "user") {

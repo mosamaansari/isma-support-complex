@@ -348,6 +348,7 @@ export default function Settings() {
                 <Label>Logo URL</Label>
                 <Input
                   value={formData.logo || ""}
+                  disabled
                   onChange={(e) => {
                     setFormData({ ...formData, logo: e.target.value });
                     if (formErrors.logo) {

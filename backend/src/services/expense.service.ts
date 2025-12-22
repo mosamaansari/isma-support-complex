@@ -153,7 +153,7 @@ class ExpenseService {
     // Update balance atomically for expense using balance management service
     try {
       const balanceManagementService = (await import("./balanceManagement.service")).default;
-      
+
       if (expense.paymentType === "cash") {
         await balanceManagementService.updateCashBalance(
           expense.date,
@@ -184,7 +184,18 @@ class ExpenseService {
       }
     } catch (error: any) {
       logger.error("Error updating balance for expense:", error);
-      // Re-throw to ensure transaction is rolled back
+
+      // Rollback: Delete the created expense since balance update failed
+      try {
+        await prisma.expense.delete({
+          where: { id: expense.id },
+        });
+        logger.info(`Rolled back expense creation for ${expense.id} due to balance error`);
+      } catch (deleteError) {
+        logger.error(`Failed to rollback expense ${expense.id}:`, deleteError);
+      }
+
+      // Re-throw to ensure error is returned to user
       throw error;
     }
 
@@ -288,8 +299,8 @@ class ExpenseService {
 
     expenses.forEach((expense) => {
       const category = expense.category;
-      const amount = typeof expense.amount === 'number' 
-        ? expense.amount 
+      const amount = typeof expense.amount === 'number'
+        ? expense.amount
         : parseFloat(String(expense.amount)) || 0;
 
       if (!categoryTotals[category]) {

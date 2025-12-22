@@ -11,17 +11,17 @@ class UserService {
 
     const [users, total] = await Promise.all([
       prisma.user.findMany({
-      select: {
-        id: true,
-        username: true,
-        name: true,
-        email: true,
-        role: true,
-        profilePicture: true,
-        permissions: true,
-        createdAt: true,
-      },
-      orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          username: true,
+          name: true,
+          email: true,
+          role: true,
+          profilePicture: true,
+          permissions: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: "desc" },
         skip,
         take: pageSize,
       }),
@@ -40,7 +40,7 @@ class UserService {
   }
 
   async getUser(id: string) {
-    const user = await prisma.user.findUnique({
+    let user: any = await prisma.user.findUnique({
       where: { id },
       select: {
         id: true,
@@ -53,6 +53,28 @@ class UserService {
         createdAt: true,
       },
     });
+
+    if (!user) {
+      // Check admin users table
+      const adminUser = await prisma.adminUser.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          username: true,
+          name: true,
+          email: true,
+          role: true,
+          profilePicture: true,
+          createdAt: true,
+        },
+      });
+
+      if (adminUser) {
+        // Admin users have full access, so we can return empty permissions or specific admin permissions if needed
+        // For consistency, we'll just add an empty permissions array as admins typically bypass permission checks or have their own logic
+        user = { ...adminUser, permissions: [] };
+      }
+    }
 
     if (!user) {
       throw new Error("User not found");
@@ -252,28 +274,28 @@ class UserService {
       return { ...updatedUser, permissions: [] };
     } else {
       // Update regular user
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-    });
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+      });
 
-    if (!user) {
-      throw new Error("User not found");
-    }
+      if (!user) {
+        throw new Error("User not found");
+      }
 
-    const updatedUser = await prisma.user.update({
-      where: { id: userId },
-      data: updateData,
-      select: {
-        id: true,
-        username: true,
-        name: true,
-        email: true,
-        role: true,
-        permissions: true,
-        profilePicture: true,
-        createdAt: true,
-      },
-    });
+      const updatedUser = await prisma.user.update({
+        where: { id: userId },
+        data: updateData,
+        select: {
+          id: true,
+          username: true,
+          name: true,
+          email: true,
+          role: true,
+          permissions: true,
+          profilePicture: true,
+          createdAt: true,
+        },
+      });
 
       return updatedUser;
     }
@@ -316,7 +338,7 @@ class UserService {
 
       // Hash and update password
       const hashedPassword = await bcrypt.hash(data.newPassword, 10);
-      
+
       await prisma.adminUser.update({
         where: { id: userId },
         data: {
@@ -347,7 +369,7 @@ class UserService {
 
       // Hash and update password
       const hashedPassword = await bcrypt.hash(data.newPassword, 10);
-      
+
       await prisma.user.update({
         where: { id: userId },
         data: {
@@ -358,8 +380,8 @@ class UserService {
       // Send password changed email if email exists
       if (user.email) {
         emailService.sendPasswordChangedEmail(user.email, user.name).catch((err) => {
-        logger.error("Failed to send password changed email:", err);
-      });
+          logger.error("Failed to send password changed email:", err);
+        });
       }
     }
 

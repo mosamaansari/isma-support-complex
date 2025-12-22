@@ -54,3 +54,4 @@ export function formatPriceWithCurrency(amount: number): string {
   return `Rs. ${formatPrice(amount)}`;
 }
 
+

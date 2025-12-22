@@ -64,3 +64,4 @@ class DailyClosingBalanceController {
 
 export default new DailyClosingBalanceController();
 
+

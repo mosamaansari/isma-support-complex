@@ -82,21 +82,6 @@ export const createSaleSchema = Joi.object({
           .messages({
             "any.only": "Discount type must be 'percent' or 'value'",
           }),
-        tax: Joi.number()
-          .optional()
-          .min(0)
-          .default(0)
-          .messages({
-            "number.base": "Tax must be a number",
-            "number.min": "Tax cannot be negative",
-          }),
-        taxType: Joi.string()
-          .optional()
-          .valid("percent", "value")
-          .default("percent")
-          .messages({
-            "any.only": "Tax type must be 'percent' or 'value'",
-          }),
         productName: Joi.string()
           .optional()
           .messages({

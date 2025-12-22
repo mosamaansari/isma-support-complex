@@ -99,3 +99,4 @@
 - Opening balance now supports both cash and bank balances
 - Reports need to be updated to show the new structure
 
+

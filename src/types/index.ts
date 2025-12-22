@@ -49,8 +49,6 @@ export interface SaleItem {
   customPrice?: number; // Custom price for this customer
   discount?: number;
   discountType?: "percent" | "value"; // Discount type: percent or direct value
-  tax?: number;
-  taxType?: "percent" | "value"; // Tax type: percent or direct value
   total: number;
 }
 

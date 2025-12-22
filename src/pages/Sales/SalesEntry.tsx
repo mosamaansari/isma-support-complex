@@ -134,11 +134,11 @@ export default function SalesEntry() {
   // Filter products based on search term - compute directly instead of using useEffect
   const filteredProducts = searchTerm
     ? (products || []).filter((p) =>
-        p && p.name && (
-          p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          (p.brand && p.brand.toLowerCase().includes(searchTerm.toLowerCase()))
-        )
+      p && p.name && (
+        p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (p.brand && p.brand.toLowerCase().includes(searchTerm.toLowerCase()))
       )
+    )
     : (products || []);
 
   const addPayment = () => {
@@ -192,12 +192,8 @@ export default function SalesEntry() {
       updated.discountType === "value"
         ? (updated.discount || 0)
         : (effectivePrice * quantity * (updated.discount || 0)) / 100;
-    const taxAmount =
-      updated.taxType === "value"
-        ? (updated.tax || 0)
-        : (effectivePrice * quantity * (updated.tax || 0)) / 100;
 
-    const total = (effectivePrice * quantity) - discountAmount + taxAmount;
+    const total = (effectivePrice * quantity) - discountAmount;
 
     return { ...updated, total };
   };
@@ -212,17 +208,17 @@ export default function SalesEntry() {
         selectedProducts.map((item) =>
           item.productId === product.id
             ? (() => {
-                const nextShopQty = (item.shopQuantity || 0) + 1;
-                if (nextShopQty > (item.product.shopQuantity || 0)) {
-                  showError(`Shop stock for ${item.productName} is only ${item.product.shopQuantity || 0}`);
-                  return item;
-                }
-                return recalcItemTotals(item as any, {
-                  shopQuantity: nextShopQty,
-                  warehouseQuantity: item.warehouseQuantity || 0,
-                  quantity: nextShopQty + (item.warehouseQuantity || 0),
-                });
-              })()
+              const nextShopQty = (item.shopQuantity || 0) + 1;
+              if (nextShopQty > (item.product.shopQuantity || 0)) {
+                showError(`Shop stock for ${item.productName} is only ${item.product.shopQuantity || 0}`);
+                return item;
+              }
+              return recalcItemTotals(item as any, {
+                shopQuantity: nextShopQty,
+                warehouseQuantity: item.warehouseQuantity || 0,
+                quantity: nextShopQty + (item.warehouseQuantity || 0),
+              });
+            })()
             : item
         )
       );
@@ -237,8 +233,6 @@ export default function SalesEntry() {
         customPrice: undefined,
         discount: undefined,
         discountType: "percent",
-        tax: undefined,
-        taxType: "percent",
         total: (product.salePrice || 0) * 1,
         product,
       } as SaleItem & { product: Product };
@@ -325,12 +319,12 @@ export default function SalesEntry() {
   };
 
   const calculateTotals = () => {
-    const subtotal = selectedProducts.reduce((sum, item) => {
+    const grossSubtotal = selectedProducts.reduce((sum, item) => {
       const effectivePrice = item.customPrice || item.unitPrice;
       return sum + effectivePrice * item.quantity;
     }, 0);
-    
-    // Calculate item-level discounts and taxes
+
+    // Calculate item-level discounts
     const itemDiscounts = selectedProducts.reduce((sum, item) => {
       const effectivePrice = item.customPrice || item.unitPrice;
       const discount = item.discount ?? 0;
@@ -340,17 +334,9 @@ export default function SalesEntry() {
         return sum + (effectivePrice * item.quantity * discount / 100);
       }
     }, 0);
-    
-    const itemTaxes = selectedProducts.reduce((sum, item) => {
-      const effectivePrice = item.customPrice || item.unitPrice;
-      const tax = item.tax ?? 0;
-      if (item.taxType === "value") {
-        return sum + tax;
-      } else {
-        return sum + (effectivePrice * item.quantity * tax / 100);
-      }
-    }, 0);
-    
+
+    const subtotal = grossSubtotal - itemDiscounts;
+
     // Calculate global discount based on type
     let globalDiscountAmount = 0;
     if (globalDiscount !== null && globalDiscount !== undefined) {
@@ -360,23 +346,21 @@ export default function SalesEntry() {
         globalDiscountAmount = (subtotal * globalDiscount) / 100;
       }
     }
-    
+
     // Calculate global tax based on type
     let globalTaxAmount = 0;
     if (globalTax !== null && globalTax !== undefined) {
       if (globalTaxType === "value") {
         globalTaxAmount = globalTax;
       } else {
-        const afterDiscount = subtotal - itemDiscounts - globalDiscountAmount;
+        const afterDiscount = subtotal - globalDiscountAmount;
         globalTaxAmount = (afterDiscount * globalTax) / 100;
       }
     }
 
-    const totalDiscount = itemDiscounts + globalDiscountAmount;
-    const totalTax = itemTaxes + globalTaxAmount;
-    const total = Math.max(0, subtotal - totalDiscount + totalTax);
+    const total = Math.max(0, subtotal - globalDiscountAmount + globalTaxAmount);
 
-    return { subtotal, discountAmount: totalDiscount, taxAmount: totalTax, total };
+    return { subtotal, discountAmount: globalDiscountAmount, taxAmount: globalTaxAmount, total };
   };
 
   const generateBillNumber = () => {
@@ -418,10 +402,10 @@ export default function SalesEntry() {
         return;
       }
     }
-
+    console.log("selectedProducts", selectedProducts) 
     const { subtotal, discountAmount, taxAmount, total } = calculateTotals();
     const totalPaid = payments.reduce((sum, payment) => sum + (payment.amount ?? 0), 0);
-    
+
     if (totalPaid > total) {
       showError("Total paid amount cannot exceed total amount");
       return;
@@ -442,12 +426,8 @@ export default function SalesEntry() {
     setIsSubmitting(true);
     try {
       const saleItems: SaleItem[] = selectedProducts.map((item) => {
-        const effectivePrice = item.customPrice || item.unitPrice;
         const totalQty = (item.shopQuantity || 0) + (item.warehouseQuantity || 0) || item.quantity;
-        const taxAmount = item.taxType === "value"
-          ? item.tax
-          : (effectivePrice * totalQty * (item.tax || globalTax || 0) / 100);
-        
+
         return {
           productId: item.productId,
           productName: item.productName,
@@ -458,21 +438,25 @@ export default function SalesEntry() {
           customPrice: item.customPrice,
           discount: item.discount,
           discountType: item.discountType || "percent",
-          tax: taxAmount,
-          taxType: item.taxType || "percent",
           total: item.total,
         };
       });
 
       const billNumber = generateBillNumber();
 
+      // Combine selected date with current time
+      const dateTime = new Date(data.date);
+      const now = new Date();
+      dateTime.setHours(now.getHours(), now.getMinutes(), now.getSeconds());
+      const dateIsoString = dateTime.toISOString();
+
       await addSale({
         billNumber,
         items: saleItems,
         subtotal,
-        discount: discountAmount,
+        discount: globalDiscount || 0,
         discountType: globalDiscountType,
-        tax: taxAmount,
+        tax: globalTax || 0,
         taxType: globalTaxType,
         total,
         paymentType: payments[0]?.type || "cash", // Required for backward compatibility
@@ -480,12 +464,12 @@ export default function SalesEntry() {
           type: p.type,
           amount: p.amount,
           bankAccountId: p.bankAccountId,
-          date: new Date().toISOString(), // Always use current date and time
+          date: dateIsoString, // Always use combined date and time
         })),
         customerName: data.customerName.trim(),
         customerPhone: data.customerPhone || undefined,
         customerCity: data.customerCity || undefined,
-        date: data.date,
+        date: dateIsoString,
         userId: currentUser!.id,
         userName: currentUser!.name,
         status: "completed",
@@ -578,84 +562,84 @@ export default function SalesEntry() {
                 No products selected. Search and add products above.
               </p>
             ) : (
-              <div className="table-container">
-                <table className="responsive-table" style={{ tableLayout: 'fixed', width: '100%' }}>
-                  <thead>
-                    <tr className="border-b border-gray-200 dark:border-gray-700">
-                      <th className="p-2 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[120px]">
+              <div className="table-container overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+                <table className="w-full min-w-[1000px] table-fixed divide-y divide-gray-200 dark:divide-gray-700">
+                  <thead className="bg-gray-50 dark:bg-gray-800">
+                    <tr>
+                      <th scope="col" className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[250px]">
                         Product
                       </th>
-                      <th className="p-2 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap w-[150px] min-w-[150px] max-w-[150px]">
+                      <th scope="col" className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[150px]">
                         Custom Price
                       </th>
-                      <th className="p-2 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap w-[100px] min-w-[100px] max-w-[100px]">
+                      <th scope="col" className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[100px]">
                         Shop Qty
                       </th>
-                      <th className="p-2 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap w-[120px] min-w-[120px] max-w-[120px]">
+                      <th scope="col" className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[100px]">
                         Warehouse Qty
                       </th>
-                      <th className="p-2 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap w-[160px] min-w-[160px] max-w-[160px]" colSpan={2}>
+                      <th scope="col" className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[160px]" colSpan={2}>
                         Discount
                       </th>
-                      <th className="p-2 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap w-[120px] min-w-[120px] max-w-[120px]">
+                      <th scope="col" className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[140px]">
                         Total
                       </th>
-                      <th className="p-2 text-center text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[80px]">
+                      <th scope="col" className="p-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[80px]">
                         Action
                       </th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="bg-white divide-y divide-gray-200 dark:bg-gray-800 dark:divide-gray-700">
                     {selectedProducts.map((item) => (
                       <tr
                         key={item.productId}
-                        className="border-b border-gray-100 dark:border-gray-700"
+                        className="hover:bg-gray-50 dark:hover:bg-gray-700/50"
                       >
-                        <td className="p-2 min-w-[120px]">
-                          <p className="font-medium text-gray-800 dark:text-white text-xs sm:text-sm">
-                            {item.productName}
-                          </p>
-                          <p className="text-xs sm:text-sm text-gray-700 dark:text-gray-300 price-responsive">
-                            Rs. {item.unitPrice.toFixed(2)}
-                          </p>
-                        </td>
-                        <td className="p-2 whitespace-nowrap w-[150px] min-w-[150px] max-w-[150px]">
-                          <div className="overflow-x-auto">
-                            <Input
-                              type="number"
-                              min="0"
-                              step={0.01}
-                              placeholder="Custom"
-                              value={item.customPrice ?? ""}
-                              onChange={(e) => {
-                                const value = e.target.value === "" ? undefined : parseFloat(e.target.value);
-                                updateItemPrice(item.productId, isNaN(value as any) ? undefined : value);
-                              }}
-                              className="w-full text-xs sm:text-sm"
-                            />
+                        <td className="p-3 overflow-hidden">
+                          <div className="flex flex-col max-w-full">
+                            <p className="font-medium text-gray-900 dark:text-white text-sm truncate" title={item.productName}>
+                              {item.productName}
+                            </p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                              Rs. {item.unitPrice.toFixed(2)}
+                            </p>
                           </div>
                         </td>
-                        <td className="p-2 whitespace-nowrap w-[100px] min-w-[100px] max-w-[100px]">
+                        <td className="p-3">
+                          <Input
+                            type="number"
+                            min="0"
+                            step={0.01}
+                            placeholder="Custom"
+                            value={item.customPrice ?? ""}
+                            onChange={(e) => {
+                              const value = e.target.value === "" ? undefined : parseFloat(e.target.value);
+                              updateItemPrice(item.productId, isNaN(value as any) ? undefined : value);
+                            }}
+                            className="w-full text-sm"
+                          />
+                        </td>
+                        <td className="p-3">
                           <Input
                             type="number"
                             min="0"
                             max={(item.product.shopQuantity || 0).toString()}
                             value={item.shopQuantity !== null && item.shopQuantity !== undefined ? item.shopQuantity : ""}
                             onChange={(e) => updateItemLocationQuantity(item.productId, "shop", e.target.value)}
-                            className="w-full text-xs sm:text-sm"
+                            className="w-full text-sm"
                           />
                         </td>
-                        <td className="p-2 whitespace-nowrap w-[120px] min-w-[120px] max-w-[120px]">
+                        <td className="p-3">
                           <Input
                             type="number"
                             min="0"
                             max={(item.product.warehouseQuantity || 0).toString()}
                             value={item.warehouseQuantity !== null && item.warehouseQuantity !== undefined ? item.warehouseQuantity : ""}
                             onChange={(e) => updateItemLocationQuantity(item.productId, "warehouse", e.target.value)}
-                            className="w-full text-xs sm:text-sm"
+                            className="w-full text-sm"
                           />
                         </td>
-                        <td className="p-2 whitespace-nowrap w-[160px] min-w-[160px] max-w-[160px]" colSpan={2}>
+                        <td className="p-3" colSpan={2}>
                           <TaxDiscountInput
                             value={item.discount}
                             type={item.discountType || "percent"}
@@ -667,20 +651,19 @@ export default function SalesEntry() {
                             className="w-full"
                           />
                         </td>
-                        <td className="p-2 font-semibold text-gray-800 dark:text-white whitespace-nowrap w-[120px] min-w-[120px] max-w-[120px]">
-                          <div className="overflow-x-auto price-responsive">
+                        <td className="p-3">
+                          <div className="text-sm font-semibold text-gray-900 dark:text-white break-all">
                             Rs. {item.total.toFixed(2)}
                           </div>
                         </td>
-                        <td className="p-2 whitespace-nowrap min-w-[80px]">
-                          <div className="flex items-center justify-center gap-1 sm:gap-2 flex-nowrap">
-                            <button
-                              onClick={() => removeItem(item.productId)}
-                              className="p-1 sm:p-1.5 text-red-600 hover:bg-red-50 rounded dark:hover:bg-red-900/20 flex-shrink-0"
-                            >
-                              <TrashBinIcon className="w-4 h-4 sm:w-5 sm:h-5" />
-                            </button>
-                          </div>
+                        <td className="p-3 text-center">
+                          <button
+                            onClick={() => removeItem(item.productId)}
+                            className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 transition-colors"
+                            title="Remove item"
+                          >
+                            <TrashBinIcon className="w-5 h-5 inline-block" />
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -794,28 +777,28 @@ export default function SalesEntry() {
                     </div>
                     <div>
                       <Label>Amount  <span className="text-error-500">*</span></Label>
-                    <Input
-                      type="number"
-                      min="0"
-                      max={String(remainingBalance + (payment.amount ?? 0))}
-                      value={(payment.amount !== null && payment.amount !== undefined && payment.amount !== 0) ? String(payment.amount) : ""}
-                      onChange={(e) => {
-                        const value = e.target.value === "" ? undefined : parseFloat(e.target.value);
-                        updatePayment(index, "amount", isNaN(value as any) || value === null ? undefined : value);
-                      }}
-                      placeholder="Enter amount"
-                      required
-                      error={
-                        (showErrors && (payment.amount === undefined || payment.amount === null || payment.amount <= 0)) ||
-                        !!backendErrors[`payments.${index}.amount`]
-                      }
-                      hint={
-                        (showErrors && (payment.amount === undefined || payment.amount === null || payment.amount <= 0)
-                          ? "Amount must be greater than 0"
-                          : undefined) ||
-                        backendErrors[`payments.${index}.amount`]
-                      }
-                    />
+                      <Input
+                        type="number"
+                        min="0"
+                        max={String(remainingBalance + (payment.amount ?? 0))}
+                        value={(payment.amount !== null && payment.amount !== undefined && payment.amount !== 0) ? String(payment.amount) : ""}
+                        onChange={(e) => {
+                          const value = e.target.value === "" ? undefined : parseFloat(e.target.value);
+                          updatePayment(index, "amount", isNaN(value as any) || value === null ? undefined : value);
+                        }}
+                        placeholder="Enter amount"
+                        required
+                        error={
+                          (showErrors && (payment.amount === undefined || payment.amount === null || payment.amount <= 0)) ||
+                          !!backendErrors[`payments.${index}.amount`]
+                        }
+                        hint={
+                          (showErrors && (payment.amount === undefined || payment.amount === null || payment.amount <= 0)
+                            ? "Amount must be greater than 0"
+                            : undefined) ||
+                          backendErrors[`payments.${index}.amount`]
+                        }
+                      />
                     </div>
                     {payment.type === "bank_transfer" && (
                       <div>
@@ -836,11 +819,11 @@ export default function SalesEntry() {
                         />
                         {((showErrors && payment.type === "bank_transfer" && !payment.bankAccountId) ||
                           backendErrors[`payments.${index}.bankAccountId`]) && (
-                          <p className="mt-1 text-xs text-error-500">
-                            {backendErrors[`payments.${index}.bankAccountId`] ||
-                              "Bank account is required for bank transfer"}
-                          </p>
-                        )}
+                            <p className="mt-1 text-xs text-error-500">
+                              {backendErrors[`payments.${index}.bankAccountId`] ||
+                                "Bank account is required for bank transfer"}
+                            </p>
+                          )}
                       </div>
                     )}
                   </div>

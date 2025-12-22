@@ -27,6 +27,8 @@ export default function ExpenseList() {
     categoryTotals: Record<string, { total: number; count: number }>;
   } | null>(null);
   const expensesLoadedRef = useRef(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [expenseToDelete, setExpenseToDelete] = useState<string | null>(null);
 
   // Load expenses on mount if empty
   useEffect(() => {
@@ -123,8 +125,7 @@ export default function ExpenseList() {
     return matchesSearch && matchesCategory && matchesDate;
   });
 
-  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [expenseToDelete, setExpenseToDelete] = useState<string | null>(null);
+  /* Hook moved to top level */
 
   const handleDeleteClick = (id: string) => {
     setExpenseToDelete(id);
@@ -156,17 +157,17 @@ export default function ExpenseList() {
   };
 
   // Use summary from API response (all-time totals from start to today)
-  const totalExpenses = expenseSummary?.totalAmount 
-    ? (typeof expenseSummary.totalAmount === 'number' 
-        ? expenseSummary.totalAmount 
-        : parseFloat(String(expenseSummary.totalAmount)) || 0)
+  const totalExpenses = expenseSummary?.totalAmount
+    ? (typeof expenseSummary.totalAmount === 'number'
+      ? expenseSummary.totalAmount
+      : parseFloat(String(expenseSummary.totalAmount)) || 0)
     : 0;
 
   const categoryTotals = expenseSummary?.categoryTotals
     ? Object.entries(expenseSummary.categoryTotals).reduce((acc, [category, data]) => {
-        acc[category] = typeof data.total === 'number' ? data.total : parseFloat(String(data.total)) || 0;
-        return acc;
-      }, {} as Record<string, number>)
+      acc[category] = typeof data.total === 'number' ? data.total : parseFloat(String(data.total)) || 0;
+      return acc;
+    }, {} as Record<string, number>)
     : {};
 
   return (
@@ -269,70 +270,70 @@ export default function ExpenseList() {
         <>
           <div className="table-container bg-white rounded-lg shadow-sm dark:bg-gray-800">
             <table className="responsive-table">
-                <thead>
-                  <tr className="border-b border-gray-200 dark:border-gray-700">
-                    <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
-                      Date
-                    </th>
-                    <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
-                      Category
-                    </th>
-                    <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[200px]">
-                      Description
-                    </th>
-                    <th className="p-2 sm:p-3 md:p-4 text-right text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
-                      Amount
-                    </th>
-                    <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
-                      Added By
-                    </th>
-                    <th className="p-2 sm:p-3 md:p-4 text-center text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
-                      Actions
-                    </th>
+              <thead>
+                <tr className="border-b border-gray-200 dark:border-gray-700">
+                  <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
+                    Date
+                  </th>
+                  <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
+                    Category
+                  </th>
+                  <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[200px]">
+                    Description
+                  </th>
+                  <th className="p-2 sm:p-3 md:p-4 text-right text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
+                    Amount
+                  </th>
+                  <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
+                    Added By
+                  </th>
+                  <th className="p-2 sm:p-3 md:p-4 text-center text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredExpenses.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="p-4 sm:p-6 md:p-8 text-center text-gray-500 text-sm sm:text-base">
+                      No expenses found
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {filteredExpenses.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="p-4 sm:p-6 md:p-8 text-center text-gray-500 text-sm sm:text-base">
-                        No expenses found
+                ) : (
+                  filteredExpenses.map((expense) => (
+                    <tr
+                      key={expense.id}
+                      className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                    >
+                      <td className="p-2 sm:p-3 md:p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap text-xs sm:text-sm">
+                        <span className="hidden sm:inline">{new Date(expense.date).toLocaleDateString()}</span>
+                        <span className="sm:hidden">{new Date(expense.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
                       </td>
-                    </tr>
-                  ) : (
-                    filteredExpenses.map((expense) => (
-                      <tr
-                        key={expense.id}
-                        className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50"
-                      >
-                        <td className="p-2 sm:p-3 md:p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap text-xs sm:text-sm">
-                          <span className="hidden sm:inline">{new Date(expense.date).toLocaleDateString()}</span>
-                          <span className="sm:hidden">{new Date(expense.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
-                        </td>
-                        <td className="p-2 sm:p-3 md:p-4 whitespace-nowrap">
-                          <span className="px-1.5 sm:px-2 py-0.5 sm:py-1 text-xs font-medium rounded bg-gray-100 dark:bg-gray-700 capitalize">
-                            {expense.category}
-                          </span>
-                        </td>
-                        <td className="p-2 sm:p-3 md:p-4 text-gray-700 dark:text-gray-300 max-w-[200px] sm:max-w-[300px]">
-                          <div className="line-clamp-2 sm:line-clamp-3 truncate text-xs sm:text-sm">
-                            {expense.description || <span className="text-gray-400 italic">No description</span>}
-                          </div>
-                        </td>
-                        <td className="p-2 sm:p-3 md:p-4 text-right font-semibold text-gray-800 dark:text-white whitespace-nowrap price-responsive">
-                          Rs. {(typeof expense.amount === 'number' ? expense.amount : parseFloat(String(expense.amount)) || 0).toFixed(2)}
-                        </td>
-                        <td className="p-2 sm:p-3 md:p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap text-xs sm:text-sm">
-                          {expense.userName}
-                        </td>
-                        <td className="p-2 sm:p-3 md:p-4 whitespace-nowrap">
-                          <div className="flex items-center justify-center gap-1 sm:gap-2 flex-nowrap">
-                            <Link to={`/expenses/edit/${expense.id}`}>
-                              <button className="p-1.5 sm:p-2 text-blue-600 hover:bg-blue-50 rounded dark:hover:bg-blue-900/20 flex-shrink-0">
-                                <PencilIcon className="w-3 h-3 sm:w-4 sm:h-4" />
-                              </button>
-                            </Link>
-                            {(currentUser?.role === "admin" ||
-                              currentUser?.id === expense.userId) && (
+                      <td className="p-2 sm:p-3 md:p-4 whitespace-nowrap">
+                        <span className="px-1.5 sm:px-2 py-0.5 sm:py-1 text-xs font-medium rounded bg-gray-100 dark:bg-gray-700 capitalize">
+                          {expense.category}
+                        </span>
+                      </td>
+                      <td className="p-2 sm:p-3 md:p-4 text-gray-700 dark:text-gray-300 max-w-[200px] sm:max-w-[300px]">
+                        <div className="line-clamp-2 sm:line-clamp-3 truncate text-xs sm:text-sm">
+                          {expense.description || <span className="text-gray-400 italic">No description</span>}
+                        </div>
+                      </td>
+                      <td className="p-2 sm:p-3 md:p-4 text-right font-semibold text-gray-800 dark:text-white whitespace-nowrap price-responsive">
+                        Rs. {(typeof expense.amount === 'number' ? expense.amount : parseFloat(String(expense.amount)) || 0).toFixed(2)}
+                      </td>
+                      <td className="p-2 sm:p-3 md:p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap text-xs sm:text-sm">
+                        {expense.userName}
+                      </td>
+                      <td className="p-2 sm:p-3 md:p-4 whitespace-nowrap">
+                        <div className="flex items-center justify-center gap-1 sm:gap-2 flex-nowrap">
+                          <Link to={`/expenses/edit/${expense.id}`}>
+                            <button className="p-1.5 sm:p-2 text-blue-600 hover:bg-blue-50 rounded dark:hover:bg-blue-900/20 flex-shrink-0">
+                              <PencilIcon className="w-3 h-3 sm:w-4 sm:h-4" />
+                            </button>
+                          </Link>
+                          {(currentUser?.role === "admin" ||
+                            currentUser?.id === expense.userId) && (
                               <button
                                 onClick={() => handleDeleteClick(expense.id)}
                                 className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded dark:hover:bg-red-900/20 flex-shrink-0"
@@ -340,12 +341,12 @@ export default function ExpenseList() {
                                 <TrashBinIcon className="w-3 h-3 sm:w-4 sm:h-4" />
                               </button>
                             )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
             </table>
           </div>
 

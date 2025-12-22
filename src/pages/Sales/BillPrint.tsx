@@ -130,6 +130,17 @@ export default function BillPrint() {
       minute: '2-digit'
     });
 
+    const pdfDiscountType = (sale as any).discountType || "percent";
+    const pdfTaxType = (sale as any).taxType || "percent";
+
+    const pdfDiscountAmount = pdfDiscountType === "value" 
+      ? sale.discount 
+      : (sale.subtotal * sale.discount) / 100;
+      
+    const pdfTaxAmount = pdfTaxType === "value" 
+      ? sale.tax 
+      : ((sale.subtotal - pdfDiscountAmount) * sale.tax) / 100;
+
     printWindow.document.write(`
       <!DOCTYPE html>
       <html>
@@ -303,14 +314,14 @@ export default function BillPrint() {
               </div>
               ${sale.discount > 0 ? `
                 <div class="totals-row">
-                  <span>Discount${((sale as any).discountType === "percent" ? " (%)" : " (Rs)")}:</span>
-                  <span>-${sale.discount.toFixed(2)}</span>
+                  <span>Discount${((sale as any).discountType === "value" ? " (Rs)" : ` (${sale.discount}%)`)}:</span>
+                  <span>-${pdfDiscountAmount.toFixed(2)}</span>
                 </div>
               ` : ""}
               ${sale.tax > 0 ? `
                 <div class="totals-row">
-                  <span>Tax${((sale as any).taxType === "percent" ? " (%)" : " (Rs)")}:</span>
-                  <span>+${sale.tax.toFixed(2)}</span>
+                  <span>Tax${((sale as any).taxType === "value" ? " (Rs)" : ` (${sale.tax}%)`)}:</span>
+                  <span>+${pdfTaxAmount.toFixed(2)}</span>
                 </div>
               ` : ""}
               <div class="totals-row total-row">
@@ -382,6 +393,19 @@ export default function BillPrint() {
   const totalPaid = (sale.payments || []).reduce((sum: number, p: any) => sum + (p?.amount || 0), 0) || (sale.remainingBalance !== undefined && sale.remainingBalance !== null && sale.remainingBalance < sale.total ? sale.total - sale.remainingBalance : sale.total);
   const remainingBalance = sale.remainingBalance !== undefined && sale.remainingBalance !== null ? sale.remainingBalance : (sale.total - totalPaid);
   const change = totalPaid > sale.total ? totalPaid - sale.total : 0;
+  
+  // Calculate display amounts for discount and tax
+  const discountType = (sale as any).discountType || "percent";
+  const taxType = (sale as any).taxType || "percent";
+
+  const actualDiscountAmount = discountType === "value" 
+    ? sale.discount 
+    : (sale.subtotal * sale.discount) / 100;
+    
+  const actualTaxAmount = taxType === "value" 
+    ? sale.tax 
+    : ((sale.subtotal - actualDiscountAmount) * sale.tax) / 100;
+
   const paymentRows = (sale.payments || []).map((p, idx) => {
     const bank = p.bankAccountId ? bankAccounts.find((b) => b.id === p.bankAccountId) : null;
     const bankLabel = bank ? `${bank.accountName || ""} ${bank.bankName ? " - " + bank.bankName : ""}`.trim() : "-";
@@ -571,20 +595,20 @@ export default function BillPrint() {
           {sale.discount > 0 && (
             <div className="flex justify-end mb-2">
               <span className="w-40 text-gray-600 dark:text-gray-400">
-                Discount{((sale as any).discountType === "percent" ? " (%)" : " (Rs)")}:
+                Discount{((sale as any).discountType === "value" ? " (Rs)" : ` (${sale.discount}%)`)}:
               </span>
               <span className="w-32 text-gray-800 dark:text-white">
-                - Rs. {sale.discount.toFixed(2)}
+                - Rs. {actualDiscountAmount.toFixed(2)}
               </span>
             </div>
           )}
           {sale.tax > 0 && (
             <div className="flex justify-end mb-2">
               <span className="w-40 text-gray-600 dark:text-gray-400">
-                Tax{((sale as any).taxType === "percent" ? " (%)" : " (Rs)")}:
+                Tax{((sale as any).taxType === "value" ? " (Rs)" : ` (${sale.tax}%)`)}:
               </span>
               <span className="w-32 text-gray-800 dark:text-white">
-                + Rs. {sale.tax.toFixed(2)}
+                + Rs. {actualTaxAmount.toFixed(2)}
               </span>
             </div>
           )}
@@ -725,14 +749,14 @@ export default function BillPrint() {
           </div>
           {sale.discount > 0 && (
             <div className="totals-row">
-              <span>Discount{((sale as any).discountType === "percent" ? " (%)" : " (Rs)")}:</span>
-              <span>-{sale.discount.toFixed(2)}</span>
+              <span>Discount{((sale as any).discountType === "value" ? " (Rs)" : ` (${sale.discount}%)`)}:</span>
+              <span>-${actualDiscountAmount.toFixed(2)}</span>
             </div>
           )}
           {sale.tax > 0 && (
             <div className="totals-row">
-              <span>Tax{((sale as any).taxType === "percent" ? " (%)" : " (Rs)")}:</span>
-              <span>+{sale.tax.toFixed(2)}</span>
+              <span>Tax{((sale as any).taxType === "value" ? " (Rs)" : ` (${sale.tax}%)`)}:</span>
+              <span>+{actualTaxAmount.toFixed(2)}</span>
             </div>
           )}
           <div className="totals-row total-row">

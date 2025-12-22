@@ -50,7 +50,8 @@ class AuthController {
       res.json(result);
     } catch (error: any) {
       logger.error("Forgot password error:", error);
-      res.status(500).json({ error: "Internal server error" });
+      const statusCode = error.message === "Account not found" ? 404 : 500;
+      res.status(statusCode).json({ error: error.message || "Internal server error" });
     }
   }
 

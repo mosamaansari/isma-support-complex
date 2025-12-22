@@ -145,6 +145,20 @@ export default function Profile() {
 
   const { getRootProps, getInputProps } = useDropzone({
     onDrop,
+    onDropRejected: (fileRejections) => {
+      fileRejections.forEach((rejection) => {
+        const { errors } = rejection;
+        errors.forEach((error) => {
+          if (error.code === "file-too-large") {
+            showError(`File is too large using ${error.code}. Max size is 5MB.`);
+          } else if (error.code === "file-invalid-type") {
+            showError("Invalid file type. Only PNG, JPG, and WEBP are allowed.");
+          } else {
+            showError(error.message);
+          }
+        });
+      });
+    },
     accept: {
       "image/png": [".png"],
       "image/jpeg": [".jpg", ".jpeg"],
@@ -165,16 +179,16 @@ export default function Profile() {
 
       const updatedUser = await api.updateProfile(updateData);
       showSuccess("Profile information updated successfully!");
-      
+
       // Update currentUser in context from localStorage
       refreshCurrentUser();
-      
+
       // Update form with new data
       resetProfile({
         name: updatedUser.name || "",
         email: updatedUser.email || "",
       });
-      
+
       // Update image preview if profile picture was updated
       if (updatedUser.profilePicture) {
         setImagePreview(updatedUser.profilePicture);
@@ -196,9 +210,9 @@ export default function Profile() {
         newPassword: data.newPassword,
         confirmPassword: data.confirmPassword,
       });
-      
+
       showSuccess("Password updated successfully!");
-      
+
       // Clear password fields
       resetPassword({
         currentPassword: "",
@@ -207,11 +221,11 @@ export default function Profile() {
       });
     } catch (err: any) {
       const errorMsg = err.response?.data?.error || err.response?.data?.message || "Failed to update password. Please try again.";
-      
+
       // Check if it's a current password error
-      if (errorMsg.toLowerCase().includes("current password") || 
-          errorMsg.toLowerCase().includes("incorrect") ||
-          err.response?.status === 401) {
+      if (errorMsg.toLowerCase().includes("current password") ||
+        errorMsg.toLowerCase().includes("incorrect") ||
+        err.response?.status === 401) {
         // Set error on currentPassword field
         setPasswordError("currentPassword", {
           type: "manual",
@@ -227,7 +241,7 @@ export default function Profile() {
         // Generic error - show in alert
         showError(errorMsg);
       }
-      
+
       console.error("Error updating password:", err);
     } finally {
       setIsSubmittingPassword(false);
@@ -275,29 +289,49 @@ export default function Profile() {
           {/* Profile Picture */}
           <div>
             <Label>Profile Picture</Label>
-            {imagePreview ? (
-              <div className="mt-2">
-                <div className="relative inline-block">
+            <div
+              {...getRootProps()}
+              className={`mt-2 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${imagePreview
+                  ? "border-transparent border-0 inline-block"
+                  : "border-gray-300 hover:border-brand-400 dark:border-gray-700 p-6"
+                }`}
+            >
+              <input {...getInputProps()} />
+              {imagePreview ? (
+                <div className="relative inline-block group">
                   <img
                     src={imagePreview}
                     alt="Profile preview"
                     className="h-32 w-32 object-cover rounded-full border-4 border-gray-200 dark:border-gray-700"
                   />
+                  <div className="absolute inset-0 flex items-center justify-center rounded-full bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <p className="text-white text-xs font-medium">Change</p>
+                  </div>
                   <button
                     type="button"
-                    onClick={() => setImagePreview("")}
-                    className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setImagePreview("");
+                      // Optionally reset the file input if needed, though react-dropzone handles this well usually
+                    }}
+                    className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600 z-10"
+                    title="Remove image"
                   >
-                    ×
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-4 w-4"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
                   </button>
                 </div>
-              </div>
-            ) : (
-              <div
-                {...getRootProps()}
-                className="mt-2 border-2 border-dashed rounded-lg p-6 cursor-pointer hover:border-brand-400 transition-colors border-gray-300 dark:border-gray-700"
-              >
-                <input {...getInputProps()} />
+              ) : (
                 <div className="text-center">
                   <svg
                     className="mx-auto h-12 w-12 text-gray-400"
@@ -315,10 +349,12 @@ export default function Profile() {
                   <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
                     Click to upload or drag and drop
                   </p>
-                  <p className="mt-1 text-xs text-gray-500">PNG, JPG, WEBP up to 5MB</p>
+                  <p className="mt-1 text-xs text-gray-500">
+                    PNG, JPG, WEBP up to 5MB
+                  </p>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
 
           {/* User Info */}

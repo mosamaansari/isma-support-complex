@@ -86,7 +86,7 @@ export default function ForgotPassword() {
               ) : (
                 <div className="p-4 bg-green-50 rounded-lg dark:bg-green-900/20">
                   <p className="text-sm text-green-800 dark:text-green-400">
-                    If the email exists, a password reset link has been sent. Please check your inbox and follow the instructions to reset your password.
+                    Password reset link has been sent to your email. Please check your inbox.
                   </p>
                 </div>
               )}

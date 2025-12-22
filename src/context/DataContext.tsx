@@ -23,7 +23,7 @@ interface DataContextType {
   currentUser: User | null;
   loading: boolean;
   error: string | null;
-  refreshCurrentUser: () => void;
+  refreshCurrentUser: () => Promise<void>;
   login: (username: string, password: string) => Promise<boolean>;
   superAdminLogin: (username: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
@@ -153,7 +153,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [loadingCards, setLoadingCards] = useState(false);
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
-  
+
   // Pagination states
   const [usersPagination, setUsersPagination] = useState({ page: 1, pageSize: 10, total: 0, totalPages: 1 });
   const [productsPagination, setProductsPagination] = useState({ page: 1, pageSize: 10, total: 0, totalPages: 1 });
@@ -165,7 +165,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   useEffect(() => {
     const token = localStorage.getItem("authToken");
     const storedUser = localStorage.getItem("currentUser");
-    
+
     if (token && storedUser) {
       try {
         const user = JSON.parse(storedUser);
@@ -194,13 +194,14 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const loadEssentialData = async () => {
     if (!currentUser) return;
-    
+
     setLoading(true);
     setError(null);
     try {
       // Only load settings which might be needed globally
       // Other data (products, sales, expenses, purchases) will be loaded by individual pages
       await refreshSettings();
+      await refreshCurrentUser(); // Ensure we have latest user data (profile pic etc)
     } catch (err: any) {
       setError(extractErrorMessage(err) || "Failed to load settings");
       console.error("Error loading essential data:", err);
@@ -261,7 +262,37 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  const refreshCurrentUser = () => {
+  const refreshCurrentUser = async () => {
+    try {
+      // Try to get ID from current state or fallback to localStorage
+      let userId = currentUser?.id;
+      if (!userId) {
+        const storedUser = localStorage.getItem("currentUser");
+        if (storedUser) {
+          const parsed = JSON.parse(storedUser);
+          userId = parsed.id;
+        }
+      }
+
+      if (userId) {
+        // Fetch fresh data from API
+        const user = await api.getUser(userId);
+        if (user) {
+          setCurrentUser(user);
+          // Try to update localStorage
+          try {
+            localStorage.setItem("currentUser", JSON.stringify(user));
+          } catch (e) {
+            console.warn("Failed to update localStorage (probably quota exceeded):", e);
+          }
+          return;
+        }
+      }
+    } catch (err) {
+      console.error("Failed to refresh user from API:", err);
+    }
+
+    // Fallback to reading from localStorage if API failed
     const storedUser = localStorage.getItem("currentUser");
     if (storedUser) {
       try {
@@ -275,6 +306,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const refreshUsers = async (page?: number, pageSize?: number) => {
     try {
+      setError(null);
       // Use provided values or fallback to pagination state or defaults
       const currentPage = page !== undefined ? page : (usersPagination?.page || 1);
       const currentPageSize = pageSize !== undefined ? pageSize : (usersPagination?.pageSize || 10);
@@ -302,8 +334,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const addUser = async (userData: Omit<User, "id" | "createdAt">) => {
     try {
       setError(null);
-      const newUser = await api.createUser(userData);
-      setUsers([...users, newUser]);
+      await api.createUser(userData);
+      await refreshUsers(usersPagination?.page || 1, usersPagination?.pageSize || 10);
     } catch (err: any) {
       setError(extractErrorMessage(err) || "Failed to create user");
       throw err;
@@ -315,7 +347,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setError(null);
       const updatedUser = await api.updateUser(id, userData);
       setUsers(users.map((u) => (u.id === id ? updatedUser : u)));
-      
+
       // If updating own profile, update currentUser
       if (currentUser && id === currentUser.id) {
         setCurrentUser(updatedUser);
@@ -341,6 +373,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const refreshProducts = async (page?: number, pageSize?: number) => {
     if (loadingProducts) return; // Prevent duplicate requests
     try {
+      setError(null);
       setLoadingProducts(true);
       // Use provided values or fallback to pagination state or defaults
       const currentPage = page !== undefined ? page : (productsPagination?.page || 1);
@@ -365,8 +398,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const addProduct = async (productData: Omit<Product, "id" | "createdAt" | "updatedAt">) => {
     try {
       setError(null);
-      const newProduct = await api.createProduct(productData);
-      setProducts([...products, newProduct]);
+      await api.createProduct(productData);
+      await refreshProducts(productsPagination?.page || 1, productsPagination?.pageSize || 10);
     } catch (err: any) {
       setError(extractErrorMessage(err) || "Failed to create product");
       throw err;
@@ -413,6 +446,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // Sale functions
   const refreshSales = async (page?: number, pageSize?: number) => {
     try {
+      setError(null);
       // Use provided values or fallback to pagination state or defaults
       const currentPage = page !== undefined ? page : (salesPagination?.page || 1);
       const currentPageSize = pageSize !== undefined ? pageSize : (salesPagination?.pageSize || 10);
@@ -444,19 +478,19 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           warehouseQuantity: (item as any).warehouseQuantity ?? 0,
           unitPrice: item.unitPrice,
           customPrice: item.customPrice || undefined,
-          discount: item.discount || 0,
+          discount: item.discount ?? 0,
           discountType: item.discountType || "percent",
-          tax: item.tax || 0,
-          taxType: item.taxType || "percent",
         })),
         customerName: saleData.customerName,
         customerPhone: saleData.customerPhone,
         customerCity: saleData.customerCity,
-        discount: saleData.discount || 0,
-        tax: saleData.tax || 0,
+        discount: saleData.discount ?? 0,
+        discountType: saleData.discountType || "percent",
+        tax: saleData.tax ?? 0,
+        taxType: saleData.taxType || "percent",
         date: saleData.date,
       };
-      
+
       // Use new payments array if available, otherwise fall back to old paymentType
       if (saleData.payments && saleData.payments.length > 0) {
         apiData.payments = saleData.payments;
@@ -467,13 +501,13 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           apiData.bankAccountId = saleData.bankAccountId;
         }
       }
-      
+
       if (saleData.date) {
         apiData.date = saleData.date;
       }
 
-      const newSale = await api.createSale(apiData);
-      setSales([...sales, newSale]);
+      await api.createSale(apiData);
+      await refreshSales(salesPagination?.page || 1, salesPagination?.pageSize || 10);
       await refreshProducts(productsPagination?.page || 1, productsPagination?.pageSize || 10); // Refresh products to update stock
     } catch (err: any) {
       setError(extractErrorMessage(err) || "Failed to create sale");
@@ -500,9 +534,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (payment.amount === undefined || payment.amount === null || payment.amount <= 0) {
         throw new Error("Payment amount must be greater than 0");
       }
-      const updatedSale = await api.addPaymentToSale(id, { 
-        type: payment.type, 
-        amount: payment.amount, 
+      const updatedSale = await api.addPaymentToSale(id, {
+        type: payment.type,
+        amount: payment.amount,
         bankAccountId: payment.bankAccountId,
         date: payment.date
       });
@@ -526,6 +560,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // Expense functions
   const refreshExpenses = async (page?: number, pageSize?: number) => {
     try {
+      setError(null);
       // Use provided values or fallback to pagination state or defaults
       const currentPage = page !== undefined ? page : (expensesPagination?.page || 1);
       const currentPageSize = pageSize !== undefined ? pageSize : (expensesPagination?.pageSize || 10);
@@ -606,6 +641,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // Purchase functions
   const refreshPurchases = async (page?: number, pageSize?: number) => {
     try {
+      setError(null);
       // Use provided values or fallback to pagination state or defaults
       const currentPage = page !== undefined ? page : (purchasesPagination?.page || 1);
       const currentPageSize = pageSize !== undefined ? pageSize : (purchasesPagination?.pageSize || 10);
@@ -646,8 +682,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         date: purchaseData.date,
       };
 
-      const newPurchase = await api.createPurchase(apiData);
-      setPurchases([...purchases, newPurchase]);
+      await api.createPurchase(apiData);
+      await refreshPurchases(purchasesPagination?.page || 1, purchasesPagination?.pageSize || 10);
       await refreshProducts(); // Refresh products to update stock
     } catch (err: any) {
       setError(extractErrorMessage(err) || "Failed to create purchase");
@@ -744,6 +780,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // Category functions
   const refreshCategories = async () => {
     try {
+      setError(null);
       const data = await api.getCategories();
       setCategories(data);
     } catch (err: any) {

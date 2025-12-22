@@ -95,8 +95,30 @@ class SaleService {
         prisma.sale.count({ where }),
       ]);
 
+      // Map through sales to convert Decimals to numbers
+      const formattedSales = sales.map(sale => ({
+        ...sale,
+        subtotal: Number(sale.subtotal),
+        discount: Number(sale.discount),
+        tax: Number(sale.tax),
+        total: Number(sale.total),
+        remainingBalance: Number(sale.remainingBalance),
+        discountType: sale.discountType || "percent",
+        taxType: sale.taxType || "percent",
+        items: sale.items.map(item => ({
+          ...item,
+          unitPrice: Number(item.unitPrice),
+          customPrice: item.customPrice ? Number(item.customPrice) : null,
+          discount: Number(item.discount),
+          tax: Number(item.tax),
+          total: Number(item.total),
+          discountType: item.discountType || "percent",
+          taxType: item.taxType || "percent",
+        })),
+      }));
+
       return {
-        data: sales,
+        data: formattedSales,
         pagination: {
           page,
           pageSize,
@@ -145,7 +167,27 @@ class SaleService {
         throw new Error("Sale not found");
       }
 
-      return sale;
+      // Convert Decimals to numbers for easier frontend handling
+      return {
+        ...sale,
+        subtotal: Number(sale.subtotal),
+        discount: Number(sale.discount),
+        tax: Number(sale.tax),
+        total: Number(sale.total),
+        remainingBalance: Number(sale.remainingBalance),
+        discountType: sale.discountType || "percent",
+        taxType: sale.taxType || "percent",
+        items: sale.items.map(item => ({
+          ...item,
+          unitPrice: Number(item.unitPrice),
+          customPrice: item.customPrice ? Number(item.customPrice) : null,
+          discount: Number(item.discount),
+          tax: Number(item.tax),
+          total: Number(item.total),
+          discountType: item.discountType || "percent",
+          taxType: item.taxType || "percent",
+        })),
+      };
     } catch (error: any) {
       // If card relation doesn't exist, try without it
       if (error.message?.includes('card') || error.message?.includes('Card') || error.code === 'P2025') {
@@ -191,8 +233,28 @@ class SaleService {
       if (!sale) {
         throw new Error("Sale not found");
       }
-
-      return sale;
+      console.log(sale)
+      // Convert Decimals to numbers for easier frontend handling
+      return {
+        ...sale,
+        subtotal: Number(sale.subtotal),
+        discount: Number(sale.discount),
+        tax: Number(sale.tax),
+        total: Number(sale.total),
+        remainingBalance: Number(sale.remainingBalance),
+        discountType: sale.discountType || "percent",
+        taxType: sale.taxType || "percent",
+        items: sale.items.map(item => ({
+          ...item,
+          unitPrice: Number(item.unitPrice),
+          customPrice: item.customPrice ? Number(item.customPrice) : null,
+          discount: Number(item.discount),
+          tax: Number(item.tax),
+          total: Number(item.total),
+          discountType: item.discountType || "percent",
+          taxType: item.taxType || "percent",
+        })),
+      };
     } catch (error: any) {
       // If card relation doesn't exist, try without it
       if (error.message?.includes('card') || error.message?.includes('Card') || error.code === 'P2025') {
@@ -227,8 +289,6 @@ class SaleService {
         customPrice?: number;
         discount?: number;
         discountType?: "percent" | "value";
-        tax?: number;
-        taxType?: "percent" | "value";
         fromWarehouse?: boolean;
       }>;
       customerName?: string;
@@ -310,7 +370,7 @@ class SaleService {
       const effectivePrice = item.customPrice || (product.salePrice ? Number(product.salePrice) : 0);
       const unitPrice = product.salePrice ? Number(product.salePrice) : 0;
       const itemSubtotal = effectivePrice * totalQuantity;
-      
+
       // Calculate discount based on type
       let itemDiscount = 0;
       if (item.discount && item.discount > 0) {
@@ -320,22 +380,10 @@ class SaleService {
           itemDiscount = (itemSubtotal * item.discount) / 100;
         }
       }
-      
-      // Calculate tax based on type
-      let itemTax = 0;
-      if (item.tax && item.tax > 0) {
-        if (item.taxType === "value") {
-          itemTax = item.tax;
-        } else {
-          itemTax = (itemSubtotal * item.tax) / 100;
-        }
-      } else if (data.tax && data.tax > 0) {
-        itemTax = (itemSubtotal * data.tax) / 100;
-      }
-      
-      const itemTotal = itemSubtotal - itemDiscount + itemTax;
 
-      subtotal += itemSubtotal;
+      const itemTotal = itemSubtotal - itemDiscount;
+
+      subtotal += itemTotal;
 
       const shopAvailable = product.shopQuantity ?? (product as any).quantity ?? 0;
       const warehouseAvailable = product.warehouseQuantity ?? 0;
@@ -361,47 +409,46 @@ class SaleService {
         customPrice: item.customPrice || null,
         discount: item.discount || 0,
         discountType: item.discountType || "percent",
-        tax: itemTax,
-        taxType: item.taxType || "percent",
+        tax: 0,
+        taxType: "percent",
         total: itemTotal,
         fromWarehouse: warehouseQuantity > 0 && shopQuantity === 0,
       });
     }
 
     // Calculate global discount based on type
-    const dataWithTypes = data as any;
     let discountAmount = 0;
     if (data.discount && data.discount > 0) {
-      if (dataWithTypes.discountType === "value") {
+      if (data.discountType === "value") {
         discountAmount = data.discount;
       } else {
         discountAmount = (subtotal * data.discount) / 100;
       }
     }
-    
+
     // Calculate global tax based on type
     let taxAmount = 0;
     if (data.tax && data.tax > 0) {
-      if (dataWithTypes.taxType === "value") {
+      if (data.taxType === "value") {
         taxAmount = data.tax;
       } else {
         const afterDiscount = subtotal - discountAmount;
         taxAmount = (afterDiscount * data.tax) / 100;
       }
     }
-    
+
     const total = subtotal - discountAmount + taxAmount;
 
     // Get or create customer (optional - use default if not provided)
     const customerName = data.customerName || "Walk-in Customer";
-    const customerPhone = data.customerPhone && data.customerPhone.trim() !== "" && data.customerPhone !== "0000000000" 
-      ? data.customerPhone.trim() 
+    const customerPhone = data.customerPhone && data.customerPhone.trim() !== "" && data.customerPhone !== "0000000000"
+      ? data.customerPhone.trim()
       : null;
     const customerCity = data.customerCity || null;
 
     let customer = null;
     let customerId = null;
-    
+
     // Only create/find customer if phone number is provided and valid (not empty or "0000000000")
     if (customerPhone && customerPhone.trim() !== "" && customerPhone !== "0000000000") {
       customer = await prisma.customer.findFirst({
@@ -446,7 +493,7 @@ class SaleService {
       }));
       const totalPaid = payments.reduce((sum, payment) => sum + payment.amount, 0);
       remainingBalance = total - totalPaid;
-      
+
       if (totalPaid > total) {
         throw new Error("Total payment amount cannot exceed sale total");
       }
@@ -455,7 +502,7 @@ class SaleService {
       const paymentType = (data.paymentType || "cash") as "cash" | "bank_transfer";
       const paymentAmount = total;
       remainingBalance = 0;
-      
+
       payments = [{
         type: paymentType,
         amount: paymentAmount,
@@ -472,10 +519,10 @@ class SaleService {
       data: {
         billNumber,
         subtotal,
-        discount: discountAmount,
-        discountType: dataWithTypes.discountType || "percent",
-        tax: taxAmount,
-        taxType: dataWithTypes.taxType || "percent",
+        discount: data.discount || 0,
+        discountType: data.discountType || "percent",
+        tax: data.tax || 0,
+        taxType: data.taxType || "percent",
         total,
         paymentType: payments[0]?.type || ("cash" as any),
         payments: payments as any,
@@ -567,20 +614,20 @@ class SaleService {
     // Update balances atomically for payments using balance management service
     try {
       const balanceManagementService = (await import("./balanceManagement.service")).default;
-      const payments = (sale.payments as Array<{ 
-        type: string; 
-        amount: number; 
+      const payments = (sale.payments as Array<{
+        type: string;
+        amount: number;
         bankAccountId?: string;
         cardId?: string;
       }>) || [];
-      
+
       for (const payment of payments) {
         // Skip invalid payments
         if (!payment.amount || payment.amount <= 0 || isNaN(Number(payment.amount))) {
           logger.warn(`Skipping invalid payment amount: ${payment.amount} for sale ${sale.id}`);
           continue;
         }
-        
+
         // Handle cash, bank_transfer, and card payments (card maps to bank_transfer for balance tracking)
         if (payment.type === "cash") {
           await balanceManagementService.updateCashBalance(
@@ -632,7 +679,7 @@ class SaleService {
         const payments = (sale.payments as Array<{ type: string; amount: number }>) || [];
         const totalPaid = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
         const remaining = Number(sale.remainingBalance || 0);
-        
+
         await whatsappService.sendBillNotificationWithImage(
           sale.customerPhone,
           sale,
@@ -666,7 +713,7 @@ class SaleService {
     for (const item of sale.items) {
       const updateData: any = {};
       const product = await prisma.product.findUnique({ where: { id: item.productId } });
-      
+
       if (product) {
         const shopQtyToRestore =
           (item as any).shopQuantity ?? (item.fromWarehouse ? 0 : item.quantity);
@@ -741,7 +788,7 @@ class SaleService {
       bankAccountId?: string;
       date?: string;
     }>) || [];
-    
+
     const totalPaid = currentPayments.reduce((sum, p) => sum + p.amount, 0);
     const currentRemaining = Number(sale.remainingBalance);
 
@@ -762,7 +809,7 @@ class SaleService {
     const newPayments = [...currentPayments, paymentWithDate];
     const newTotalPaid = totalPaid + payment.amount;
     const newRemainingBalance = Number(sale.total) - newTotalPaid;
-    
+
     // Update status: if remaining balance is 0 or less, mark as completed
     const newStatus = newRemainingBalance <= 0 ? "completed" : "pending";
 
@@ -793,7 +840,7 @@ class SaleService {
     // Update balances atomically for the new payment using balance management service
     try {
       const balanceManagementService = (await import("./balanceManagement.service")).default;
-      
+
       // Get user info
       let user: any = null;
       let userName = "System";
@@ -871,7 +918,7 @@ class SaleService {
     if (sale.customerId) {
       const oldDue = Number(sale.customer?.dueAmount || 0);
       const newDue = oldDue - payment.amount;
-      
+
       await prisma.customer.update({
         where: { id: sale.customerId },
         data: {
@@ -886,7 +933,7 @@ class SaleService {
         const payments = (updatedSale.payments as Array<{ type: string; amount: number; date?: string }>) || [];
         const totalPaid = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
         const remaining = Number(updatedSale.remainingBalance || 0);
-        
+
         await whatsappService.sendBillNotificationWithImage(
           updatedSale.customerPhone,
           updatedSale,

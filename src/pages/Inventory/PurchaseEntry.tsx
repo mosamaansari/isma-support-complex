@@ -8,6 +8,7 @@ import { useData } from "../../context/DataContext";
 import { useAlert } from "../../context/AlertContext";
 import { Product, PurchaseItem, PurchasePayment } from "../../types";
 import Input from "../../components/form/input/InputField";
+import DatePicker from "../../components/form/DatePicker";
 import Label from "../../components/form/Label";
 import Select from "../../components/form/Select";
 import TaxDiscountInput from "../../components/form/TaxDiscountInput";
@@ -34,7 +35,7 @@ const purchaseEntrySchema = yup.object().shape({
   date: yup
     .string()
     .required("Date is required"),
-      tax: yup
+  tax: yup
     .number()
     .nullable()
     .min(0, "Tax cannot be negative")
@@ -106,10 +107,10 @@ export default function PurchaseEntry() {
           // Format date to YYYY-MM-DD (accurate, no timezone issues)
           const purchaseDate = new Date(purchase.date);
           setDate(formatDateToString(purchaseDate));
-          setTax(purchase.tax ? Number(purchase.tax) : null);
           setTaxType((purchase.taxType as "percent" | "value") || "percent");
+          setTax(purchase.tax ? Number(purchase.tax) : null);
           setPayments((purchase.payments || []) as PurchasePayment[]);
-          
+
           // Load products for items
           const itemsWithProducts = purchase.items.map((item: any) => {
             const product = products.find(p => p.id === item.productId);
@@ -137,11 +138,11 @@ export default function PurchaseEntry() {
   // Filter products based on search term - compute directly instead of using useEffect
   const filteredProducts = searchTerm
     ? (products || []).filter((p) =>
-        p && p.name && (
-          p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          (p.brand && p.brand.toLowerCase().includes(searchTerm.toLowerCase()))
-        )
+      p && p.name && (
+        p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (p.brand && p.brand.toLowerCase().includes(searchTerm.toLowerCase()))
       )
+    )
     : (products || []);
 
   const addProductToPurchase = (product: Product) => {
@@ -159,12 +160,12 @@ export default function PurchaseEntry() {
       setSelectedProducts(
         selectedProducts.map((item) =>
           item.productId === product.id
-            ? { 
-                ...item, 
-                shopQuantity: (item.shopQuantity || 0) + 1,
-                quantity: ((item.shopQuantity || 0) + 1) + (item.warehouseQuantity || 0),
-                total: (item.cost || 0) * (((item.shopQuantity || 0) + 1) + (item.warehouseQuantity || 0))
-              }
+            ? {
+              ...item,
+              shopQuantity: (item.shopQuantity || 0) + 1,
+              quantity: ((item.shopQuantity || 0) + 1) + (item.warehouseQuantity || 0),
+              total: (item.cost || 0) * (((item.shopQuantity || 0) + 1) + (item.warehouseQuantity || 0))
+            }
             : item
         )
       );
@@ -194,11 +195,11 @@ export default function PurchaseEntry() {
           const warehouseQty = item.warehouseQuantity || 0;
           const totalQty = shopQty + warehouseQty;
           const costValue = item.cost || 0;
-          return { 
-            ...item, 
-            shopQuantity: shopQuantity, 
+          return {
+            ...item,
+            shopQuantity: shopQuantity,
             quantity: totalQty,
-            total: costValue * totalQty 
+            total: costValue * totalQty
           };
         }
         return item;
@@ -214,11 +215,11 @@ export default function PurchaseEntry() {
           const warehouseQty = warehouseQuantity || 0;
           const totalQty = shopQty + warehouseQty;
           const costValue = item.cost || 0;
-          return { 
-            ...item, 
-            warehouseQuantity: warehouseQuantity, 
+          return {
+            ...item,
+            warehouseQuantity: warehouseQuantity,
             quantity: totalQty,
-            total: costValue * totalQty 
+            total: costValue * totalQty
           };
         }
         return item;
@@ -234,11 +235,11 @@ export default function PurchaseEntry() {
           const shopQty = item.shopQuantity || 0;
           const warehouseQty = item.warehouseQuantity || 0;
           const totalQty = shopQty + warehouseQty;
-          return { 
-            ...item, 
-            cost: cost, 
+          return {
+            ...item,
+            cost: cost,
             quantity: totalQty,
-            total: costValue * totalQty 
+            total: costValue * totalQty
           };
         }
         return item;
@@ -309,14 +310,14 @@ export default function PurchaseEntry() {
   const onSubmit = async (data: any) => {
     // Check permission for creating purchase (only for new purchases, not edits)
     if (!isEdit && currentUser) {
-      const canCreate = currentUser.role === "superadmin" || 
-                       currentUser.role === "admin" ||
-                       hasPermission(
-                         currentUser.role,
-                         AVAILABLE_PERMISSIONS.PURCHASE_CREATE,
-                         currentUser.permissions
-                       );
-      
+      const canCreate = currentUser.role === "superadmin" ||
+        currentUser.role === "admin" ||
+        hasPermission(
+          currentUser.role,
+          AVAILABLE_PERMISSIONS.PURCHASE_CREATE,
+          currentUser.permissions
+        );
+
       if (!canCreate) {
         showError("You don't have permission to create purchases. Please contact your administrator.");
         return;
@@ -358,7 +359,7 @@ export default function PurchaseEntry() {
       const shopQty = item.shopQuantity || 0;
       const warehouseQty = item.warehouseQuantity || 0;
       const totalQty = shopQty + warehouseQty;
-      
+
       if (totalQty <= 0) {
         showError(`Please enter a valid quantity (shop or warehouse) for ${item.productName || 'product'}`);
         setIsSubmitting(false);
@@ -377,7 +378,7 @@ export default function PurchaseEntry() {
         const shopQty = item.shopQuantity || 0;
         const warehouseQty = item.warehouseQuantity || 0;
         const totalQty = shopQty + warehouseQty;
-        
+
         return {
           productId: item.productId.trim(),
           productName: item.productName,
@@ -391,20 +392,26 @@ export default function PurchaseEntry() {
         };
       });
 
+      // Combine selected date with current time
+      const dateTime = new Date(data.date);
+      const now = new Date();
+      dateTime.setHours(now.getHours(), now.getMinutes(), now.getSeconds());
+      const dateIsoString = dateTime.toISOString();
+
       const purchaseData = {
         supplierName: data.supplierName.trim(),
         supplierPhone: data.supplierPhone || undefined,
         items: purchaseItems,
         subtotal,
-        tax: taxAmount,
+        tax: tax || 0,
         taxType: taxType,
         total,
         payments: payments.map(p => ({
           ...p,
-          date: new Date().toISOString(), // Always use current date and time
+          date: dateIsoString, // Always use combined date and time
         })),
         remainingBalance,
-        date: data.date,
+        date: dateIsoString,
         userId: currentUser!.id,
         userName: currentUser!.name,
         status: "completed" as const,
@@ -428,14 +435,14 @@ export default function PurchaseEntry() {
   // Check permission on component mount
   useEffect(() => {
     if (!isEdit && currentUser) {
-      const canCreate = currentUser.role === "superadmin" || 
-                       currentUser.role === "admin" ||
-                       hasPermission(
-                         currentUser.role,
-                         AVAILABLE_PERMISSIONS.PURCHASE_CREATE,
-                         currentUser.permissions
-                       );
-      
+      const canCreate = currentUser.role === "superadmin" ||
+        currentUser.role === "admin" ||
+        hasPermission(
+          currentUser.role,
+          AVAILABLE_PERMISSIONS.PURCHASE_CREATE,
+          currentUser.permissions
+        );
+
       if (!canCreate) {
         showError("You don't have permission to create purchases. Redirecting to purchase list...");
         navigate("/inventory/purchases");
@@ -445,14 +452,14 @@ export default function PurchaseEntry() {
 
   // Show access denied message if user doesn't have permission
   if (!isEdit && currentUser) {
-    const canCreate = currentUser.role === "superadmin" || 
-                     currentUser.role === "admin" ||
-                     hasPermission(
-                       currentUser.role,
-                       AVAILABLE_PERMISSIONS.PURCHASE_CREATE,
-                       currentUser.permissions
-                     );
-    
+    const canCreate = currentUser.role === "superadmin" ||
+      currentUser.role === "admin" ||
+      hasPermission(
+        currentUser.role,
+        AVAILABLE_PERMISSIONS.PURCHASE_CREATE,
+        currentUser.permissions
+      );
+
     if (!canCreate) {
       return (
         <div className="flex items-center justify-center min-h-screen">
@@ -495,384 +502,383 @@ export default function PurchaseEntry() {
             </Link>
           </div>
 
-      <div className="grid grid-cols-12 gap-4 md:gap-6">
-        <div className="col-span-12 lg:col-span-8">
-          <div className="p-6 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-            <h2 className="mb-4 text-xl font-semibold text-gray-800 dark:text-white">
-              Product Search
-            </h2>
-            <Input
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search products by name or brand..."
-            />
-            {filteredProducts.length > 0 && (
-              <div className="mt-2 border border-gray-200 rounded-lg dark:border-gray-700 max-h-60 overflow-y-auto">
-                {filteredProducts.map((product) => (
-                  <div
-                    key={product.id}
-                    onClick={() => addProductToPurchase(product)}
-                    className="p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-100 dark:border-gray-700 last:border-b-0"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-medium text-gray-800 dark:text-white">
-                          {product.name}
-                        </p>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">
-                          {product.brand || "N/A"} - Stock: {(product.shopQuantity || 0) + (product.warehouseQuantity || 0)}
-                        </p>
+          <div className="grid grid-cols-12 gap-4 md:gap-6">
+            <div className="col-span-12 lg:col-span-8">
+              <div className="p-6 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+                <h2 className="mb-4 text-xl font-semibold text-gray-800 dark:text-white">
+                  Product Search
+                </h2>
+                <Input
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Search products by name or brand..."
+                />
+                {filteredProducts.length > 0 && (
+                  <div className="mt-2 border border-gray-200 rounded-lg dark:border-gray-700 max-h-60 overflow-y-auto">
+                    {filteredProducts.map((product) => (
+                      <div
+                        key={product.id}
+                        onClick={() => addProductToPurchase(product)}
+                        className="p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-100 dark:border-gray-700 last:border-b-0"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-medium text-gray-800 dark:text-white">
+                              {product.name}
+                            </p>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">
+                              {product.brand || "N/A"} - Stock: {(product.shopQuantity || 0) + (product.warehouseQuantity || 0)}
+                            </p>
+                          </div>
+                          <p className="font-semibold text-brand-600 dark:text-brand-400">
+                            Rs. {product.salePrice ? product.salePrice.toFixed(2) : "N/A"}
+                          </p>
+                        </div>
                       </div>
-                      <p className="font-semibold text-brand-600 dark:text-brand-400">
-                        Rs. {product.salePrice ? product.salePrice.toFixed(2) : "N/A"}
-                      </p>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="p-6 mt-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+                <h2 className="mb-4 text-xl font-semibold text-gray-800 dark:text-white">
+                  Selected Products
+                </h2>
+                {selectedProducts.length === 0 ? (
+                  <p className="text-gray-500 dark:text-gray-400">
+                    No products selected. Search and add products above.
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-gray-200 dark:border-gray-700">
+                          <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                            Product
+                          </th>
+                          <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                            Cost
+                          </th>
+                          <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                            Shop Qty
+                          </th>
+                          <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                            Warehouse Qty
+                          </th>
+                          <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                            Total
+                          </th>
+                          <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                            Action
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedProducts.map((item) => (
+                          <tr
+                            key={item.productId}
+                            className="border-b border-gray-100 dark:border-gray-700"
+                          >
+                            <td className="p-2 font-medium text-gray-800 dark:text-white">
+                              {item.productName}
+                            </td>
+                            <td className="p-2">
+                              <Input
+                                type="number"
+                                step={0.01}
+                                min="0"
+                                value={item.cost === undefined || item.cost === null ? "" : item.cost}
+                                onChange={(e) => {
+                                  const value = e.target.value;
+                                  if (value === "" || value === null || value === undefined) {
+                                    updateItemCost(item.productId, undefined);
+                                  } else {
+                                    const numValue = parseFloat(value);
+                                    updateItemCost(item.productId, isNaN(numValue) ? undefined : numValue);
+                                  }
+                                }}
+                                className="w-24"
+                              />
+                            </td>
+                            <td className="p-2">
+                              <Input
+                                type="number"
+                                min="0"
+                                value={item.shopQuantity === undefined || item.shopQuantity === null ? "" : item.shopQuantity}
+                                onChange={(e) => {
+                                  const value = e.target.value;
+                                  if (value === "" || value === null || value === undefined) {
+                                    updateItemShopQuantity(item.productId, undefined);
+                                  } else {
+                                    const numValue = parseInt(value);
+                                    updateItemShopQuantity(item.productId, isNaN(numValue) ? undefined : numValue);
+                                  }
+                                }}
+                                className="w-20"
+                                placeholder="0"
+                              />
+                            </td>
+                            <td className="p-2">
+                              <Input
+                                type="number"
+                                min="0"
+                                value={item.warehouseQuantity === undefined || item.warehouseQuantity === null ? "" : item.warehouseQuantity}
+                                onChange={(e) => {
+                                  const value = e.target.value;
+                                  if (value === "" || value === null || value === undefined) {
+                                    updateItemWarehouseQuantity(item.productId, undefined);
+                                  } else {
+                                    const numValue = parseInt(value);
+                                    updateItemWarehouseQuantity(item.productId, isNaN(numValue) ? undefined : numValue);
+                                  }
+                                }}
+                                className="w-20"
+                                placeholder="0"
+                              />
+                            </td>
+                            <td className="p-2 font-semibold text-gray-800 dark:text-white">
+                              Rs. {(item.total || 0).toFixed(2)}
+                            </td>
+                            <td className="p-2">
+                              <button
+                                onClick={() => removeItem(item.productId)}
+                                className="p-1 text-red-600 hover:bg-red-50 rounded dark:hover:bg-red-900/20"
+                              >
+                                <TrashBinIcon className="w-5 h-5" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="col-span-12 lg:col-span-4">
+              <div className="p-6 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+                <h2 className="mb-4 text-xl font-semibold text-gray-800 dark:text-white">
+                  Purchase Details
+                </h2>
+                <div className="space-y-4">
+                  <div>
+                    <Label>
+                      Supplier Name <span className="text-error-500">*</span>
+                    </Label>
+                    <Input
+                      name="supplierName"
+                      value={supplierName}
+                      onChange={(e) => {
+                        setValue("supplierName", e.target.value);
+                      }}
+                      onBlur={register("supplierName").onBlur}
+                      placeholder="Enter supplier name"
+                      required
+                      error={!!errors.supplierName}
+                      hint={errors.supplierName?.message}
+                    />
+                  </div>
+                  <div>
+                    <Label>Mobile Number</Label>
+                    <Input
+                      name="supplierPhone"
+                      value={supplierPhone}
+                      onChange={(e) => {
+                        setValue("supplierPhone", e.target.value);
+                      }}
+                      onBlur={register("supplierPhone").onBlur}
+                      placeholder="Enter mobile number (optional)"
+                      type="tel"
+                      error={!!errors.supplierPhone}
+                      hint={errors.supplierPhone?.message}
+                    />
+                  </div>
+                  <div>
+                    <Label>
+                      Date <span className="text-error-500">*</span>
+                    </Label>
+                    <DatePicker
+                      name="date"
+                      value={date}
+                      onChange={(e) => {
+                        setDate(e.target.value);
+                        setValue("date", e.target.value);
+                      }}
+                      onBlur={register("date").onBlur}
+                      required
+                      error={!!errors.date}
+                      hint={errors.date?.message}
+                    />
+                  </div>
+                </div>
+
+                <h2 className="mt-6 mb-4 text-xl font-semibold text-gray-800 dark:text-white">
+                  Summary
+                </h2>
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600 dark:text-gray-400">Subtotal:</span>
+                    <span className="text-gray-800 dark:text-white">Rs. {subtotal.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <Label className="mb-0">Tax:</Label>
+                    <div className="flex items-center gap-2">
+                      <TaxDiscountInput
+                        value={tax}
+                        type={taxType}
+                        onValueChange={(value) => {
+                          setTax(value || null);
+                          setValue("tax", value || null);
+                        }}
+                        onTypeChange={(type) => {
+                          setTaxType(type);
+                        }}
+                        placeholder="0"
+                        className="w-32"
+                      />
+
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
+                  <div className="flex justify-between pt-2 border-t border-gray-200 dark:border-gray-700">
+                    <span className="text-lg font-semibold text-gray-800 dark:text-white">
+                      Total:
+                    </span>
+                    <span className="text-lg font-bold text-brand-600 dark:text-brand-400">
+                      Rs. {total.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
 
-          <div className="p-6 mt-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-            <h2 className="mb-4 text-xl font-semibold text-gray-800 dark:text-white">
-              Selected Products
-            </h2>
-            {selectedProducts.length === 0 ? (
-              <p className="text-gray-500 dark:text-gray-400">
-                No products selected. Search and add products above.
-              </p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-gray-200 dark:border-gray-700">
-                      <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
-                        Product
-                      </th>
-                      <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
-                        Cost
-                      </th>
-                      <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
-                        Shop Qty
-                      </th>
-                      <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
-                        Warehouse Qty
-                      </th>
-                      <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
-                        Total
-                      </th>
-                      <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
-                        Action
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {selectedProducts.map((item) => (
-                      <tr
-                        key={item.productId}
-                        className="border-b border-gray-100 dark:border-gray-700"
-                      >
-                        <td className="p-2 font-medium text-gray-800 dark:text-white">
-                          {item.productName}
-                        </td>
-                        <td className="p-2">
+                <h2 className="mt-6 mb-4 text-xl font-semibold text-gray-800 dark:text-white">
+                  Payment Methods
+                </h2>
+                <div className="space-y-3">
+                  {payments.map((payment, index) => (
+                    <div key={index} className="p-3 border border-gray-200 rounded-lg dark:border-gray-700">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                          Payment {index + 1}
+                        </span>
+                        {payments.length > 1 && (
+                          <button
+                            onClick={() => removePayment(index)}
+                            className="text-red-600 hover:text-red-700"
+                          >
+                            <TrashBinIcon className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <div>
+                          <Label>Payment Type</Label>
+                          <Select
+                            value={payment.type}
+                            onChange={(value) => updatePayment(index, "type", value)}
+                            options={[
+                              { value: "cash", label: "Cash" },
+                              { value: "bank_transfer", label: "Bank Transfer" },
+                            ]}
+                          />
+                        </div>
+                        {payment.type === "bank_transfer" && (
+                          <div className="mt-2">
+                            <Label>
+                              Select Bank Account <span className="text-error-500">*</span>
+                            </Label>
+                            {bankAccounts.filter((acc) => acc.isActive).length === 0 ? (
+                              <div className="p-2 text-sm text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 rounded">
+                                No active bank accounts available. Please add a bank account in Settings.
+                              </div>
+                            ) : (
+                              <>
+                                <Select
+                                  value={payment.bankAccountId || ""}
+                                  onChange={(value) => updatePayment(index, "bankAccountId", value)}
+                                  options={[
+                                    { value: "", label: "Select a bank account" },
+                                    ...bankAccounts
+                                      .filter((acc) => acc.isActive)
+                                      .map((acc) => ({
+                                        value: acc.id,
+                                        label: `${acc.accountName} - ${acc.bankName}${acc.isDefault ? " (Default)" : ""}`,
+                                      })),
+                                  ]}
+                                />
+                                {!payment.bankAccountId && (
+                                  <p className="mt-1 text-xs text-error-500">
+                                    Please select a bank account for this payment
+                                  </p>
+                                )}
+                                {payment.bankAccountId && (
+                                  <p className="mt-1 text-xs text-green-600 dark:text-green-400">
+                                    Bank account selected: {bankAccounts.find(acc => acc.id === payment.bankAccountId)?.accountName}
+                                  </p>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        )}
+                        <div>
+                          <Label>Amount</Label>
                           <Input
                             type="number"
                             step={0.01}
                             min="0"
-                            value={item.cost === undefined || item.cost === null ? "" : item.cost}
+                            max={String(total - totalPaid + (payment.amount || 0))}
+                            value={payment.amount === undefined || payment.amount === null ? "" : payment.amount}
                             onChange={(e) => {
                               const value = e.target.value;
                               if (value === "" || value === null || value === undefined) {
-                                updateItemCost(item.productId, undefined);
+                                updatePayment(index, "amount", undefined);
                               } else {
                                 const numValue = parseFloat(value);
-                                updateItemCost(item.productId, isNaN(numValue) ? undefined : numValue);
+                                updatePayment(index, "amount", isNaN(numValue) ? undefined : numValue);
                               }
                             }}
-                            className="w-24"
+                            placeholder="Enter amount"
                           />
-                        </td>
-                        <td className="p-2">
-                          <Input
-                            type="number"
-                            min="0"
-                            value={item.shopQuantity === undefined || item.shopQuantity === null ? "" : item.shopQuantity}
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              if (value === "" || value === null || value === undefined) {
-                                updateItemShopQuantity(item.productId, undefined);
-                              } else {
-                                const numValue = parseInt(value);
-                                updateItemShopQuantity(item.productId, isNaN(numValue) ? undefined : numValue);
-                              }
-                            }}
-                            className="w-20"
-                            placeholder="0"
-                          />
-                        </td>
-                        <td className="p-2">
-                          <Input
-                            type="number"
-                            min="0"
-                            value={item.warehouseQuantity === undefined || item.warehouseQuantity === null ? "" : item.warehouseQuantity}
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              if (value === "" || value === null || value === undefined) {
-                                updateItemWarehouseQuantity(item.productId, undefined);
-                              } else {
-                                const numValue = parseInt(value);
-                                updateItemWarehouseQuantity(item.productId, isNaN(numValue) ? undefined : numValue);
-                              }
-                            }}
-                            className="w-20"
-                            placeholder="0"
-                          />
-                        </td>
-                        <td className="p-2 font-semibold text-gray-800 dark:text-white">
-                          Rs. {(item.total || 0).toFixed(2)}
-                        </td>
-                        <td className="p-2">
-                          <button
-                            onClick={() => removeItem(item.productId)}
-                            className="p-1 text-red-600 hover:bg-red-50 rounded dark:hover:bg-red-900/20"
-                          >
-                            <TrashBinIcon className="w-5 h-5" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="col-span-12 lg:col-span-4">
-          <div className="p-6 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-            <h2 className="mb-4 text-xl font-semibold text-gray-800 dark:text-white">
-              Purchase Details
-            </h2>
-            <div className="space-y-4">
-              <div>
-                <Label>
-                  Supplier Name <span className="text-error-500">*</span>
-                </Label>
-                <Input
-                  name="supplierName"
-                  value={supplierName}
-                  onChange={(e) => {
-                    setValue("supplierName", e.target.value);
-                  }}
-                  onBlur={register("supplierName").onBlur}
-                  placeholder="Enter supplier name"
-                  required
-                  error={!!errors.supplierName}
-                  hint={errors.supplierName?.message}
-                />
-              </div>
-              <div>
-                <Label>Mobile Number</Label>
-                <Input
-                  name="supplierPhone"
-                  value={supplierPhone}
-                  onChange={(e) => {
-                    setValue("supplierPhone", e.target.value);
-                  }}
-                  onBlur={register("supplierPhone").onBlur}
-                  placeholder="Enter mobile number (optional)"
-                  type="tel"
-                  error={!!errors.supplierPhone}
-                  hint={errors.supplierPhone?.message}
-                />
-              </div>
-              <div>
-                <Label>
-                  Date <span className="text-error-500">*</span>
-                </Label>
-                <Input
-                  type="date"
-                  name="date"
-                  value={date}
-                  onChange={(e) => {
-                    setDate(e.target.value);
-                    setValue("date", e.target.value);
-                  }}
-                  onBlur={register("date").onBlur}
-                  required
-                  error={!!errors.date}
-                  hint={errors.date?.message}
-                />
-              </div>
-            </div>
-
-            <h2 className="mt-6 mb-4 text-xl font-semibold text-gray-800 dark:text-white">
-              Summary
-            </h2>
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <span className="text-gray-600 dark:text-gray-400">Subtotal:</span>
-                <span className="text-gray-800 dark:text-white">Rs. {subtotal.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between">
-                <Label className="mb-0">Tax:</Label>
-                <div className="flex items-center gap-2">
-                  <TaxDiscountInput
-                    value={tax}
-                    type={taxType}
-                    onValueChange={(value) => {
-                      setTax(value || null);
-                      setValue("tax", value || null);
-                    }}
-                    onTypeChange={(type) => {
-                      setTaxType(type);
-                    }}
-                    placeholder="0"
-                    className="w-32"
-                  />
-          
-                </div>
-              </div>
-              <div className="flex justify-between pt-2 border-t border-gray-200 dark:border-gray-700">
-                <span className="text-lg font-semibold text-gray-800 dark:text-white">
-                  Total:
-                </span>
-                <span className="text-lg font-bold text-brand-600 dark:text-brand-400">
-                  Rs. {total.toFixed(2)}
-                </span>
-              </div>
-            </div>
-
-            <h2 className="mt-6 mb-4 text-xl font-semibold text-gray-800 dark:text-white">
-              Payment Methods
-            </h2>
-            <div className="space-y-3">
-              {payments.map((payment, index) => (
-                <div key={index} className="p-3 border border-gray-200 rounded-lg dark:border-gray-700">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                      Payment {index + 1}
-                    </span>
-                    {payments.length > 1 && (
-                      <button
-                        onClick={() => removePayment(index)}
-                        className="text-red-600 hover:text-red-700"
-                      >
-                        <TrashBinIcon className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                  <div className="space-y-2">
-                    <div>
-                      <Label>Payment Type</Label>
-                      <Select
-                        value={payment.type}
-                        onChange={(value) => updatePayment(index, "type", value)}
-                        options={[
-                          { value: "cash", label: "Cash" },
-                          { value: "bank_transfer", label: "Bank Transfer" },
-                        ]}
-                      />
-                    </div>
-                    {payment.type === "bank_transfer" && (
-                      <div className="mt-2">
-                        <Label>
-                          Select Bank Account <span className="text-error-500">*</span>
-                        </Label>
-                        {bankAccounts.filter((acc) => acc.isActive).length === 0 ? (
-                          <div className="p-2 text-sm text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 rounded">
-                            No active bank accounts available. Please add a bank account in Settings.
-                          </div>
-                        ) : (
-                          <>
-                            <Select
-                              value={payment.bankAccountId || ""}
-                              onChange={(value) => updatePayment(index, "bankAccountId", value)}
-                              options={[
-                                { value: "", label: "Select a bank account" },
-                                ...bankAccounts
-                                  .filter((acc) => acc.isActive)
-                                  .map((acc) => ({
-                                    value: acc.id,
-                                    label: `${acc.accountName} - ${acc.bankName}${acc.isDefault ? " (Default)" : ""}`,
-                                  })),
-                              ]}
-                            />
-                            {!payment.bankAccountId && (
-                              <p className="mt-1 text-xs text-error-500">
-                                Please select a bank account for this payment
-                              </p>
-                            )}
-                            {payment.bankAccountId && (
-                              <p className="mt-1 text-xs text-green-600 dark:text-green-400">
-                                Bank account selected: {bankAccounts.find(acc => acc.id === payment.bankAccountId)?.accountName}
-                              </p>
-                            )}
-                          </>
-                        )}
+                        </div>
                       </div>
-                    )}
-                    <div>
-                      <Label>Amount</Label>
-                      <Input
-                        type="number"
-                        step={0.01}
-                        min="0"
-                        max={String(total - totalPaid + (payment.amount || 0))}
-                        value={payment.amount === undefined || payment.amount === null ? "" : payment.amount}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          if (value === "" || value === null || value === undefined) {
-                            updatePayment(index, "amount", undefined);
-                          } else {
-                            const numValue = parseFloat(value);
-                            updatePayment(index, "amount", isNaN(numValue) ? undefined : numValue);
-                          }
-                        }}
-                        placeholder="Enter amount"
-                      />
                     </div>
+                  ))}
+                  <Button
+                    onClick={addPayment}
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                  >
+                    <PlusIcon className="w-4 h-4 mr-2" />
+                    Add Payment Method
+                  </Button>
+                </div>
+
+                <div className="mt-4 space-y-2 pt-4 border-t border-gray-200 dark:border-gray-700">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600 dark:text-gray-400">Total Paid:</span>
+                    <span className="font-semibold text-gray-800 dark:text-white">
+                      Rs. {totalPaid.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600 dark:text-gray-400">Remaining Balance:</span>
+                    <span className={`font-semibold ${remainingBalance > 0 ? "text-orange-600 dark:text-orange-400" : "text-green-600 dark:text-green-400"}`}>
+                      Rs. {remainingBalance.toFixed(2)}
+                    </span>
                   </div>
                 </div>
-              ))}
-              <Button
-                onClick={addPayment}
-                variant="outline"
-                size="sm"
-                className="w-full"
-              >
-                <PlusIcon className="w-4 h-4 mr-2" />
-                Add Payment Method
-              </Button>
-            </div>
 
-            <div className="mt-4 space-y-2 pt-4 border-t border-gray-200 dark:border-gray-700">
-              <div className="flex justify-between">
-                <span className="text-gray-600 dark:text-gray-400">Total Paid:</span>
-                <span className="font-semibold text-gray-800 dark:text-white">
-                  Rs. {totalPaid.toFixed(2)}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600 dark:text-gray-400">Remaining Balance:</span>
-                <span className={`font-semibold ${remainingBalance > 0 ? "text-orange-600 dark:text-orange-400" : "text-green-600 dark:text-green-400"}`}>
-                  Rs. {remainingBalance.toFixed(2)}
-                </span>
+                <Button
+                  onClick={handleFormSubmit(onSubmit)}
+                  className="w-full mt-6"
+                  size="sm"
+                  disabled={selectedProducts.length === 0 || !supplierName || payments.length === 0 || isSubmitting}
+                >
+                  {isSubmitting ? (isEdit ? "Updating..." : "Saving...") : (isEdit ? "Update Purchase" : "Save Purchase")}
+                </Button>
               </div>
             </div>
-
-            <Button
-              onClick={handleFormSubmit(onSubmit)}
-              className="w-full mt-6"
-              size="sm"
-              disabled={selectedProducts.length === 0 || !supplierName || payments.length === 0 || isSubmitting}
-            >
-              {isSubmitting ? (isEdit ? "Updating..." : "Saving...") : (isEdit ? "Update Purchase" : "Save Purchase")}
-            </Button>
           </div>
-        </div>
-      </div>
         </>
       )}
     </>
