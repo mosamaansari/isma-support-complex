@@ -47,6 +47,9 @@ export interface SaleItem {
   fromWarehouse?: boolean;
   unitPrice: number;
   customPrice?: number; // Custom price for this customer
+  priceType?: "single" | "dozen"; // what user entered
+  priceSingle?: number; // stored single price at time of sale
+  priceDozen?: number; // stored dozen price at time of sale
   discount?: number;
   discountType?: "percent" | "value"; // Discount type: percent or direct value
   total: number;
@@ -118,7 +121,10 @@ export interface PurchaseItem {
   quantity: number;
   shopQuantity?: number;
   warehouseQuantity?: number;
-  cost?: number;
+  cost?: number; // per-unit (single) cost used for totals
+  priceType?: "single" | "dozen"; // what user entered
+  costSingle?: number; // stored single price
+  costDozen?: number; // stored dozen price
   discount?: number;
   total: number;
   toWarehouse?: boolean;

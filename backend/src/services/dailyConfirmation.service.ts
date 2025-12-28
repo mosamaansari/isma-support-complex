@@ -1,6 +1,8 @@
 import prisma from "../config/database";
 import logger from "../utils/logger";
 import { Decimal } from "@prisma/client/runtime/library";
+import dailyClosingBalanceService from "./dailyClosingBalance.service";
+import { formatLocalYMD } from "../utils/date";
 
 interface DailyConfirmationStatus {
   needsConfirmation: boolean;
@@ -33,8 +35,6 @@ class DailyConfirmationService {
   async getConfirmationStatus(): Promise<DailyConfirmationStatus> {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
 
     // Get confirmation status for today
     const confirmation = await prisma.dailyConfirmation.findUnique({
@@ -48,7 +48,7 @@ class DailyConfirmationService {
       return {
         needsConfirmation: false,
         confirmed: true,
-        date: today.toISOString().split('T')[0],
+        date: formatLocalYMD(today),
         previousCashBalance: 0,
         bankBalances: [],
       };
@@ -62,14 +62,40 @@ class DailyConfirmationService {
     // Show modal if: not confirmed (anytime, no time restriction)
     const needsConfirmation = !confirmed;
 
-    // Calculate previous day's closing balances from transactions
-    const previousCashBalance = await this.calculatePreviousCashBalance(yesterday);
-    const previousBankBalances = await this.calculatePreviousBankBalances(yesterday);
+    // Calculate previous day's closing balances using the same ledger-based logic
+    // as Daily Closing Balance (includes opening balance + all balance transactions)
+    const todayStr = formatLocalYMD(today);
+    const previousClosing = await dailyClosingBalanceService.getPreviousDayClosingBalance(todayStr);
+
+    const previousCashBalance = Number((previousClosing as any)?.cashBalance || 0);
+
+    // Enrich bank balances with bank metadata and include all active banks
+    const bankAccounts = await prisma.bankAccount.findMany({
+      where: { isActive: true },
+      select: {
+        id: true,
+        bankName: true,
+        accountNumber: true,
+      },
+    });
+
+    const closingBankBalances = ((previousClosing as any)?.bankBalances as any[]) || [];
+    const closingBankMap = new Map<string, number>();
+    for (const b of closingBankBalances) {
+      if (b?.bankAccountId) closingBankMap.set(String(b.bankAccountId), Number(b.balance || 0));
+    }
+
+    const previousBankBalances = bankAccounts.map((acc) => ({
+      bankAccountId: acc.id,
+      bankName: acc.bankName,
+      accountNumber: acc.accountNumber,
+      balance: closingBankMap.get(acc.id) || 0,
+    }));
 
     return {
       needsConfirmation,
       confirmed,
-      date: today.toISOString().split('T')[0],
+      date: formatLocalYMD(today),
       previousCashBalance,
       bankBalances: previousBankBalances,
     };
@@ -305,7 +331,7 @@ class DailyConfirmationService {
       },
     });
 
-    logger.info(`Daily confirmation completed for ${today.toISOString().split('T')[0]} by ${userInfo.id}`);
+    logger.info(`Daily confirmation completed for ${formatLocalYMD(today)} by ${userInfo.id}`);
   }
 }
 

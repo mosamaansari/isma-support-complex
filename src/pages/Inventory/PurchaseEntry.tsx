@@ -114,12 +114,26 @@ export default function PurchaseEntry() {
           // Load products for items
           const itemsWithProducts = purchase.items.map((item: any) => {
             const product = products.find(p => p.id === item.productId);
+            const priceType: "single" | "dozen" = item.priceType || "single";
+            const rawShopQty = Number(item.shopQuantity || 0);
+            const rawWarehouseQty = Number(item.warehouseQuantity || 0);
+            const displayShopQty = priceType === "dozen" ? rawShopQty / 12 : rawShopQty;
+            const displayWarehouseQty = priceType === "dozen" ? rawWarehouseQty / 12 : rawWarehouseQty;
             return {
               ...item,
               productId: item.productId?.trim() || item.productId,
-              shopQuantity: item.shopQuantity,
-              warehouseQuantity: item.warehouseQuantity,
-              quantity: (item.shopQuantity || 0) + (item.warehouseQuantity || 0),
+              priceType,
+              costSingle: item.costSingle ?? item.cost,
+              costDozen: item.costDozen ?? ((item.costSingle ?? item.cost ?? 0) * 12),
+              // For editing UI:
+              // - if priceType is dozen, show qty as dozens (units/12)
+              // - otherwise show qty as units
+              shopQuantity: displayShopQty,
+              warehouseQuantity: displayWarehouseQty,
+              // quantity is always stored internally as units (used for validation/payload)
+              quantity: priceType === "dozen"
+                ? (displayShopQty + displayWarehouseQty) * 12
+                : (displayShopQty + displayWarehouseQty),
               product: product || { id: item.productId, name: item.productName } as Product,
             };
           });
@@ -179,6 +193,9 @@ export default function PurchaseEntry() {
           shopQuantity: undefined as any,
           warehouseQuantity: undefined as any,
           cost: undefined as any,
+          priceType: "single",
+          costSingle: undefined,
+          costDozen: undefined,
           total: 0,
           product,
         },
@@ -187,20 +204,37 @@ export default function PurchaseEntry() {
     setSearchTerm("");
   };
 
+  const recalcItem = (
+    item: PurchaseItem & { product: Product },
+    overrides: Partial<PurchaseItem> = {}
+  ) => {
+    const updated: any = { ...item, ...overrides };
+    const enteredShopQty = Number(updated.shopQuantity || 0);
+    const enteredWarehouseQty = Number(updated.warehouseQuantity || 0);
+
+    const priceType: "single" | "dozen" = updated.priceType || "single";
+    const costSingle = updated.costSingle ?? updated.cost ?? 0;
+    const unitCost = Number(costSingle || 0);
+
+    const shopUnits = priceType === "dozen" ? enteredShopQty * 12 : enteredShopQty;
+    const warehouseUnits = priceType === "dozen" ? enteredWarehouseQty * 12 : enteredWarehouseQty;
+    const totalUnits = shopUnits + warehouseUnits;
+
+    return {
+      ...updated,
+      // quantity is always units
+      quantity: totalUnits,
+      priceType,
+      cost: unitCost,
+      total: unitCost * totalUnits,
+    };
+  };
+
   const updateItemShopQuantity = (productId: string, shopQuantity: number | undefined) => {
     setSelectedProducts(
       selectedProducts.map((item) => {
         if (item.productId === productId) {
-          const shopQty = shopQuantity || 0;
-          const warehouseQty = item.warehouseQuantity || 0;
-          const totalQty = shopQty + warehouseQty;
-          const costValue = item.cost || 0;
-          return {
-            ...item,
-            shopQuantity: shopQuantity,
-            quantity: totalQty,
-            total: costValue * totalQty
-          };
+          return recalcItem(item as any, { shopQuantity });
         }
         return item;
       })
@@ -211,36 +245,68 @@ export default function PurchaseEntry() {
     setSelectedProducts(
       selectedProducts.map((item) => {
         if (item.productId === productId) {
-          const shopQty = item.shopQuantity || 0;
-          const warehouseQty = warehouseQuantity || 0;
-          const totalQty = shopQty + warehouseQty;
-          const costValue = item.cost || 0;
-          return {
-            ...item,
-            warehouseQuantity: warehouseQuantity,
-            quantity: totalQty,
-            total: costValue * totalQty
-          };
+          return recalcItem(item as any, { warehouseQuantity });
         }
         return item;
       })
     );
   };
 
-  const updateItemCost = (productId: string, cost: number | undefined) => {
+  const updateItemPriceType = (productId: string, priceType: "single" | "dozen") => {
+    setSelectedProducts(
+      selectedProducts.map((item: any) => {
+        if (item.productId !== productId) return item;
+        // Keep existing prices and derive missing one when switching type
+        const currentSingle = item.costSingle ?? item.cost ?? undefined;
+        const currentDozen = item.costDozen ?? (currentSingle !== undefined ? currentSingle * 12 : undefined);
+
+        // Convert entered quantities when switching between modes
+        const prevType: "single" | "dozen" = item.priceType || "single";
+        const shopEntered = Number(item.shopQuantity || 0);
+        const warehouseEntered = Number(item.warehouseQuantity || 0);
+
+        let nextShopQty = shopEntered;
+        let nextWarehouseQty = warehouseEntered;
+
+        if (prevType !== priceType) {
+          if (prevType === "single" && priceType === "dozen") {
+            // Switching units -> dozens: only allow if divisible by 12
+            if (shopEntered % 12 !== 0 || warehouseEntered % 12 !== 0) {
+              showError("Shop/Warehouse Qty must be multiple of 12 to switch to Dozen.");
+              return item;
+            }
+            nextShopQty = shopEntered / 12;
+            nextWarehouseQty = warehouseEntered / 12;
+          }
+          if (prevType === "dozen" && priceType === "single") {
+            // Switching dozens -> units
+            nextShopQty = shopEntered * 12;
+            nextWarehouseQty = warehouseEntered * 12;
+          }
+        }
+
+        return recalcItem(item, {
+          priceType,
+          costSingle: currentSingle,
+          costDozen: currentDozen,
+          shopQuantity: nextShopQty,
+          warehouseQuantity: nextWarehouseQty,
+        } as any);
+      })
+    );
+  };
+
+  const updateItemPrice = (productId: string, price: number | undefined) => {
     setSelectedProducts(
       selectedProducts.map((item) => {
         if (item.productId === productId) {
-          const costValue = cost || 0;
-          const shopQty = item.shopQuantity || 0;
-          const warehouseQty = item.warehouseQuantity || 0;
-          const totalQty = shopQty + warehouseQty;
-          return {
-            ...item,
-            cost: cost,
-            quantity: totalQty,
-            total: costValue * totalQty
-          };
+          const priceType: "single" | "dozen" = (item as any).priceType || "single";
+          if (!price || price <= 0) {
+            return recalcItem(item as any, { cost: undefined, costSingle: undefined, costDozen: undefined } as any);
+          }
+          const costSingle = priceType === "dozen" ? price / 12 : price;
+          const costDozen = priceType === "dozen" ? price : price * 12;
+          return recalcItem(item as any, { costSingle, costDozen } as any);
         }
         return item;
       })
@@ -356,9 +422,19 @@ export default function PurchaseEntry() {
         setIsSubmitting(false);
         return;
       }
-      const shopQty = item.shopQuantity || 0;
-      const warehouseQty = item.warehouseQuantity || 0;
-      const totalQty = shopQty + warehouseQty;
+      const priceType: "single" | "dozen" = (item as any).priceType || "single";
+      const shopEntered = Number(item.shopQuantity || 0);
+      const warehouseEntered = Number(item.warehouseQuantity || 0);
+      if (priceType === "dozen") {
+        if (!Number.isInteger(shopEntered) || !Number.isInteger(warehouseEntered)) {
+          showError(`Dozen quantity must be a whole number for ${item.productName || 'product'}`);
+          setIsSubmitting(false);
+          return;
+        }
+      }
+      const shopUnits = priceType === "dozen" ? shopEntered * 12 : shopEntered;
+      const warehouseUnits = priceType === "dozen" ? warehouseEntered * 12 : warehouseEntered;
+      const totalQty = shopUnits + warehouseUnits;
 
       if (totalQty <= 0) {
         showError(`Please enter a valid quantity (shop or warehouse) for ${item.productName || 'product'}`);
@@ -375,20 +451,26 @@ export default function PurchaseEntry() {
     setIsSubmitting(true);
     try {
       const purchaseItems: PurchaseItem[] = selectedProducts.map((item) => {
-        const shopQty = item.shopQuantity || 0;
-        const warehouseQty = item.warehouseQuantity || 0;
-        const totalQty = shopQty + warehouseQty;
+        const priceType: "single" | "dozen" = (item as any).priceType || "single";
+        const shopEntered = Number(item.shopQuantity || 0);
+        const warehouseEntered = Number(item.warehouseQuantity || 0);
+        const shopQtyUnits = priceType === "dozen" ? shopEntered * 12 : shopEntered;
+        const warehouseQtyUnits = priceType === "dozen" ? warehouseEntered * 12 : warehouseEntered;
+        const totalQty = shopQtyUnits + warehouseQtyUnits;
 
         return {
           productId: item.productId.trim(),
           productName: item.productName,
           quantity: totalQty,
-          shopQuantity: shopQty,
-          warehouseQuantity: warehouseQty,
+          shopQuantity: shopQtyUnits,
+          warehouseQuantity: warehouseQtyUnits,
           cost: item.cost || 0,
+          priceType: (item as any).priceType || "single",
+          costSingle: (item as any).costSingle ?? item.cost,
+          costDozen: (item as any).costDozen ?? ((item.cost || 0) * 12),
           discount: item.discount || 0,
           total: item.total || 0,
-          toWarehouse: warehouseQty > 0 && shopQty === 0 ? true : (shopQty > 0 && warehouseQty === 0 ? false : (item.toWarehouse !== undefined ? item.toWarehouse : true)),
+          toWarehouse: warehouseQtyUnits > 0 && shopQtyUnits === 0 ? true : (shopQtyUnits > 0 && warehouseQtyUnits === 0 ? false : (item.toWarehouse !== undefined ? item.toWarehouse : true)),
         };
       });
 
@@ -549,58 +631,86 @@ export default function PurchaseEntry() {
                     No products selected. Search and add products above.
                   </p>
                 ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="border-b border-gray-200 dark:border-gray-700">
-                          <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                  <div className="table-container overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+                    <table className="w-full min-w-[980px] table-fixed divide-y divide-gray-200 dark:divide-gray-700">
+                      <thead className="bg-gray-50 dark:bg-gray-800">
+                        <tr>
+                          <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[240px]">
                             Product
                           </th>
-                          <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
-                            Cost
+                          <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[140px]">
+                            Price Type
                           </th>
-                          <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                          <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[140px]">
+                            Price
+                          </th>
+                          <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[120px]">
+                            Unit (Rs)
+                          </th>
+                          <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[120px]">
                             Shop Qty
                           </th>
-                          <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                          <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[140px]">
                             Warehouse Qty
                           </th>
-                          <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                          <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[140px]">
                             Total
                           </th>
-                          <th className="p-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+                          <th className="p-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[80px]">
                             Action
                           </th>
                         </tr>
                       </thead>
-                      <tbody>
+                      <tbody className="bg-white divide-y divide-gray-200 dark:bg-gray-800 dark:divide-gray-700">
                         {selectedProducts.map((item) => (
                           <tr
                             key={item.productId}
-                            className="border-b border-gray-100 dark:border-gray-700"
+                            className="hover:bg-gray-50 dark:hover:bg-gray-700/50"
                           >
-                            <td className="p-2 font-medium text-gray-800 dark:text-white">
-                              {item.productName}
+                            <td className="p-3 overflow-hidden">
+                              <div className="flex flex-col max-w-full">
+                                <p className="font-medium text-gray-900 dark:text-white text-sm truncate" title={item.productName}>
+                                  {item.productName}
+                                </p>
+                              </div>
                             </td>
-                            <td className="p-2">
+                            <td className="p-3">
+                              <Select
+                                value={((item as any).priceType || "single") as any}
+                                onChange={(value) => updateItemPriceType(item.productId, value as any)}
+                                options={[
+                                  { value: "single", label: "Per Qty" },
+                                  { value: "dozen", label: "Dozen" },
+                                ]}
+                              />
+                            </td>
+                            <td className="p-3">
                               <Input
                                 type="number"
                                 step={0.01}
                                 min="0"
-                                value={item.cost === undefined || item.cost === null ? "" : item.cost}
+                                value={
+                                  ((item as any).priceType || "single") === "dozen"
+                                    ? ((item as any).costDozen ?? "")
+                                    : ((item as any).costSingle ?? "")
+                                }
                                 onChange={(e) => {
                                   const value = e.target.value;
                                   if (value === "" || value === null || value === undefined) {
-                                    updateItemCost(item.productId, undefined);
+                                    updateItemPrice(item.productId, undefined);
                                   } else {
                                     const numValue = parseFloat(value);
-                                    updateItemCost(item.productId, isNaN(numValue) ? undefined : numValue);
+                                    updateItemPrice(item.productId, isNaN(numValue) ? undefined : numValue);
                                   }
                                 }}
-                                className="w-24"
+                                className="w-full text-sm"
+                                placeholder="0"
                               />
                             </td>
-                            <td className="p-2">
+                            <td className="p-3 text-sm text-gray-700 dark:text-gray-300">
+                              Rs. {(((item as any).costSingle ?? item.cost) || 0).toFixed(2)}
+                            </td>
+                            <td className="p-3">
                               <Input
                                 type="number"
                                 min="0"
@@ -614,11 +724,11 @@ export default function PurchaseEntry() {
                                     updateItemShopQuantity(item.productId, isNaN(numValue) ? undefined : numValue);
                                   }
                                 }}
-                                className="w-20"
+                                className="w-full text-sm"
                                 placeholder="0"
                               />
                             </td>
-                            <td className="p-2">
+                            <td className="p-3">
                               <Input
                                 type="number"
                                 min="0"
@@ -632,17 +742,19 @@ export default function PurchaseEntry() {
                                     updateItemWarehouseQuantity(item.productId, isNaN(numValue) ? undefined : numValue);
                                   }
                                 }}
-                                className="w-20"
+                                className="w-full text-sm"
                                 placeholder="0"
                               />
                             </td>
-                            <td className="p-2 font-semibold text-gray-800 dark:text-white">
+                            <td className="p-3">
+                              <div className="text-sm font-semibold text-gray-900 dark:text-white break-all">
                               Rs. {(item.total || 0).toFixed(2)}
+                              </div>
                             </td>
-                            <td className="p-2">
+                            <td className="p-3 text-center">
                               <button
                                 onClick={() => removeItem(item.productId)}
-                                className="p-1 text-red-600 hover:bg-red-50 rounded dark:hover:bg-red-900/20"
+                                className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 transition-colors"
                               >
                                 <TrashBinIcon className="w-5 h-5" />
                               </button>

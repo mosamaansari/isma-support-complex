@@ -64,6 +64,21 @@ export const normalizeSale = (sale: any) => {
       customPrice: item.customPrice !== undefined && item.customPrice !== null 
         ? decimalToNumber(item.customPrice) 
         : undefined,
+      priceType: item.priceType || "single",
+      priceSingle:
+        item.priceSingle !== undefined && item.priceSingle !== null
+          ? decimalToNumber(item.priceSingle)
+          : (item.customPrice !== undefined && item.customPrice !== null
+              ? decimalToNumber(item.customPrice)
+              : decimalToNumber(item.unitPrice)),
+      priceDozen:
+        item.priceDozen !== undefined && item.priceDozen !== null
+          ? decimalToNumber(item.priceDozen)
+          : ((item.priceSingle !== undefined && item.priceSingle !== null)
+              ? decimalToNumber(item.priceSingle) * 12
+              : (item.customPrice !== undefined && item.customPrice !== null
+                  ? decimalToNumber(item.customPrice) * 12
+                  : decimalToNumber(item.unitPrice) * 12)),
       discount: decimalToNumber(item.discount || 0),
       tax: decimalToNumber(item.tax || 0),
       total: decimalToNumber(item.total),
@@ -112,7 +127,19 @@ export const normalizePurchase = (purchase: any) => {
     date: purchase.date ? (typeof purchase.date === 'string' ? purchase.date : new Date(purchase.date).toISOString()) : purchase.createdAt,
     items: purchase.items?.map((item: any) => ({
       ...item,
+      // cost is per-unit cost used for totals
       cost: decimalToNumber(item.cost),
+      priceType: item.priceType || "single",
+      costSingle:
+        item.costSingle !== undefined && item.costSingle !== null
+          ? decimalToNumber(item.costSingle)
+          : decimalToNumber(item.cost),
+      costDozen:
+        item.costDozen !== undefined && item.costDozen !== null
+          ? decimalToNumber(item.costDozen)
+          : (item.costSingle !== undefined && item.costSingle !== null
+              ? decimalToNumber(item.costSingle) * 12
+              : decimalToNumber(item.cost) * 12),
       discount: decimalToNumber(item.discount || 0),
       total: decimalToNumber(item.total),
       shopQuantity: item.shopQuantity ?? (item.toWarehouse === false ? item.quantity : 0),

@@ -185,17 +185,22 @@ export default function SalesEntry() {
     overrides: Partial<SaleItem & { shopQuantity?: number; warehouseQuantity?: number }> = {}
   ) => {
     const updated = { ...item, ...overrides };
-    const quantity = updated.quantity ?? 0;
+    const priceType: "single" | "dozen" = (updated as any).priceType || "single";
+    const enteredShopQty = Number((updated as any).shopQuantity ?? 0);
+    const enteredWarehouseQty = Number((updated as any).warehouseQuantity ?? 0);
+    const qtyMultiplier = priceType === "dozen" ? 12 : 1;
+    const quantityUnits = (enteredShopQty + enteredWarehouseQty) * qtyMultiplier;
+
     const effectivePrice =
-      updated.customPrice && updated.customPrice > 0 ? updated.customPrice : updated.unitPrice;
+      updated.customPrice && updated.customPrice > 0 ? updated.customPrice : updated.unitPrice; // per-unit
     const discountAmount =
       updated.discountType === "value"
         ? (updated.discount || 0)
-        : (effectivePrice * quantity * (updated.discount || 0)) / 100;
+        : (effectivePrice * quantityUnits * (updated.discount || 0)) / 100;
 
-    const total = (effectivePrice * quantity) - discountAmount;
+    const total = (effectivePrice * quantityUnits) - discountAmount;
 
-    return { ...updated, total };
+    return { ...updated, quantity: quantityUnits, total };
   };
 
   const addProductToCart = (product: Product) => {
@@ -209,7 +214,9 @@ export default function SalesEntry() {
           item.productId === product.id
             ? (() => {
               const nextShopQty = (item.shopQuantity || 0) + 1;
-              if (nextShopQty > (item.product.shopQuantity || 0)) {
+              const priceType: "single" | "dozen" = (item as any).priceType || "single";
+              const nextShopUnits = priceType === "dozen" ? nextShopQty * 12 : nextShopQty;
+              if (nextShopUnits > (item.product.shopQuantity || 0)) {
                 showError(`Shop stock for ${item.productName} is only ${item.product.shopQuantity || 0}`);
                 return item;
               }
@@ -231,6 +238,9 @@ export default function SalesEntry() {
         warehouseQuantity: 0,
         unitPrice: product.salePrice || 0,
         customPrice: undefined,
+        priceType: "single",
+        priceSingle: product.salePrice || 0,
+        priceDozen: (product.salePrice || 0) * 12,
         discount: undefined,
         discountType: "percent",
         total: (product.salePrice || 0) * 1,
@@ -242,14 +252,48 @@ export default function SalesEntry() {
     setSearchTerm("");
   };
 
+  const updateItemPriceType = (productId: string, priceType: "single" | "dozen") => {
+    setSelectedProducts(
+      selectedProducts.map((item: any) => {
+        if (item.productId !== productId) return item;
+
+        const unitPrice = item.unitPrice || 0;
+        const currentSingle =
+          item.customPrice !== undefined && item.customPrice !== null ? item.customPrice : unitPrice;
+        const currentDozen = item.priceDozen ?? currentSingle * 12;
+
+        return recalcItemTotals(item, {
+          priceType,
+          priceSingle: currentSingle,
+          priceDozen: currentDozen,
+          // Keep entered qty the same; meaning changes based on priceType (single vs dozen)
+          // (Dozen mode: 1 means 1 dozen; Single mode: 1 means 1 unit)
+          shopQuantity: item.shopQuantity,
+          warehouseQuantity: item.warehouseQuantity,
+        } as any);
+      })
+    );
+  };
+
   const updateItemPrice = (productId: string, price: number | undefined) => {
     setSelectedProducts(
-      selectedProducts.map((item) => {
+      selectedProducts.map((item: any) => {
         if (item.productId === productId) {
+          const priceType: "single" | "dozen" = item.priceType || "single";
+          if (price === undefined || price === null || price <= 0 || isNaN(Number(price))) {
+            return recalcItemTotals(item as any, {
+              customPrice: undefined,
+              priceSingle: item.unitPrice,
+              priceDozen: item.unitPrice * 12,
+            } as any);
+          }
+          const priceSingle = priceType === "dozen" ? price / 12 : price;
+          const priceDozen = priceType === "dozen" ? price : price * 12;
           return recalcItemTotals(item as any, {
-            customPrice: (price !== undefined && price > 0) ? price : undefined,
-            unitPrice: item.unitPrice,
-          });
+            customPrice: priceSingle, // per-unit
+            priceSingle,
+            priceDozen,
+          } as any);
         }
         return item;
       })
@@ -266,23 +310,26 @@ export default function SalesEntry() {
     setSelectedProducts(
       selectedProducts.map((item) => {
         if (item.productId === productId) {
+          const priceType: "single" | "dozen" = (item as any).priceType || "single";
           const availableShop = item.product?.shopQuantity ?? 0;
           const availableWarehouse = item.product?.warehouseQuantity ?? 0;
-          if (location === "shop" && quantity !== null && quantity > availableShop) {
+          const qtyMultiplier = priceType === "dozen" ? 12 : 1;
+          const unitsToCheck = quantity !== null ? quantity * qtyMultiplier : null;
+          if (location === "shop" && unitsToCheck !== null && unitsToCheck > availableShop) {
             showError(`Shop stock available for ${item.productName} is ${availableShop}`);
             return item;
           }
-          if (location === "warehouse" && quantity !== null && quantity > availableWarehouse) {
+          if (location === "warehouse" && unitsToCheck !== null && unitsToCheck > availableWarehouse) {
             showError(`Warehouse stock available for ${item.productName} is ${availableWarehouse}`);
             return item;
           }
-          const shopQty = location === "shop" ? (quantity ?? 0) : (item.shopQuantity ?? 0);
-          const warehouseQty = location === "warehouse" ? (quantity ?? 0) : (item.warehouseQuantity ?? 0);
-          const totalQty = shopQty + warehouseQty;
+          const shopEntered = location === "shop" ? (quantity ?? 0) : (item.shopQuantity ?? 0);
+          const warehouseEntered = location === "warehouse" ? (quantity ?? 0) : (item.warehouseQuantity ?? 0);
+          const totalUnits = (shopEntered + warehouseEntered) * (priceType === "dozen" ? 12 : 1);
           return recalcItemTotals(item as any, {
             shopQuantity: location === "shop" ? (quantity ?? undefined) : item.shopQuantity,
             warehouseQuantity: location === "warehouse" ? (quantity ?? undefined) : item.warehouseQuantity,
-            quantity: totalQty > 0 ? totalQty : 1,
+            quantity: totalUnits > 0 ? totalUnits : 1,
           });
         }
         return item;
@@ -319,19 +366,27 @@ export default function SalesEntry() {
   };
 
   const calculateTotals = () => {
-    const grossSubtotal = selectedProducts.reduce((sum, item) => {
-      const effectivePrice = item.customPrice || item.unitPrice;
-      return sum + effectivePrice * item.quantity;
+    const grossSubtotal = selectedProducts.reduce((sum, item: any) => {
+      const effectivePrice = item.customPrice || item.unitPrice; // per-unit
+      const priceType: "single" | "dozen" = item.priceType || "single";
+      const enteredShop = Number(item.shopQuantity || 0);
+      const enteredWarehouse = Number(item.warehouseQuantity || 0);
+      const qtyUnits = (enteredShop + enteredWarehouse) * (priceType === "dozen" ? 12 : 1);
+      return sum + effectivePrice * qtyUnits;
     }, 0);
 
     // Calculate item-level discounts
-    const itemDiscounts = selectedProducts.reduce((sum, item) => {
+    const itemDiscounts = selectedProducts.reduce((sum, item: any) => {
       const effectivePrice = item.customPrice || item.unitPrice;
+      const priceType: "single" | "dozen" = item.priceType || "single";
+      const enteredShop = Number(item.shopQuantity || 0);
+      const enteredWarehouse = Number(item.warehouseQuantity || 0);
+      const qtyUnits = (enteredShop + enteredWarehouse) * (priceType === "dozen" ? 12 : 1);
       const discount = item.discount ?? 0;
       if (item.discountType === "value") {
         return sum + discount;
       } else {
-        return sum + (effectivePrice * item.quantity * discount / 100);
+        return sum + (effectivePrice * qtyUnits * discount / 100);
       }
     }, 0);
 
@@ -383,21 +438,24 @@ export default function SalesEntry() {
     setFormError("");
 
     // Validate quantities > 0
-    for (const item of selectedProducts) {
-      const shopQty = item.shopQuantity || 0;
-      const warehouseQty = item.warehouseQuantity || 0;
-      const totalQty = shopQty + warehouseQty;
+    for (const item of selectedProducts as any[]) {
+      const priceType: "single" | "dozen" = item.priceType || "single";
+      const shopEntered = Number(item.shopQuantity || 0);
+      const warehouseEntered = Number(item.warehouseQuantity || 0);
+      const totalQty = (shopEntered + warehouseEntered) * (priceType === "dozen" ? 12 : 1);
       if (!totalQty || totalQty <= 0) {
         showError(`Quantity for "${item.productName}" must be greater than 0`);
         return;
       }
       const availableShop = item.product?.shopQuantity ?? 0;
       const availableWarehouse = item.product?.warehouseQuantity ?? 0;
-      if (shopQty > availableShop) {
+      const shopUnits = priceType === "dozen" ? shopEntered * 12 : shopEntered;
+      const warehouseUnits = priceType === "dozen" ? warehouseEntered * 12 : warehouseEntered;
+      if (shopUnits > availableShop) {
         showError(`Shop stock for "${item.productName}" is only ${availableShop}`);
         return;
       }
-      if (warehouseQty > availableWarehouse) {
+      if (warehouseUnits > availableWarehouse) {
         showError(`Warehouse stock for "${item.productName}" is only ${availableWarehouse}`);
         return;
       }
@@ -426,16 +484,24 @@ export default function SalesEntry() {
     setIsSubmitting(true);
     try {
       const saleItems: SaleItem[] = selectedProducts.map((item) => {
-        const totalQty = (item.shopQuantity || 0) + (item.warehouseQuantity || 0) || item.quantity;
+        const priceType: "single" | "dozen" = (item as any).priceType || "single";
+        const shopEntered = Number(item.shopQuantity || 0);
+        const warehouseEntered = Number(item.warehouseQuantity || 0);
+        const shopQtyUnits = priceType === "dozen" ? shopEntered * 12 : shopEntered;
+        const warehouseQtyUnits = priceType === "dozen" ? warehouseEntered * 12 : warehouseEntered;
+        const totalQty = shopQtyUnits + warehouseQtyUnits || item.quantity;
 
         return {
           productId: item.productId,
           productName: item.productName,
           quantity: totalQty,
-          shopQuantity: item.shopQuantity || 0,
-          warehouseQuantity: item.warehouseQuantity || 0,
+          shopQuantity: shopQtyUnits,
+          warehouseQuantity: warehouseQtyUnits,
           unitPrice: item.unitPrice,
           customPrice: item.customPrice,
+          priceType,
+          priceSingle: (item as any).priceSingle ?? (item.customPrice ?? item.unitPrice),
+          priceDozen: (item as any).priceDozen ?? ((item.customPrice ?? item.unitPrice) * 12),
           discount: item.discount,
           discountType: item.discountType || "percent",
           total: item.total,
@@ -569,8 +635,11 @@ export default function SalesEntry() {
                       <th scope="col" className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[250px]">
                         Product
                       </th>
-                      <th scope="col" className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[150px]">
-                        Custom Price
+                      <th scope="col" className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[140px]">
+                        Price Type
+                      </th>
+                      <th scope="col" className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[160px]">
+                        Price
                       </th>
                       <th scope="col" className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[100px]">
                         Shop Qty
@@ -606,24 +675,46 @@ export default function SalesEntry() {
                           </div>
                         </td>
                         <td className="p-3">
-                          <Input
-                            type="number"
-                            min="0"
-                            step={0.01}
-                            placeholder="Custom"
-                            value={item.customPrice ?? ""}
-                            onChange={(e) => {
-                              const value = e.target.value === "" ? undefined : parseFloat(e.target.value);
-                              updateItemPrice(item.productId, isNaN(value as any) ? undefined : value);
-                            }}
-                            className="w-full text-sm"
+                          <Select
+                            value={((item as any).priceType || "single") as any}
+                            onChange={(value) => updateItemPriceType(item.productId, value as any)}
+                            options={[
+                              { value: "single", label: "Per Qty" },
+                              { value: "dozen", label: "Dozen" },
+                            ]}
                           />
+                        </td>
+                        <td className="p-3">
+                          <div className="space-y-1">
+                            <Input
+                              type="number"
+                              min="0"
+                              step={0.01}
+                              placeholder={((item as any).priceType || "single") === "dozen" ? "Dozen price" : "Single price"}
+                              value={
+                                ((item as any).priceType || "single") === "dozen"
+                                  ? ((item as any).priceDozen ?? "")
+                                  : ((item as any).priceSingle ?? (item.customPrice ?? ""))
+                              }
+                              onChange={(e) => {
+                                const value = e.target.value === "" ? undefined : parseFloat(e.target.value);
+                                updateItemPrice(item.productId, isNaN(value as any) ? undefined : value);
+                              }}
+                              className="w-full text-sm"
+                            />
+                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                              Unit: Rs. {(((item as any).priceSingle ?? (item.customPrice ?? item.unitPrice)) || 0).toFixed(2)}
+                            </div>
+                          </div>
                         </td>
                         <td className="p-3">
                           <Input
                             type="number"
                             min="0"
-                            max={(item.product.shopQuantity || 0).toString()}
+                            max={(((item as any).priceType || "single") === "dozen"
+                              ? Math.floor((item.product.shopQuantity || 0) / 12)
+                              : (item.product.shopQuantity || 0)
+                            ).toString()}
                             value={item.shopQuantity !== null && item.shopQuantity !== undefined ? item.shopQuantity : ""}
                             onChange={(e) => updateItemLocationQuantity(item.productId, "shop", e.target.value)}
                             className="w-full text-sm"
@@ -633,7 +724,10 @@ export default function SalesEntry() {
                           <Input
                             type="number"
                             min="0"
-                            max={(item.product.warehouseQuantity || 0).toString()}
+                            max={(((item as any).priceType || "single") === "dozen"
+                              ? Math.floor((item.product.warehouseQuantity || 0) / 12)
+                              : (item.product.warehouseQuantity || 0)
+                            ).toString()}
                             value={item.warehouseQuantity !== null && item.warehouseQuantity !== undefined ? item.warehouseQuantity : ""}
                             onChange={(e) => updateItemLocationQuantity(item.productId, "warehouse", e.target.value)}
                             className="w-full text-sm"

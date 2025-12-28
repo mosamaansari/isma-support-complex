@@ -233,7 +233,7 @@ class SaleService {
       if (!sale) {
         throw new Error("Sale not found");
       }
-      console.log(sale)
+
       // Convert Decimals to numbers for easier frontend handling
       return {
         ...sale,
@@ -287,6 +287,9 @@ class SaleService {
         quantity: number;
         unitPrice: number;
         customPrice?: number;
+        priceType?: "single" | "dozen";
+        priceSingle?: number;
+        priceDozen?: number;
         discount?: number;
         discountType?: "percent" | "value";
         fromWarehouse?: boolean;
@@ -365,9 +368,63 @@ class SaleService {
         throw new Error(`Product ${item.productId} not found`);
       }
 
-      const { shopQuantity, warehouseQuantity, totalQuantity } = splitSaleQuantities(item);
+      // Quantity normalization:
+      // Support both payload styles:
+      // - Preferred (new frontend): quantities already in units (multiples of 12 for dozen sales)
+      // - Legacy/alternate: priceType=dozen and quantities represent dozens (so multiply by 12)
+      const rawShopQty = Number((item as any).shopQuantity ?? 0);
+      const rawWarehouseQty = Number((item as any).warehouseQuantity ?? 0);
+      const rawQty = Number(item.quantity || 0);
 
-      const effectivePrice = item.customPrice || (product.salePrice ? Number(product.salePrice) : 0);
+      const shouldTreatAsDozenQty =
+        item.priceType === "dozen" &&
+        (
+          (rawShopQty > 0 && rawShopQty % 12 !== 0) ||
+          (rawWarehouseQty > 0 && rawWarehouseQty % 12 !== 0) ||
+          (rawQty > 0 && rawQty % 12 !== 0)
+        );
+
+      const qtyMultiplier = shouldTreatAsDozenQty ? 12 : 1;
+
+      const itemForSplit: any = {
+        ...item,
+        quantity: rawQty * qtyMultiplier,
+        shopQuantity: rawShopQty * qtyMultiplier,
+        warehouseQuantity: rawWarehouseQty * qtyMultiplier,
+      };
+
+      const { shopQuantity, warehouseQuantity, totalQuantity } = splitSaleQuantities(itemForSplit);
+
+      // Normalize price fields:
+      // - customPrice remains per-unit (single) price used in calculations
+      // - store both single/dozen prices for reporting and UI
+      const priceType: "single" | "dozen" = (item.priceType as any) || "single";
+      const baseUnitPrice = product.salePrice ? Number(product.salePrice) : 0;
+      const effectiveUnitPrice = item.customPrice ?? baseUnitPrice;
+
+      let priceSingle =
+        item.priceSingle !== undefined && item.priceSingle !== null
+          ? Number(item.priceSingle)
+          : Number(effectiveUnitPrice);
+      let priceDozen =
+        item.priceDozen !== undefined && item.priceDozen !== null
+          ? Number(item.priceDozen)
+          : Number(priceSingle * 12);
+
+      if (priceType === "dozen") {
+        if (item.priceDozen !== undefined && item.priceDozen !== null) {
+          priceDozen = Number(item.priceDozen);
+          if (!(item.priceSingle !== undefined && item.priceSingle !== null)) {
+            priceSingle = priceDozen / 12;
+          }
+        } else {
+          priceDozen = priceSingle * 12;
+        }
+      } else {
+        priceDozen = priceDozen || priceSingle * 12;
+      }
+
+      const effectivePrice = Number(item.customPrice ?? priceSingle);
       const unitPrice = product.salePrice ? Number(product.salePrice) : 0;
       const itemSubtotal = effectivePrice * totalQuantity;
 
@@ -407,6 +464,9 @@ class SaleService {
         warehouseQuantity,
         unitPrice: unitPrice,
         customPrice: item.customPrice || null,
+        priceType,
+        priceSingle,
+        priceDozen,
         discount: item.discount || 0,
         discountType: item.discountType || "percent",
         tax: 0,

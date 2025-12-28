@@ -1,6 +1,7 @@
 import prisma from "../config/database";
 import logger from "../utils/logger";
 import balanceTransactionService from "./balanceTransaction.service";
+import { formatLocalYMD, parseLocalYMD } from "../utils/date";
 
 interface BankBalance {
   bankAccountId: string;
@@ -17,9 +18,8 @@ class DailyClosingBalanceService {
    * Calculate and store closing balance for a specific date
    */
   async calculateAndStoreClosingBalance(date: Date) {
-    const dateStr = date.toISOString().split('T')[0];
-    const dateObj = new Date(dateStr);
-    dateObj.setHours(0, 0, 0, 0);
+    const dateStr = formatLocalYMD(date);
+    const dateObj = parseLocalYMD(dateStr);
 
     // Get opening balance for this date
     const openingBalance = await prisma.dailyOpeningBalance.findUnique({
@@ -152,7 +152,7 @@ class DailyClosingBalanceService {
       for (const payment of payments) {
         if (payment.type === "card" && payment.cardId) {
           const paymentDate = payment.date ? new Date(payment.date) : dateObj;
-          const paymentDateStr = paymentDate.toISOString().split('T')[0];
+          const paymentDateStr = formatLocalYMD(paymentDate);
           if (paymentDateStr === dateStr) {
             const amount = Number(payment.amount || 0);
             if (!closingCardBalances[payment.cardId]) {
@@ -170,7 +170,7 @@ class DailyClosingBalanceService {
       for (const payment of payments) {
         if (payment.type === "card" && payment.cardId) {
           const paymentDate = payment.date ? new Date(payment.date) : dateObj;
-          const paymentDateStr = paymentDate.toISOString().split('T')[0];
+          const paymentDateStr = formatLocalYMD(paymentDate);
           if (paymentDateStr === dateStr) {
             const amount = Number(payment.amount || 0);
             if (!closingCardBalances[payment.cardId]) {
@@ -242,8 +242,7 @@ class DailyClosingBalanceService {
    * Get closing balance for a specific date
    */
   async getClosingBalance(date: string) {
-    const dateObj = new Date(date);
-    dateObj.setHours(0, 0, 0, 0);
+    const dateObj = parseLocalYMD(date);
 
     const closingBalance = await prisma.dailyClosingBalance.findUnique({
       where: { date: dateObj },
@@ -254,7 +253,7 @@ class DailyClosingBalanceService {
       const cardBalances = await this.calculateCardBalancesForDate(dateObj);
       
       return {
-        date: closingBalance.date.toISOString().split('T')[0],
+        date: formatLocalYMD(closingBalance.date),
         cashBalance: Number(closingBalance.cashBalance),
         bankBalances: (closingBalance.bankBalances as any[]) || [],
         cardBalances: cardBalances,
@@ -266,7 +265,7 @@ class DailyClosingBalanceService {
     const cardBalances = await this.calculateCardBalancesForDate(dateObj);
     
     return {
-      date: calculated.date.toISOString().split('T')[0],
+      date: formatLocalYMD(calculated.date),
       cashBalance: Number(calculated.cashBalance),
       bankBalances: (calculated.bankBalances as any[]) || [],
       cardBalances: cardBalances,
@@ -277,7 +276,7 @@ class DailyClosingBalanceService {
    * Calculate card balances for a specific date
    */
   private async calculateCardBalancesForDate(dateObj: Date): Promise<CardBalance[]> {
-    const dateStr = dateObj.toISOString().split('T')[0];
+    const dateStr = formatLocalYMD(dateObj);
     const cardBalances: Record<string, number> = {};
 
     // Get opening balance card balances
@@ -348,7 +347,7 @@ class DailyClosingBalanceService {
       for (const payment of payments) {
         if (payment.type === "card" && payment.cardId) {
           const paymentDate = payment.date ? new Date(payment.date) : dateObj;
-          const paymentDateStr = paymentDate.toISOString().split('T')[0];
+          const paymentDateStr = formatLocalYMD(paymentDate);
           if (paymentDateStr === dateStr) {
             const amount = Number(payment.amount || 0);
             if (!cardBalances[payment.cardId]) cardBalances[payment.cardId] = 0;
@@ -363,7 +362,7 @@ class DailyClosingBalanceService {
       for (const payment of payments) {
         if (payment.type === "card" && payment.cardId) {
           const paymentDate = payment.date ? new Date(payment.date) : dateObj;
-          const paymentDateStr = paymentDate.toISOString().split('T')[0];
+          const paymentDateStr = formatLocalYMD(paymentDate);
           if (paymentDateStr === dateStr) {
             const amount = Number(payment.amount || 0);
             if (!cardBalances[payment.cardId]) cardBalances[payment.cardId] = 0;
@@ -390,8 +389,7 @@ class DailyClosingBalanceService {
    * Get previous day's closing balance (which becomes next day's opening balance)
    */
   async getPreviousDayClosingBalance(date: string) {
-    const dateObj = new Date(date);
-    dateObj.setHours(0, 0, 0, 0);
+    const dateObj = parseLocalYMD(date);
     dateObj.setDate(dateObj.getDate() - 1);
 
     const previousClosing = await prisma.dailyClosingBalance.findUnique({
@@ -400,7 +398,7 @@ class DailyClosingBalanceService {
 
     if (previousClosing) {
       return {
-        date: previousClosing.date.toISOString().split('T')[0],
+        date: formatLocalYMD(previousClosing.date),
         cashBalance: Number(previousClosing.cashBalance),
         bankBalances: (previousClosing.bankBalances as any[]) || [],
         cardBalances: (previousClosing.cardBalances as any[]) || [],
@@ -415,9 +413,8 @@ class DailyClosingBalanceService {
    * Get closing balances for a date range
    */
   async getClosingBalances(startDate: string, endDate: string) {
-    const start = new Date(startDate);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(endDate);
+    const start = parseLocalYMD(startDate);
+    const end = parseLocalYMD(endDate);
     end.setHours(23, 59, 59, 999);
 
     const closingBalances = await prisma.dailyClosingBalance.findMany({
@@ -431,7 +428,7 @@ class DailyClosingBalanceService {
     });
 
     return closingBalances.map((cb) => ({
-      date: cb.date.toISOString().split('T')[0],
+      date: formatLocalYMD(cb.date),
       cashBalance: Number(cb.cashBalance),
       bankBalances: (cb.bankBalances as any[]) || [],
     }));

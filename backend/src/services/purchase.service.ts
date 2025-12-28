@@ -108,6 +108,9 @@ class PurchaseService {
         productId: string;
         quantity: number;
         cost: number;
+        priceType?: "single" | "dozen";
+        costSingle?: number;
+        costDozen?: number;
         discount?: number;
         toWarehouse?: boolean;
       }>;
@@ -159,9 +162,55 @@ class PurchaseService {
         throw new Error(`Product ${item.productId} not found`);
       }
 
-      const { shopQuantity, warehouseQuantity, totalQuantity } = splitPurchaseQuantities(item);
+      // Quantity normalization:
+      // Support both payload styles:
+      // - Preferred (current frontend): quantities already in units, and costSingle is provided
+      // - Legacy/alternate: priceType=dozen, qty fields represent dozens (so multiply by 12)
+      const qtyMultiplier =
+        (item.priceType === "dozen" && (item.costSingle === undefined || item.costSingle === null) && (item.costDozen !== undefined && item.costDozen !== null))
+          ? 12
+          : 1;
 
-      const itemSubtotal = item.cost * totalQuantity;
+      const itemForSplit = {
+        ...item,
+        quantity: Number(item.quantity || 0) * qtyMultiplier,
+        shopQuantity: item.shopQuantity !== undefined ? Number(item.shopQuantity) * qtyMultiplier : undefined,
+        warehouseQuantity: item.warehouseQuantity !== undefined ? Number(item.warehouseQuantity) * qtyMultiplier : undefined,
+      };
+
+      const { shopQuantity, warehouseQuantity, totalQuantity } = splitPurchaseQuantities(itemForSplit);
+
+      // Normalize price fields:
+      // - cost is always treated as per-unit (single) cost for calculations
+      // - also store costSingle + costDozen and the selected priceType for UI/reporting
+      const priceType: "single" | "dozen" = (item.priceType as any) || "single";
+      let costSingle =
+        item.costSingle !== undefined && item.costSingle !== null
+          ? Number(item.costSingle)
+          : Number(item.cost || 0);
+      let costDozen =
+        item.costDozen !== undefined && item.costDozen !== null
+          ? Number(item.costDozen)
+          : Number(costSingle * 12);
+
+      if (priceType === "dozen") {
+        // If dozen price was entered, derive single price when missing
+        if (item.costDozen !== undefined && item.costDozen !== null) {
+          costDozen = Number(item.costDozen);
+          if (!(item.costSingle !== undefined && item.costSingle !== null)) {
+            costSingle = costDozen / 12;
+          }
+        } else {
+          // Dozen mode but dozen missing: derive from single
+          costDozen = costSingle * 12;
+        }
+      } else {
+        // Single mode: ensure dozen is derived
+        costDozen = costDozen || costSingle * 12;
+      }
+
+      const unitCost = Number(costSingle || 0);
+      const itemSubtotal = unitCost * totalQuantity;
       const itemDiscount = (itemSubtotal * (item.discount || 0)) / 100;
       const itemTotal = itemSubtotal - itemDiscount;
 
@@ -171,7 +220,10 @@ class PurchaseService {
         quantity: totalQuantity,
         shopQuantity,
         warehouseQuantity,
-        cost: item.cost,
+        cost: unitCost,
+        priceType,
+        costSingle: unitCost,
+        costDozen,
         discount: item.discount || 0,
         total: itemTotal,
         toWarehouse: warehouseQuantity > 0 && shopQuantity === 0 ? true : item.toWarehouse ?? false,
@@ -388,7 +440,32 @@ class PurchaseService {
       throw new Error("Purchase not found");
     }
 
-    return purchase;
+    // Convert Decimals to numbers for easier frontend handling (and provide price defaults)
+    return {
+      ...purchase,
+      subtotal: Number(purchase.subtotal),
+      discount: Number(purchase.discount),
+      tax: Number(purchase.tax),
+      total: Number(purchase.total),
+      remainingBalance: Number(purchase.remainingBalance),
+      discountType: purchase.discountType || "percent",
+      taxType: purchase.taxType || "percent",
+      items: purchase.items.map((item: any) => {
+        const cost = Number(item.cost);
+        const costSingle = item.costSingle !== undefined && item.costSingle !== null ? Number(item.costSingle) : cost;
+        const costDozen =
+          item.costDozen !== undefined && item.costDozen !== null ? Number(item.costDozen) : costSingle * 12;
+        return {
+          ...item,
+          cost: costSingle, // keep per-unit cost
+          priceType: item.priceType || "single",
+          costSingle,
+          costDozen,
+          discount: Number(item.discount || 0),
+          total: Number(item.total),
+        };
+      }),
+    };
   }
 
   async updatePurchase(
@@ -400,6 +477,9 @@ class PurchaseService {
         productId: string;
         quantity: number;
         cost: number;
+        priceType?: "single" | "dozen";
+        costSingle?: number;
+        costDozen?: number;
         discount?: number;
         toWarehouse?: boolean;
       }>;
@@ -519,9 +599,46 @@ class PurchaseService {
           throw new Error(`Product ${item.productId} not found`);
         }
 
-        const { shopQuantity, warehouseQuantity, totalQuantity } = splitPurchaseQuantities(item);
+        const qtyMultiplier =
+          (item.priceType === "dozen" && (item.costSingle === undefined || item.costSingle === null) && (item.costDozen !== undefined && item.costDozen !== null))
+            ? 12
+            : 1;
 
-        const itemSubtotal = item.cost * totalQuantity;
+        const itemForSplit = {
+          ...item,
+          quantity: Number(item.quantity || 0) * qtyMultiplier,
+          shopQuantity: item.shopQuantity !== undefined ? Number(item.shopQuantity) * qtyMultiplier : undefined,
+          warehouseQuantity: item.warehouseQuantity !== undefined ? Number(item.warehouseQuantity) * qtyMultiplier : undefined,
+        };
+
+        const { shopQuantity, warehouseQuantity, totalQuantity } = splitPurchaseQuantities(itemForSplit);
+
+        // Normalize price fields (same rules as createPurchase)
+        const priceType: "single" | "dozen" = (item.priceType as any) || "single";
+        let costSingle =
+          item.costSingle !== undefined && item.costSingle !== null
+            ? Number(item.costSingle)
+            : Number(item.cost || 0);
+        let costDozen =
+          item.costDozen !== undefined && item.costDozen !== null
+            ? Number(item.costDozen)
+            : Number(costSingle * 12);
+
+        if (priceType === "dozen") {
+          if (item.costDozen !== undefined && item.costDozen !== null) {
+            costDozen = Number(item.costDozen);
+            if (!(item.costSingle !== undefined && item.costSingle !== null)) {
+              costSingle = costDozen / 12;
+            }
+          } else {
+            costDozen = costSingle * 12;
+          }
+        } else {
+          costDozen = costDozen || costSingle * 12;
+        }
+
+        const unitCost = Number(costSingle || 0);
+        const itemSubtotal = unitCost * totalQuantity;
         const itemDiscount = (itemSubtotal * (item.discount || 0)) / 100;
         const itemTotal = itemSubtotal - itemDiscount;
 
@@ -531,7 +648,10 @@ class PurchaseService {
           quantity: totalQuantity,
           shopQuantity,
           warehouseQuantity,
-          cost: item.cost,
+          cost: unitCost,
+          priceType,
+          costSingle: unitCost,
+          costDozen,
           discount: item.discount || 0,
           total: itemTotal,
           toWarehouse: warehouseQuantity > 0 && shopQuantity === 0 ? true : item.toWarehouse ?? false,
@@ -595,7 +715,32 @@ class PurchaseService {
       },
     });
 
-    return updatedPurchase;
+    // Convert Decimals to numbers for easier frontend handling (and provide price defaults)
+    return {
+      ...updatedPurchase,
+      subtotal: Number(updatedPurchase.subtotal),
+      discount: Number(updatedPurchase.discount),
+      tax: Number(updatedPurchase.tax),
+      total: Number(updatedPurchase.total),
+      remainingBalance: Number(updatedPurchase.remainingBalance),
+      discountType: updatedPurchase.discountType || "percent",
+      taxType: updatedPurchase.taxType || "percent",
+      items: updatedPurchase.items.map((item: any) => {
+        const cost = Number(item.cost);
+        const costSingle = item.costSingle !== undefined && item.costSingle !== null ? Number(item.costSingle) : cost;
+        const costDozen =
+          item.costDozen !== undefined && item.costDozen !== null ? Number(item.costDozen) : costSingle * 12;
+        return {
+          ...item,
+          cost: costSingle,
+          priceType: item.priceType || "single",
+          costSingle,
+          costDozen,
+          discount: Number(item.discount || 0),
+          total: Number(item.total),
+        };
+      }),
+    };
   }
 
   async addPaymentToPurchase(

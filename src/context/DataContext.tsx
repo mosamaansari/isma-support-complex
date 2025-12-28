@@ -478,6 +478,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           warehouseQuantity: (item as any).warehouseQuantity ?? 0,
           unitPrice: item.unitPrice,
           customPrice: item.customPrice || undefined,
+          priceType: (item as any).priceType,
+          priceSingle: (item as any).priceSingle,
+          priceDozen: (item as any).priceDozen,
           discount: item.discount ?? 0,
           discountType: item.discountType || "percent",
         })),
@@ -673,10 +676,14 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           shopQuantity: (item as any).shopQuantity ?? item.quantity,
           warehouseQuantity: (item as any).warehouseQuantity ?? 0,
           cost: item.cost,
+          priceType: (item as any).priceType,
+          costSingle: (item as any).costSingle,
+          costDozen: (item as any).costDozen,
           discount: item.discount || 0,
         })),
         subtotal: purchaseData.subtotal,
         tax: purchaseData.tax || 0,
+        taxType: (purchaseData as any).taxType,
         total: purchaseData.total,
         payments: purchaseData.payments,
         date: purchaseData.date,
@@ -704,11 +711,15 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           shopQuantity: (item as any).shopQuantity ?? item.quantity,
           warehouseQuantity: (item as any).warehouseQuantity ?? 0,
           cost: item.cost,
+          priceType: (item as any).priceType,
+          costSingle: (item as any).costSingle,
+          costDozen: (item as any).costDozen,
           discount: item.discount || 0,
         }));
       }
       if (purchaseData.subtotal !== undefined) apiData.subtotal = purchaseData.subtotal;
       if (purchaseData.tax !== undefined) apiData.tax = purchaseData.tax;
+      if ((purchaseData as any).taxType !== undefined) apiData.taxType = (purchaseData as any).taxType;
       if (purchaseData.total !== undefined) apiData.total = purchaseData.total;
       if (purchaseData.payments !== undefined) apiData.payments = purchaseData.payments;
       if (purchaseData.date !== undefined) apiData.date = purchaseData.date;

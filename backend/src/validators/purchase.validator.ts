@@ -68,6 +68,29 @@ export const createPurchaseSchema = Joi.object({
             "number.min": "Cost cannot be negative",
             "any.required": "Cost is required",
           }),
+        priceType: Joi.string()
+          .optional()
+          .valid("single", "dozen")
+          .default("single")
+          .messages({
+            "any.only": "Price type must be either 'single' or 'dozen'",
+          }),
+        costSingle: Joi.number()
+          .optional()
+          .min(0)
+          .allow(null)
+          .messages({
+            "number.base": "Single price must be a number",
+            "number.min": "Single price cannot be negative",
+          }),
+        costDozen: Joi.number()
+          .optional()
+          .min(0)
+          .allow(null)
+          .messages({
+            "number.base": "Dozen price must be a number",
+            "number.min": "Dozen price cannot be negative",
+          }),
         discount: Joi.number()
           .optional()
           .min(0)
