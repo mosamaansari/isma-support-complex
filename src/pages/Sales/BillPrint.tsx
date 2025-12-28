@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router";
 import { useData } from "../../context/DataContext";
 import { useAlert } from "../../context/AlertContext";
@@ -16,6 +16,7 @@ export default function BillPrint() {
   const [sale, setSale] = useState<Sale | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const bankAccountsLoadedRef = useRef(false);
 
   useEffect(() => {
     const fetchSale = async () => {
@@ -64,13 +65,18 @@ export default function BillPrint() {
     fetchSale();
   }, [billNumber, navigate, getSale, refreshSales]);
 
+  // Load bank accounts only once on mount to prevent duplicate API calls
   useEffect(() => {
-    if (bankAccounts.length === 0) {
+    if (!bankAccountsLoadedRef.current && bankAccounts.length === 0) {
+      bankAccountsLoadedRef.current = true;
       refreshBankAccounts().catch((err) => {
         console.error("Failed to load bank accounts for bill print:", err);
       });
+    } else if (bankAccounts.length > 0) {
+      bankAccountsLoadedRef.current = true;
     }
-  }, [bankAccounts.length, refreshBankAccounts]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const defaultBank = bankAccounts.find((b) => b.isDefault) || bankAccounts[0];
 

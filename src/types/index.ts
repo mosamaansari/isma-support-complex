@@ -126,6 +126,7 @@ export interface PurchaseItem {
   costSingle?: number; // stored single price
   costDozen?: number; // stored dozen price
   discount?: number;
+  discountType?: "percent" | "value"; // Discount type: percent or direct value
   total: number;
   toWarehouse?: boolean;
 }

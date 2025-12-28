@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate, Link } from "react-router";
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
@@ -62,6 +62,7 @@ export default function ExpenseForm() {
   const isEdit = !!id;
   const [backendErrors, setBackendErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const bankAccountsLoadedRef = useRef(false);
 
   const {
     register,
@@ -102,8 +103,12 @@ export default function ExpenseForm() {
     if (cards.length === 0) {
       refreshCards();
     }
-    if (bankAccounts.length === 0) {
+    // Load bank accounts only once on mount to prevent duplicate API calls
+    if (!bankAccountsLoadedRef.current && bankAccounts.length === 0) {
+      bankAccountsLoadedRef.current = true;
       refreshBankAccounts();
+    } else if (bankAccounts.length > 0) {
+      bankAccountsLoadedRef.current = true;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

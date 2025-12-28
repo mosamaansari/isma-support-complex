@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router";
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
@@ -16,7 +16,7 @@ import Button from "../../components/ui/button/Button";
 import { TrashBinIcon, PlusIcon } from "../../icons";
 import { getTodayDate, formatDateToString } from "../../utils/dateHelpers";
 import { extractErrorMessage, extractValidationErrors } from "../../utils/errorHandler";
-import { restrictDecimalInput, handleDecimalInput } from "../../utils/numberHelpers";
+import { restrictDecimalInput } from "../../utils/numberHelpers";
 
 const salesEntrySchema = yup.object().shape({
   customerName: yup
@@ -57,6 +57,7 @@ export default function SalesEntry() {
   const [backendErrors, setBackendErrors] = useState<Record<string, string>>({});
   const [showErrors, setShowErrors] = useState(false);
   const [formError, setFormError] = useState<string>("");
+  const bankAccountsLoadedRef = useRef(false);
 
   const {
     register,
@@ -86,8 +87,12 @@ export default function SalesEntry() {
     if (products.length === 0 && !loading) {
       refreshProducts(1, 100).catch(console.error); // Load more products for selection
     }
-    if (bankAccounts.length === 0) {
+    // Load bank accounts only once on mount to prevent duplicate API calls
+    if (!bankAccountsLoadedRef.current && bankAccounts.length === 0) {
+      bankAccountsLoadedRef.current = true;
       refreshBankAccounts();
+    } else if (bankAccounts.length > 0) {
+      bankAccountsLoadedRef.current = true;
     }
     if (cards.length === 0) {
       refreshCards();
@@ -195,16 +200,67 @@ export default function SalesEntry() {
     const qtyMultiplier = priceType === "dozen" ? 12 : 1;
     const quantityUnits = (enteredShopQty + enteredWarehouseQty) * qtyMultiplier;
 
-    const effectivePrice =
-      updated.customPrice && updated.customPrice > 0 ? updated.customPrice : updated.unitPrice; // per-unit
-    const discountAmount =
-      updated.discountType === "value"
-        ? (updated.discount || 0)
-        : (effectivePrice * quantityUnits * (updated.discount || 0)) / 100;
+    // Use customPrice if set and > 0, otherwise fall back to unitPrice for calculations
+    // But keep customPrice as null if it was cleared (to show empty in input)
+    // Round effectivePrice only for calculations, don't modify customPrice
+    const rawPrice = updated.customPrice !== null && updated.customPrice !== undefined && updated.customPrice > 0 
+      ? updated.customPrice 
+      : updated.unitPrice;
+    const effectivePrice = Math.round(rawPrice * 100) / 100; // Round to 2 decimals for calculations only
+    
+    // Ensure discount and discountType are properly set
+    const discount = updated.discount ?? 0;
+    const discountType = updated.discountType || "percent";
+    
+    // Calculate subtotal first (rounded to 2 decimals)
+    const subtotal = Math.round((effectivePrice * quantityUnits) * 100) / 100;
+    
+    // Calculate discount amount based on type
+    let discountAmount = 0;
+    if (discount > 0) {
+      if (discountType === "value") {
+        discountAmount = Math.round(discount * 100) / 100; // Round to 2 decimals
+      } else {
+        discountAmount = Math.round((subtotal * discount / 100) * 100) / 100; // Round to 2 decimals
+      }
+    }
 
-    const total = (effectivePrice * quantityUnits) - discountAmount;
+    const total = Math.round((subtotal - discountAmount) * 100) / 100; // Round to 2 decimals
 
-    return { ...updated, quantity: quantityUnits, total };
+    // Preserve priceSingle and priceDozen if they were explicitly set in overrides (user typed values)
+    // Otherwise calculate from customPrice or use existing values
+    let displayPriceSingle: number | undefined;
+    let displayPriceDozen: number | undefined;
+    
+    if (updated.customPrice === null || updated.customPrice === undefined) {
+      // Price was cleared
+      displayPriceSingle = undefined;
+      displayPriceDozen = undefined;
+    } else {
+      // Use priceSingle/priceDozen from updated if they exist (preserves user-typed values)
+      // Otherwise calculate from customPrice
+      if (updated.priceSingle !== undefined && updated.priceSingle !== null) {
+        displayPriceSingle = updated.priceSingle; // Use user-typed value
+      } else {
+        displayPriceSingle = updated.customPrice; // Calculate from customPrice
+      }
+      
+      if (updated.priceDozen !== undefined && updated.priceDozen !== null) {
+        displayPriceDozen = updated.priceDozen; // Use user-typed value
+      } else {
+        displayPriceDozen = displayPriceSingle !== undefined ? displayPriceSingle * 12 : undefined; // Calculate from priceSingle
+      }
+    }
+
+    return { 
+      ...updated, 
+      quantity: quantityUnits, 
+      discount: discount,
+      discountType: discountType,
+      priceSingle: displayPriceSingle,
+      priceDozen: displayPriceDozen,
+      total 
+    };
   };
 
   const addProductToCart = (product: Product) => {
@@ -227,7 +283,6 @@ export default function SalesEntry() {
               return recalcItemTotals(item as any, {
                 shopQuantity: nextShopQty,
                 warehouseQuantity: item.warehouseQuantity || 0,
-                quantity: nextShopQty + (item.warehouseQuantity || 0),
               });
             })()
             : item
@@ -262,12 +317,17 @@ export default function SalesEntry() {
         if (item.productId !== productId) return item;
 
         const unitPrice = item.unitPrice || 0;
+        // If customPrice is null, keep it null (user cleared the price)
+        // Otherwise use customPrice or fall back to unitPrice
         const currentSingle =
-          item.customPrice !== undefined && item.customPrice !== null ? item.customPrice : unitPrice;
-        const currentDozen = item.priceDozen ?? currentSingle * 12;
+          item.customPrice !== undefined && item.customPrice !== null && item.customPrice > 0
+            ? item.customPrice
+            : (item.customPrice === null ? undefined : unitPrice);
+        const currentDozen = currentSingle !== undefined && currentSingle !== null ? (item.priceDozen ?? currentSingle * 12) : undefined;
 
         return recalcItemTotals(item, {
           priceType,
+          customPrice: item.customPrice, // Preserve customPrice (null if cleared)
           priceSingle: currentSingle,
           priceDozen: currentDozen,
           // Keep entered qty the same; meaning changes based on priceType (single vs dozen)
@@ -284,19 +344,34 @@ export default function SalesEntry() {
       selectedProducts.map((item: any) => {
         if (item.productId === productId) {
           const priceType: "single" | "dozen" = item.priceType || "single";
-          if (price === undefined || price === null || price <= 0 || isNaN(Number(price))) {
+          // Allow null/undefined/empty during editing - validation happens on submit
+          // Set to null if value is invalid (undefined, null, NaN, negative, or 0)
+          if (price === undefined || price === null || price === 0 || isNaN(Number(price)) || price < 0) {
             return recalcItemTotals(item as any, {
-              customPrice: undefined,
-              priceSingle: item.unitPrice,
-              priceDozen: item.unitPrice * 12,
+              customPrice: null, // Set to null to allow clearing, will use unitPrice for calculations
+              priceSingle: undefined, // Set to undefined so input shows empty
+              priceDozen: undefined, // Set to undefined so input shows empty
             } as any);
           }
-          const priceSingle = priceType === "dozen" ? price / 12 : price;
-          const priceDozen = priceType === "dozen" ? price : price * 12;
+          // Preserve exact value user typed - don't round during input
+          // Rounding will happen in recalcItemTotals for calculations only
+          let priceSingle: number;
+          let priceDozen: number;
+          
+          if (priceType === "dozen") {
+            // User entered dozen price (e.g., "1" means 1 dozen = 12 units)
+            priceDozen = price; // Keep exact value: if user types "1", store 1
+            priceSingle = price / 12; // Calculate unit price: 1/12 = 0.08333...
+          } else {
+            // User entered single/unit price (e.g., "1" means 1 unit)
+            priceSingle = price; // Keep exact value: if user types "1", store 1
+            priceDozen = price * 12; // Calculate dozen price: 1*12 = 12
+          }
+          
           return recalcItemTotals(item as any, {
-            customPrice: priceSingle, // per-unit
-            priceSingle,
-            priceDozen,
+            customPrice: priceSingle, // per-unit (will be rounded in recalcItemTotals for calculations)
+            priceSingle, // Display exact value user typed
+            priceDozen, // Display calculated value
           } as any);
         }
         return item;
@@ -370,54 +445,33 @@ export default function SalesEntry() {
   };
 
   const calculateTotals = () => {
-    const grossSubtotal = selectedProducts.reduce((sum, item: any) => {
-      const effectivePrice = item.customPrice || item.unitPrice; // per-unit
-      const priceType: "single" | "dozen" = item.priceType || "single";
-      const enteredShop = Number(item.shopQuantity || 0);
-      const enteredWarehouse = Number(item.warehouseQuantity || 0);
-      const qtyUnits = (enteredShop + enteredWarehouse) * (priceType === "dozen" ? 12 : 1);
-      return sum + effectivePrice * qtyUnits;
-    }, 0);
+    // Use item.total which is already calculated with proper rounding in recalcItemTotals
+    const subtotal = Math.round(selectedProducts.reduce((sum, item: any) => {
+      return sum + (item.total || 0);
+    }, 0) * 100) / 100; // Round to 2 decimals
 
-    // Calculate item-level discounts
-    const itemDiscounts = selectedProducts.reduce((sum, item: any) => {
-      const effectivePrice = item.customPrice || item.unitPrice;
-      const priceType: "single" | "dozen" = item.priceType || "single";
-      const enteredShop = Number(item.shopQuantity || 0);
-      const enteredWarehouse = Number(item.warehouseQuantity || 0);
-      const qtyUnits = (enteredShop + enteredWarehouse) * (priceType === "dozen" ? 12 : 1);
-      const discount = item.discount ?? 0;
-      if (item.discountType === "value") {
-        return sum + discount;
-      } else {
-        return sum + (effectivePrice * qtyUnits * discount / 100);
-      }
-    }, 0);
-
-    const subtotal = grossSubtotal - itemDiscounts;
-
-    // Calculate global discount based on type
+    // Calculate global discount based on type (rounded to 2 decimals)
     let globalDiscountAmount = 0;
     if (globalDiscount !== null && globalDiscount !== undefined) {
       if (globalDiscountType === "value") {
-        globalDiscountAmount = globalDiscount;
+        globalDiscountAmount = Math.round(globalDiscount * 100) / 100;
       } else {
-        globalDiscountAmount = (subtotal * globalDiscount) / 100;
+        globalDiscountAmount = Math.round((subtotal * globalDiscount / 100) * 100) / 100;
       }
     }
 
-    // Calculate global tax based on type
+    // Calculate global tax based on type (rounded to 2 decimals)
     let globalTaxAmount = 0;
     if (globalTax !== null && globalTax !== undefined) {
       if (globalTaxType === "value") {
-        globalTaxAmount = globalTax;
+        globalTaxAmount = Math.round(globalTax * 100) / 100;
       } else {
         const afterDiscount = subtotal - globalDiscountAmount;
-        globalTaxAmount = (afterDiscount * globalTax) / 100;
+        globalTaxAmount = Math.round((afterDiscount * globalTax / 100) * 100) / 100;
       }
     }
 
-    const total = Math.max(0, subtotal - globalDiscountAmount + globalTaxAmount);
+    const total = Math.round(Math.max(0, subtotal - globalDiscountAmount + globalTaxAmount) * 100) / 100;
 
     return { subtotal, discountAmount: globalDiscountAmount, taxAmount: globalTaxAmount, total };
   };
@@ -441,7 +495,7 @@ export default function SalesEntry() {
     setBackendErrors({});
     setFormError("");
 
-    // Validate quantities > 0
+    // Validate quantities > 0 and prices > 0
     for (const item of selectedProducts as any[]) {
       const priceType: "single" | "dozen" = item.priceType || "single";
       const shopEntered = Number(item.shopQuantity || 0);
@@ -451,6 +505,14 @@ export default function SalesEntry() {
         showError(`Quantity for "${item.productName}" must be greater than 0`);
         return;
       }
+      
+      // Validate price - must be greater than 0
+      const effectivePrice = item.customPrice ?? item.unitPrice ?? 0;
+      if (!effectivePrice || effectivePrice <= 0) {
+        showError(`Price for "${item.productName}" must be greater than 0`);
+        return;
+      }
+      
       const availableShop = item.product?.shopQuantity ?? 0;
       const availableWarehouse = item.product?.warehouseQuantity ?? 0;
       const shopUnits = priceType === "dozen" ? shopEntered * 12 : shopEntered;
@@ -495,6 +557,24 @@ export default function SalesEntry() {
         const warehouseQtyUnits = priceType === "dozen" ? warehouseEntered * 12 : warehouseEntered;
         const totalQty = shopQtyUnits + warehouseQtyUnits || item.quantity;
 
+        // Recalculate total to ensure accuracy (matching backend logic)
+        const effectivePrice = item.customPrice ?? item.unitPrice;
+        // Round subtotal to 2 decimals
+        const itemSubtotal = Math.round((effectivePrice * totalQty) * 100) / 100;
+        const discount = item.discount ?? 0;
+        const discountType = item.discountType || "percent";
+        
+        let itemDiscount = 0;
+        if (discount > 0) {
+          if (discountType === "value") {
+            itemDiscount = Math.round(discount * 100) / 100; // Round to 2 decimals
+          } else {
+            itemDiscount = Math.round((itemSubtotal * discount / 100) * 100) / 100; // Round to 2 decimals
+          }
+        }
+        
+        const itemTotal = Math.round((itemSubtotal - itemDiscount) * 100) / 100; // Round to 2 decimals
+
         return {
           productId: item.productId,
           productName: item.productName,
@@ -506,9 +586,9 @@ export default function SalesEntry() {
           priceType,
           priceSingle: (item as any).priceSingle ?? (item.customPrice ?? item.unitPrice),
           priceDozen: (item as any).priceDozen ?? ((item.customPrice ?? item.unitPrice) * 12),
-          discount: item.discount,
-          discountType: item.discountType || "percent",
-          total: item.total,
+          discount: discount,
+          discountType: discountType,
+          total: itemTotal,
         };
       });
 
@@ -701,13 +781,28 @@ export default function SalesEntry() {
                               placeholder={((item as any).priceType || "single") === "dozen" ? "Dozen price" : "Single price"}
                               value={
                                 ((item as any).priceType || "single") === "dozen"
-                                  ? ((item as any).priceDozen ?? "")
-                                  : ((item as any).priceSingle ?? (item.customPrice ?? ""))
+                                  ? ((item as any).priceDozen !== undefined && (item as any).priceDozen !== null
+                                      ? String((item as any).priceDozen)
+                                      : "")
+                                  : ((item as any).priceSingle !== undefined && (item as any).priceSingle !== null
+                                      ? String((item as any).priceSingle)
+                                      : "")
                               }
                               onInput={restrictDecimalInput}
                               onChange={(e) => {
-                                const value = handleDecimalInput(e.target.value);
-                                updateItemPrice(item.productId, value);
+                                // Handle empty string as null to allow clearing
+                                if (e.target.value === "" || e.target.value === null) {
+                                  updateItemPrice(item.productId, undefined);
+                                  return;
+                                }
+                                // Parse the value but don't round during typing - preserve what user types
+                                const numValue = parseFloat(e.target.value);
+                                if (isNaN(numValue)) {
+                                  updateItemPrice(item.productId, undefined);
+                                  return;
+                                }
+                                // Pass the raw value, rounding will happen in updateItemPrice
+                                updateItemPrice(item.productId, numValue);
                               }}
                               className="w-full text-sm"
                             />

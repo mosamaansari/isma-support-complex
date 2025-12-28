@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
@@ -59,6 +59,7 @@ export default function PurchaseEntry() {
   const [payments, setPayments] = useState<PurchasePayment[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loading, setLoading] = useState(false);
+  const bankAccountsLoadedRef = useRef(false);
 
   const {
     register,
@@ -92,8 +93,12 @@ export default function PurchaseEntry() {
     if (cards.length === 0) {
       refreshCards();
     }
-    if (bankAccounts.length === 0) {
+    // Load bank accounts only once on mount to prevent duplicate API calls
+    if (!bankAccountsLoadedRef.current && bankAccounts.length === 0) {
+      bankAccountsLoadedRef.current = true;
       refreshBankAccounts();
+    } else if (bankAccounts.length > 0) {
+      bankAccountsLoadedRef.current = true;
     }
     // Add default cash payment
     if (payments.length === 0 && !isEdit) {
@@ -131,6 +136,7 @@ export default function PurchaseEntry() {
               priceType,
               costSingle: item.costSingle ?? item.cost,
               costDozen: item.costDozen ?? ((item.costSingle ?? item.cost ?? 0) * 12),
+              discountType: item.discountType || "percent",
               // For editing UI:
               // - if priceType is dozen, show qty as dozens (units/12)
               // - otherwise show qty as units
@@ -180,12 +186,7 @@ export default function PurchaseEntry() {
       setSelectedProducts(
         selectedProducts.map((item) =>
           item.productId === product.id
-            ? {
-              ...item,
-              shopQuantity: (item.shopQuantity || 0) + 1,
-              quantity: ((item.shopQuantity || 0) + 1) + (item.warehouseQuantity || 0),
-              total: (item.cost || 0) * (((item.shopQuantity || 0) + 1) + (item.warehouseQuantity || 0))
-            }
+            ? recalcItem(item as any, { shopQuantity: (item.shopQuantity || 0) + 1 })
             : item
         )
       );
@@ -202,6 +203,8 @@ export default function PurchaseEntry() {
           priceType: "single",
           costSingle: undefined,
           costDozen: undefined,
+          discount: undefined,
+          discountType: "percent",
           total: 0,
           product,
         },
@@ -226,13 +229,29 @@ export default function PurchaseEntry() {
     const warehouseUnits = priceType === "dozen" ? enteredWarehouseQty * 12 : enteredWarehouseQty;
     const totalUnits = shopUnits + warehouseUnits;
 
+    // Calculate discount based on type
+    const discount = updated.discount ?? 0;
+    const discountType = updated.discountType || "percent";
+    let discountAmount = 0;
+    if (discount > 0) {
+      if (discountType === "value") {
+        discountAmount = discount;
+      } else {
+        discountAmount = (unitCost * totalUnits * discount) / 100;
+      }
+    }
+
+    const itemTotal = (unitCost * totalUnits) - discountAmount;
+
     return {
       ...updated,
       // quantity is always units
       quantity: totalUnits,
       priceType,
       cost: unitCost,
-      total: unitCost * totalUnits,
+      discount,
+      discountType,
+      total: itemTotal,
     };
   };
 
@@ -313,6 +332,28 @@ export default function PurchaseEntry() {
           const costSingle = priceType === "dozen" ? price / 12 : price;
           const costDozen = priceType === "dozen" ? price : price * 12;
           return recalcItem(item as any, { costSingle, costDozen } as any);
+        }
+        return item;
+      })
+    );
+  };
+
+  const updateItemDiscount = (productId: string, discount: number | undefined) => {
+    setSelectedProducts(
+      selectedProducts.map((item) => {
+        if (item.productId === productId) {
+          return recalcItem(item as any, { discount: discount ?? undefined });
+        }
+        return item;
+      })
+    );
+  };
+
+  const updateItemDiscountType = (productId: string, discountType: "percent" | "value") => {
+    setSelectedProducts(
+      selectedProducts.map((item) => {
+        if (item.productId === productId) {
+          return recalcItem(item as any, { discountType });
         }
         return item;
       })
@@ -464,18 +505,36 @@ export default function PurchaseEntry() {
         const warehouseQtyUnits = priceType === "dozen" ? warehouseEntered * 12 : warehouseEntered;
         const totalQty = shopQtyUnits + warehouseQtyUnits;
 
+        // Recalculate total to ensure accuracy (matching backend logic)
+        const unitCost = item.cost || 0;
+        const itemSubtotal = unitCost * totalQty;
+        const discount = item.discount || 0;
+        const discountType = (item as any).discountType || "percent";
+        
+        let itemDiscount = 0;
+        if (discount > 0) {
+          if (discountType === "value") {
+            itemDiscount = discount;
+          } else {
+            itemDiscount = (itemSubtotal * discount) / 100;
+          }
+        }
+        
+        const itemTotal = itemSubtotal - itemDiscount;
+
         return {
           productId: item.productId.trim(),
           productName: item.productName,
           quantity: totalQty,
           shopQuantity: shopQtyUnits,
           warehouseQuantity: warehouseQtyUnits,
-          cost: item.cost || 0,
+          cost: unitCost,
           priceType: (item as any).priceType || "single",
           costSingle: (item as any).costSingle ?? item.cost,
           costDozen: (item as any).costDozen ?? ((item.cost || 0) * 12),
-          discount: item.discount || 0,
-          total: item.total || 0,
+          discount: discount,
+          discountType: discountType,
+          total: itemTotal,
           toWarehouse: warehouseQtyUnits > 0 && shopQtyUnits === 0 ? true : (shopQtyUnits > 0 && warehouseQtyUnits === 0 ? false : (item.toWarehouse !== undefined ? item.toWarehouse : true)),
         };
       });
@@ -659,9 +718,12 @@ export default function PurchaseEntry() {
                               : "Shop Qty"}
                           </th>
                           <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[140px]">
-                            {selectedProducts.some(item => ((item as any).priceType || "single") === "dozen") 
-                              ? "Warehouse Total Dozen" 
+                            {selectedProducts.some(item => ((item as any).priceType || "single") === "dozen")
+                              ? "Warehouse Total Dozen"
                               : "Warehouse Qty"}
+                          </th>
+                          <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[160px]" colSpan={2}>
+                            Discount
                           </th>
                           <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[140px]">
                             Total
@@ -765,6 +827,18 @@ export default function PurchaseEntry() {
                                   </div>
                                 )}
                               </div>
+                            </td>
+                            <td className="p-3" colSpan={2}>
+                              <TaxDiscountInput
+                                value={item.discount}
+                                type={(item as any).discountType || "percent"}
+                                onValueChange={(value) => updateItemDiscount(item.productId, value ?? undefined)}
+                                onTypeChange={(type) => updateItemDiscountType(item.productId, type)}
+                                placeholder="0"
+                                min={0}
+                                step={0.01}
+                                className="w-full"
+                              />
                             </td>
                             <td className="p-3">
                               <div className="text-sm font-semibold text-gray-900 dark:text-white break-all">

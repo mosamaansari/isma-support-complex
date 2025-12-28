@@ -114,6 +114,7 @@ class PurchaseService {
         costSingle?: number;
         costDozen?: number;
         discount?: number;
+        discountType?: "percent" | "value";
         toWarehouse?: boolean;
         shopQuantity?: number;
         warehouseQuantity?: number;
@@ -218,7 +219,19 @@ class PurchaseService {
 
       const unitCost = limitDecimalPlaces(costSingle || 0);
       const itemSubtotal = limitDecimalPlaces(unitCost * totalQuantity);
-      const itemDiscount = limitDecimalPlaces((itemSubtotal * (item.discount || 0)) / 100);
+
+      // Calculate discount based on type
+      const discount = item.discount || 0;
+      const discountType = item.discountType || "percent";
+      let itemDiscount = 0;
+      if (discount > 0) {
+        if (discountType === "value") {
+          itemDiscount = limitDecimalPlaces(discount);
+        } else {
+          itemDiscount = limitDecimalPlaces((itemSubtotal * discount) / 100);
+        }
+      }
+
       const itemTotal = limitDecimalPlaces(itemSubtotal - itemDiscount);
 
       purchaseItems.push({
@@ -232,6 +245,7 @@ class PurchaseService {
         costSingle: unitCost,
         costDozen,
         discount: item.discount || 0,
+        discountType: discountType,
         total: itemTotal,
         toWarehouse: warehouseQuantity > 0 && shopQuantity === 0 ? true : item.toWarehouse ?? false,
       });
@@ -469,6 +483,7 @@ class PurchaseService {
           costSingle,
           costDozen,
           discount: Number(item.discount || 0),
+          discountType: item.discountType || "percent",
           total: Number(item.total),
         };
       }),
@@ -488,6 +503,7 @@ class PurchaseService {
         costSingle?: number;
         costDozen?: number;
         discount?: number;
+        discountType?: "percent" | "value";
         toWarehouse?: boolean;
         shopQuantity?: number;
         warehouseQuantity?: number;
@@ -651,7 +667,19 @@ class PurchaseService {
 
         const unitCost = Number(costSingle || 0);
         const itemSubtotal = unitCost * totalQuantity;
-        const itemDiscount = (itemSubtotal * (item.discount || 0)) / 100;
+
+        // Calculate discount based on type
+        const discount = item.discount || 0;
+        const discountType = item.discountType || "percent";
+        let itemDiscount = 0;
+        if (discount > 0) {
+          if (discountType === "value") {
+            itemDiscount = discount;
+          } else {
+            itemDiscount = (itemSubtotal * discount) / 100;
+          }
+        }
+
         const itemTotal = itemSubtotal - itemDiscount;
 
         purchaseItems.push({
@@ -665,6 +693,7 @@ class PurchaseService {
           costSingle: unitCost,
           costDozen,
           discount: item.discount || 0,
+          discountType: discountType,
           total: itemTotal,
           toWarehouse: warehouseQuantity > 0 && shopQuantity === 0 ? true : item.toWarehouse ?? false,
         });
@@ -750,6 +779,7 @@ class PurchaseService {
           costSingle,
           costDozen,
           discount: Number(item.discount || 0),
+          discountType: item.discountType || "percent",
           total: Number(item.total),
         };
       }),

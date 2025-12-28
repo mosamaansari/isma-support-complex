@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import PageMeta from "../../components/common/PageMeta";
 import { useData } from "../../context/DataContext";
 import { useAlert } from "../../context/AlertContext";
@@ -32,6 +32,7 @@ export default function Settings() {
   const [showBankAccountForm, setShowBankAccountForm] = useState(false);
   const [editingAccount, setEditingAccount] = useState<any>(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const bankAccountsLoadedRef = useRef(false);
   const [accountToDelete, setAccountToDelete] = useState<string | null>(null);
   const [bankAccountForm, setBankAccountForm] = useState({
     accountName: "",
@@ -54,8 +55,12 @@ export default function Settings() {
 
   useEffect(() => {
     refreshSettings();
-    if (bankAccounts.length === 0) {
+    // Load bank accounts only once on mount to prevent duplicate API calls
+    if (!bankAccountsLoadedRef.current && bankAccounts.length === 0) {
+      bankAccountsLoadedRef.current = true;
       refreshBankAccounts();
+    } else if (bankAccounts.length > 0) {
+      bankAccountsLoadedRef.current = true;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

@@ -298,6 +298,7 @@ model PurchaseItem {
   costSingle        Decimal? @db.Decimal(10, 2) // per single unit
   costDozen         Decimal? @db.Decimal(10, 2) // per dozen (12 units)
   discount          Decimal  @default(0) @db.Decimal(10, 2)
+  discountType      String?  @default("percent") // "percent" or "value"
   total             Decimal  @db.Decimal(10, 2)
   toWarehouse       Boolean  @default(true)
   createdAt         DateTime @default(now())
