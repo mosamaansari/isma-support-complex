@@ -27,8 +27,6 @@ export default function DatePicker({
   error = false,
   hint,
   disabled = false,
-  min,
-  max,
 }: DatePickerProps) {
   // Get today's date in YYYY-MM-DD format
   const getTodayDateStr = () => {
@@ -52,15 +50,6 @@ export default function DatePicker({
     left: boolean;
     right: boolean;
   }>({ top: false, left: false, right: false });
-
-  // Get today's date in YYYY-MM-DD format
-  const getTodayDate = () => {
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, "0");
-    const day = String(today.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
-  };
 
   // Format date for display (DD/MM/YYYY)
   const formatDisplayDate = (dateStr: string) => {
@@ -226,40 +215,11 @@ export default function DatePicker({
     }
   };
 
-  const navigateMonth = (direction: "prev" | "next") => {
-    setCurrentMonth((prev) => {
-      const newDate = new Date(prev);
-      if (direction === "prev") {
-        newDate.setMonth(prev.getMonth() - 1);
-      } else {
-        newDate.setMonth(prev.getMonth() + 1);
-      }
-      return newDate;
-    });
-  };
-
-  const goToToday = () => {
-    const today = new Date();
-    setCurrentMonth(today);
-    const todayStr = getTodayDateStr();
-    setDisplayDate(todayStr);
-    setIsOpen(false);
-    
-    if (onChange && hiddenInputRef.current) {
-      hiddenInputRef.current.value = todayStr;
-      const syntheticEvent = {
-        target: { value: todayStr, name: name || "" },
-      } as React.ChangeEvent<HTMLInputElement>;
-      onChange(syntheticEvent);
-    }
-  };
-
-  const handleClear = () => {
-    // Don't allow clearing - always keep today's date
-    const todayStr = getTodayDateStr();
-    setDisplayDate(todayStr);
-    setIsOpen(false);
-  };
+  // These functions are intentionally not used as calendar navigation is disabled
+  // to enforce today-only date selection
+  // const navigateMonth = (direction: "prev" | "next") => { ... };
+  // const goToToday = () => { ... };
+  // const handleClear = () => { ... };
 
   // Generate calendar days
   const generateCalendar = () => {

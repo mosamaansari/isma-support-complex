@@ -283,10 +283,10 @@ export default function Reports() {
     }
   });
 
-  // Convert to array and sort by total (descending)
-  const customerTotals = Array.from(customerSalesMap.values())
-    .filter((item) => item.count > 1) // Only show combined rows if customer has multiple sales
-    .sort((a, b) => b.total - a.total);
+  // Customer totals calculation (kept for potential future use)
+  // const customerTotals = Array.from(customerSalesMap.values())
+  //   .filter((item) => item.count > 1)
+  //   .sort((a, b) => b.total - a.total);
 
 
   const exportToPDF = async () => {

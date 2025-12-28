@@ -462,7 +462,7 @@ export default function SalesEntry() {
       }
     }
     console.log("selectedProducts", selectedProducts) 
-    const { subtotal, discountAmount, taxAmount, total } = calculateTotals();
+    const { subtotal, total } = calculateTotals();
     const totalPaid = payments.reduce((sum, payment) => sum + (payment.amount ?? 0), 0);
 
     if (totalPaid > total) {
