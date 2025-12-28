@@ -430,7 +430,7 @@ class SaleService {
       }
 
       const effectivePrice = limitDecimalPlaces(item.customPrice ?? priceSingle);
-      const unitPrice = product.salePrice ? limitDecimalPlaces(product.salePrice) : 0;
+      const unitPrice = product.salePrice ? limitDecimalPlaces(Number(product.salePrice)) : 0;
       const itemSubtotal = limitDecimalPlaces(effectivePrice * totalQuantity);
 
       // Calculate discount based on type

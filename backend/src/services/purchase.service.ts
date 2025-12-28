@@ -115,6 +115,8 @@ class PurchaseService {
         costDozen?: number;
         discount?: number;
         toWarehouse?: boolean;
+        shopQuantity?: number;
+        warehouseQuantity?: number;
       }>;
       subtotal: number;
       discount?: number;
@@ -487,6 +489,8 @@ class PurchaseService {
         costDozen?: number;
         discount?: number;
         toWarehouse?: boolean;
+        shopQuantity?: number;
+        warehouseQuantity?: number;
       }>;
       subtotal?: number;
       discount?: number;
