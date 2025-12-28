@@ -54,8 +54,8 @@ class UserService {
       },
     });
 
+    // If not found in users table, check admin_users
     if (!user) {
-      // Check admin users table
       const adminUser = await prisma.adminUser.findUnique({
         where: { id },
         select: {
@@ -104,21 +104,12 @@ class UserService {
       }
     }
 
-    // Check if username exists in regular users
+    // Check if username exists in users table only (not admin_users)
     const existingUser = await prisma.user.findUnique({
       where: { username: data.username },
     });
 
     if (existingUser) {
-      throw new Error("Username already exists");
-    }
-
-    // Check if username exists in admin users
-    const existingAdminUser = await prisma.adminUser.findUnique({
-      where: { username: data.username },
-    });
-
-    if (existingAdminUser) {
       throw new Error("Username already exists");
     }
 
