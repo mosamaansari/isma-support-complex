@@ -19,6 +19,7 @@ import { hasPermission } from "../../utils/permissions";
 import { AVAILABLE_PERMISSIONS } from "../../utils/availablePermissions";
 import { extractErrorMessage } from "../../utils/errorHandler";
 import { getTodayDate, formatDateToString } from "../../utils/dateHelpers";
+import { restrictDecimalInput, handleDecimalInput } from "../../utils/numberHelpers";
 
 const purchaseEntrySchema = yup.object().shape({
   supplierName: yup
@@ -648,10 +649,14 @@ export default function PurchaseEntry() {
                             Unit (Rs)
                           </th>
                           <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[120px]">
-                            Shop Qty
+                            {selectedProducts.some(item => ((item as any).priceType || "single") === "dozen") 
+                              ? "Shop Total Dozen" 
+                              : "Shop Qty"}
                           </th>
                           <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[140px]">
-                            Warehouse Qty
+                            {selectedProducts.some(item => ((item as any).priceType || "single") === "dozen") 
+                              ? "Warehouse Total Dozen" 
+                              : "Warehouse Qty"}
                           </th>
                           <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[140px]">
                             Total
@@ -694,14 +699,10 @@ export default function PurchaseEntry() {
                                     ? ((item as any).costDozen ?? "")
                                     : ((item as any).costSingle ?? "")
                                 }
+                                onInput={restrictDecimalInput}
                                 onChange={(e) => {
-                                  const value = e.target.value;
-                                  if (value === "" || value === null || value === undefined) {
-                                    updateItemPrice(item.productId, undefined);
-                                  } else {
-                                    const numValue = parseFloat(value);
-                                    updateItemPrice(item.productId, isNaN(numValue) ? undefined : numValue);
-                                  }
+                                  const value = handleDecimalInput(e.target.value);
+                                  updateItemPrice(item.productId, value);
                                 }}
                                 className="w-full text-sm"
                                 placeholder="0"
@@ -711,40 +712,54 @@ export default function PurchaseEntry() {
                               Rs. {(((item as any).costSingle ?? item.cost) || 0).toFixed(2)}
                             </td>
                             <td className="p-3">
-                              <Input
-                                type="number"
-                                min="0"
-                                value={item.shopQuantity === undefined || item.shopQuantity === null ? "" : item.shopQuantity}
-                                onChange={(e) => {
-                                  const value = e.target.value;
-                                  if (value === "" || value === null || value === undefined) {
-                                    updateItemShopQuantity(item.productId, undefined);
-                                  } else {
-                                    const numValue = parseInt(value);
-                                    updateItemShopQuantity(item.productId, isNaN(numValue) ? undefined : numValue);
-                                  }
-                                }}
-                                className="w-full text-sm"
-                                placeholder="0"
-                              />
+                              <div className="space-y-1">
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  value={item.shopQuantity === undefined || item.shopQuantity === null ? "" : item.shopQuantity}
+                                  onChange={(e) => {
+                                    const value = e.target.value;
+                                    if (value === "" || value === null || value === undefined) {
+                                      updateItemShopQuantity(item.productId, undefined);
+                                    } else {
+                                      const numValue = parseInt(value);
+                                      updateItemShopQuantity(item.productId, isNaN(numValue) ? undefined : numValue);
+                                    }
+                                  }}
+                                  className="w-full text-sm"
+                                  placeholder={((item as any).priceType || "single") === "dozen" ? "Dozen" : "Units"}
+                                />
+                                {((item as any).priceType || "single") === "dozen" && (
+                                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                                    Units: {((item.shopQuantity || 0) * 12).toFixed(0)}
+                                  </div>
+                                )}
+                              </div>
                             </td>
                             <td className="p-3">
-                              <Input
-                                type="number"
-                                min="0"
-                                value={item.warehouseQuantity === undefined || item.warehouseQuantity === null ? "" : item.warehouseQuantity}
-                                onChange={(e) => {
-                                  const value = e.target.value;
-                                  if (value === "" || value === null || value === undefined) {
-                                    updateItemWarehouseQuantity(item.productId, undefined);
-                                  } else {
-                                    const numValue = parseInt(value);
-                                    updateItemWarehouseQuantity(item.productId, isNaN(numValue) ? undefined : numValue);
-                                  }
-                                }}
-                                className="w-full text-sm"
-                                placeholder="0"
-                              />
+                              <div className="space-y-1">
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  value={item.warehouseQuantity === undefined || item.warehouseQuantity === null ? "" : item.warehouseQuantity}
+                                  onChange={(e) => {
+                                    const value = e.target.value;
+                                    if (value === "" || value === null || value === undefined) {
+                                      updateItemWarehouseQuantity(item.productId, undefined);
+                                    } else {
+                                      const numValue = parseInt(value);
+                                      updateItemWarehouseQuantity(item.productId, isNaN(numValue) ? undefined : numValue);
+                                    }
+                                  }}
+                                  className="w-full text-sm"
+                                  placeholder={((item as any).priceType || "single") === "dozen" ? "Dozen" : "Units"}
+                                />
+                                {((item as any).priceType || "single") === "dozen" && (
+                                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                                    Units: {((item.warehouseQuantity || 0) * 12).toFixed(0)}
+                                  </div>
+                                )}
+                              </div>
                             </td>
                             <td className="p-3">
                               <div className="text-sm font-semibold text-gray-900 dark:text-white break-all">
@@ -833,9 +848,9 @@ export default function PurchaseEntry() {
                     <span className="text-gray-600 dark:text-gray-400">Subtotal:</span>
                     <span className="text-gray-800 dark:text-white">Rs. {subtotal.toFixed(2)}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <Label className="mb-0">Tax:</Label>
-                    <div className="flex items-center gap-2">
+                  <div className="flex justify-between items-center gap-4">
+                    <Label className="mb-0 items-center whitespace-nowrap">Tax:</Label>
+                    <div className="">
                       <TaxDiscountInput
                         value={tax}
                         type={taxType}
@@ -847,7 +862,7 @@ export default function PurchaseEntry() {
                           setTaxType(type);
                         }}
                         placeholder="0"
-                        className="w-32"
+                      
                       />
 
                     </div>
@@ -939,14 +954,10 @@ export default function PurchaseEntry() {
                             min="0"
                             max={String(total - totalPaid + (payment.amount || 0))}
                             value={payment.amount === undefined || payment.amount === null ? "" : payment.amount}
+                            onInput={restrictDecimalInput}
                             onChange={(e) => {
-                              const value = e.target.value;
-                              if (value === "" || value === null || value === undefined) {
-                                updatePayment(index, "amount", undefined);
-                              } else {
-                                const numValue = parseFloat(value);
-                                updatePayment(index, "amount", isNaN(numValue) ? undefined : numValue);
-                              }
+                              const value = handleDecimalInput(e.target.value);
+                              updatePayment(index, "amount", value);
                             }}
                             placeholder="Enter amount"
                           />

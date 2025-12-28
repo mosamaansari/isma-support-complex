@@ -38,23 +38,31 @@ export default function TransactionHistoryModal({
 }: TransactionHistoryModalProps) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(false);
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+
+  // Always use today's date
+  const getTodayDate = () => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, "0");
+    const day = String(today.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
 
   useEffect(() => {
     if (isOpen) {
       loadTransactions();
     }
-  }, [isOpen, type, bankAccountId, startDate, endDate]);
+  }, [isOpen, type, bankAccountId]);
 
   const loadTransactions = async () => {
     setLoading(true);
     try {
+      const todayDate = getTodayDate();
       let data: Transaction[] = [];
       if (type === "cash") {
-        data = await api.getCashTransactions(startDate || undefined, endDate || undefined);
+        data = await api.getCashTransactions(todayDate, todayDate);
       } else if (type === "bank" && bankAccountId) {
-        data = await api.getBankTransactions(bankAccountId, startDate || undefined, endDate || undefined);
+        data = await api.getBankTransactions(bankAccountId, todayDate, todayDate);
       }
       setTransactions(Array.isArray(data) ? data : []);
     } catch (error) {
@@ -110,29 +118,12 @@ export default function TransactionHistoryModal({
           Transaction History - {type === "cash" ? "Cash" : bankName || "Bank"}
         </h2>
 
-        {/* Date Filters */}
-        <div className="grid grid-cols-2 gap-4 mb-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Start Date
-            </label>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg dark:bg-gray-800 dark:border-gray-700 dark:text-white"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              End Date
-            </label>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg dark:bg-gray-800 dark:border-gray-700 dark:text-white"
-            />
+        {/* Date Filters - Restricted to today only */}
+        <div className="mb-4">
+          <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 border border-blue-200 dark:border-blue-800">
+            <p className="text-sm text-blue-700 dark:text-blue-300 text-center">
+              Date filters are disabled. Only today's transactions can be viewed.
+            </p>
           </div>
         </div>
 

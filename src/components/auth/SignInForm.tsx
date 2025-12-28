@@ -41,8 +41,8 @@ export default function SignInForm() {
   } = useForm({
     resolver: yupResolver(signInSchema),
     defaultValues: {
-      username: "admin",
-      password: "admin123",
+      username: "",
+      password: "",
     },
   });
 

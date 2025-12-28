@@ -2,6 +2,8 @@ import prisma from "../config/database";
 import logger from "../utils/logger";
 import whatsappService from "./whatsapp.service";
 import productService from "./product.service";
+import { validateTodayDate } from "../utils/dateValidation";
+import { limitDecimalPlaces } from "../utils/numberHelpers";
 
 const splitSaleQuantities = (item: {
   quantity: number;
@@ -316,6 +318,9 @@ class SaleService {
     userId: string,
     userType?: "user" | "admin"
   ) {
+    // Validate that date is today (if provided)
+    validateTodayDate(data.date, 'sale date');
+
     // Generate bill number
     const today = new Date();
     const dateStr = today.toISOString().split("T")[0].replace(/-/g, "");
@@ -424,23 +429,23 @@ class SaleService {
         priceDozen = priceDozen || priceSingle * 12;
       }
 
-      const effectivePrice = Number(item.customPrice ?? priceSingle);
-      const unitPrice = product.salePrice ? Number(product.salePrice) : 0;
-      const itemSubtotal = effectivePrice * totalQuantity;
+      const effectivePrice = limitDecimalPlaces(item.customPrice ?? priceSingle);
+      const unitPrice = product.salePrice ? limitDecimalPlaces(product.salePrice) : 0;
+      const itemSubtotal = limitDecimalPlaces(effectivePrice * totalQuantity);
 
       // Calculate discount based on type
       let itemDiscount = 0;
       if (item.discount && item.discount > 0) {
         if (item.discountType === "value") {
-          itemDiscount = item.discount;
+          itemDiscount = limitDecimalPlaces(item.discount);
         } else {
-          itemDiscount = (itemSubtotal * item.discount) / 100;
+          itemDiscount = limitDecimalPlaces((itemSubtotal * item.discount) / 100);
         }
       }
 
-      const itemTotal = itemSubtotal - itemDiscount;
+      const itemTotal = limitDecimalPlaces(itemSubtotal - itemDiscount);
 
-      subtotal += itemTotal;
+      subtotal = limitDecimalPlaces(subtotal + itemTotal);
 
       const shopAvailable = product.shopQuantity ?? (product as any).quantity ?? 0;
       const warehouseAvailable = product.warehouseQuantity ?? 0;
@@ -480,9 +485,9 @@ class SaleService {
     let discountAmount = 0;
     if (data.discount && data.discount > 0) {
       if (data.discountType === "value") {
-        discountAmount = data.discount;
+        discountAmount = limitDecimalPlaces(data.discount);
       } else {
-        discountAmount = (subtotal * data.discount) / 100;
+        discountAmount = limitDecimalPlaces((subtotal * data.discount) / 100);
       }
     }
 
@@ -490,14 +495,14 @@ class SaleService {
     let taxAmount = 0;
     if (data.tax && data.tax > 0) {
       if (data.taxType === "value") {
-        taxAmount = data.tax;
+        taxAmount = limitDecimalPlaces(data.tax);
       } else {
-        const afterDiscount = subtotal - discountAmount;
-        taxAmount = (afterDiscount * data.tax) / 100;
+        const afterDiscount = limitDecimalPlaces(subtotal - discountAmount);
+        taxAmount = limitDecimalPlaces((afterDiscount * data.tax) / 100);
       }
     }
 
-    const total = subtotal - discountAmount + taxAmount;
+    const total = limitDecimalPlaces(subtotal - discountAmount + taxAmount);
 
     // Get or create customer (optional - use default if not provided)
     const customerName = data.customerName || "Walk-in Customer";
@@ -593,7 +598,7 @@ class SaleService {
         customerName: customerName || null,
         customerPhone: customerPhone || null,
         customerCity: customerCity || null,
-        date: data.date ? new Date(data.date) : new Date(),
+        date: new Date(), // Always use current date/time
         userId: user.id,
         userName: user.name,
         createdBy: user.id,
@@ -828,6 +833,9 @@ class SaleService {
     userId?: string,
     userType?: "user" | "admin"
   ) {
+    // Validate that date is today (if provided)
+    validateTodayDate(payment.date, 'payment date');
+
     const sale = await prisma.sale.findUnique({
       where: { id: saleId },
       include: { customer: true },

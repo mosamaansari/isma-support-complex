@@ -41,8 +41,8 @@ export default function SuperAdminSignInForm() {
   } = useForm({
     resolver: yupResolver(superAdminSignInSchema),
     defaultValues: {
-      username: "superadmin",
-      password: "superadmin123",
+      username: "",
+      password: "",
     },
   });
 

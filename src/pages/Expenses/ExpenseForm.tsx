@@ -14,6 +14,7 @@ import Select from "../../components/form/Select";
 import Button from "../../components/ui/button/Button";
 import { ChevronLeftIcon } from "../../icons";
 import { getTodayDate } from "../../utils/dateHelpers";
+import { restrictDecimalInput } from "../../utils/numberHelpers";
 
 const expenseFormSchema = yup.object().shape({
   amount: yup
@@ -244,6 +245,7 @@ export default function ExpenseForm() {
               step={0.01}
               min="0"
               value={formData.amount ?? ""}
+              onInput={restrictDecimalInput}
               onChange={(e) => {
                 if (e.target.value === "") {
                   setValue("amount", undefined as any);

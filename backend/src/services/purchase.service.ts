@@ -1,6 +1,8 @@
 import prisma from "../config/database";
 import logger from "../utils/logger";
 import productService from "./product.service";
+import { validateTodayDate } from "../utils/dateValidation";
+import { limitDecimalPlaces } from "../utils/numberHelpers";
 
 const splitPurchaseQuantities = (item: {
   quantity: number;
@@ -131,6 +133,9 @@ class PurchaseService {
     userId: string,
     userType?: "user" | "admin"
   ) {
+    // Validate that date is today (if provided)
+    validateTodayDate(data.date, 'purchase date');
+
     // Get or create supplier based on name + phone combination
     const supplierPhone = data.supplierPhone || "";
     // Get or create supplier by name + phone (case-insensitive)
@@ -209,10 +214,10 @@ class PurchaseService {
         costDozen = costDozen || costSingle * 12;
       }
 
-      const unitCost = Number(costSingle || 0);
-      const itemSubtotal = unitCost * totalQuantity;
-      const itemDiscount = (itemSubtotal * (item.discount || 0)) / 100;
-      const itemTotal = itemSubtotal - itemDiscount;
+      const unitCost = limitDecimalPlaces(costSingle || 0);
+      const itemSubtotal = limitDecimalPlaces(unitCost * totalQuantity);
+      const itemDiscount = limitDecimalPlaces((itemSubtotal * (item.discount || 0)) / 100);
+      const itemTotal = limitDecimalPlaces(itemSubtotal - itemDiscount);
 
       purchaseItems.push({
         productId: product.id,
@@ -290,7 +295,7 @@ class PurchaseService {
         payments: paymentsWithDate as any,
         remainingBalance: remainingBalance,
         status: status as any,
-        date: data.date ? new Date(data.date) : new Date(),
+        date: new Date(), // Always use current date/time
         userId: user.id,
         userName: user.name,
         createdBy: user.id,
@@ -499,6 +504,9 @@ class PurchaseService {
     },
     userId: string
   ) {
+    // Validate that date is today (if provided)
+    validateTodayDate(data.date, 'purchase date');
+
     const purchase = await prisma.purchase.findUnique({
       where: { id },
       include: { items: true, supplier: true },
@@ -700,7 +708,8 @@ class PurchaseService {
       }
       updateData.remainingBalance = purchaseTotal - totalPaid;
     }
-    if (data.date) updateData.date = new Date(data.date);
+    // Don't allow date updates - always use current date
+    // if (data.date) updateData.date = new Date(data.date);
 
     const updatedPurchase = await prisma.purchase.update({
       where: { id },
@@ -755,6 +764,9 @@ class PurchaseService {
     userId: string,
     userType?: "user" | "admin"
   ) {
+    // Validate that date is today (if provided)
+    validateTodayDate(payment.date, 'payment date');
+
     const purchase = await prisma.purchase.findUnique({
       where: { id: purchaseId },
     });

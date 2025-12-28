@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import Input from "./input/InputField";
+import { restrictDecimalInput, handleDecimalInput } from "../../utils/numberHelpers";
 
 interface TaxDiscountInputProps {
   value: number | null | undefined;
@@ -47,8 +48,8 @@ export default function TaxDiscountInput({
       return;
     }
     
-    const numValue = parseFloat(inputValue);
-    if (isNaN(numValue)) {
+    const numValue = handleDecimalInput(inputValue);
+    if (numValue === undefined) {
       return;
     }
 
@@ -85,6 +86,7 @@ export default function TaxDiscountInput({
           type="number"
           value={localValue}
           onChange={handleInputChange}
+          onInput={restrictDecimalInput}
           onBlur={handleBlur}
           placeholder={placeholder}
           disabled={disabled}

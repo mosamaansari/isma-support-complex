@@ -1,5 +1,6 @@
 import prisma from "../config/database";
 import logger from "../utils/logger";
+import { validateTodayDate } from "../utils/dateValidation";
 
 class ExpenseService {
   async getExpenses(filters: {
@@ -96,6 +97,9 @@ class ExpenseService {
     userId: string,
     userType?: "user" | "admin"
   ) {
+    // Validate that date is today (if provided)
+    validateTodayDate(data.date, 'expense date');
+
     // Get user - check both AdminUser and User tables
     let user: any = await prisma.user.findUnique({
       where: { id: userId },
@@ -214,6 +218,9 @@ class ExpenseService {
       date?: string;
     }
   ) {
+    // Validate that date is today (if provided)
+    validateTodayDate(data.date, 'expense date');
+
     const expense = await prisma.expense.findUnique({
       where: { id },
     });
@@ -229,7 +236,8 @@ class ExpenseService {
     if (data.paymentType !== undefined) updateData.paymentType = data.paymentType as any;
     if (data.cardId !== undefined) updateData.cardId = data.cardId || null;
     if (data.bankAccountId !== undefined) updateData.bankAccountId = data.bankAccountId || null;
-    if (data.date !== undefined) updateData.date = new Date(data.date);
+    // Don't allow date updates - always use current date
+    // if (data.date !== undefined) updateData.date = new Date(data.date);
 
     const updatedExpense = await prisma.expense.update({
       where: { id },

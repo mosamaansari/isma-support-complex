@@ -1373,38 +1373,6 @@ export default function Reports() {
                               </tr>
                             );
                           })}
-                          
-                          {/* Combined Customer Totals - Only show if customer has multiple sales */}
-                          {customerTotals.length > 0 && (
-                            <>
-                              <tr className="border-t-2 border-gray-300 dark:border-gray-600">
-                                <td colSpan={4} className="p-2 font-bold text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-900">
-                                  Customer Totals (Multiple Payments)
-                                </td>
-                              </tr>
-                              {customerTotals.map((customer, idx) => (
-                                <tr
-                                  key={`customer-total-${idx}`}
-                                  className="border-b border-gray-100 dark:border-gray-700 bg-blue-50 dark:bg-blue-900/20"
-                                >
-                                  <td className="p-2 text-gray-600 dark:text-gray-400 text-sm whitespace-nowrap">
-                                    {customer.bills.length > 0 ? customer.bills.join(", ") : `${customer.count} bills`}
-                                  </td>
-                                  <td className="p-2 text-gray-600 dark:text-gray-400 text-sm whitespace-nowrap">
-                                    Combined
-                                  </td>
-                                  <td className="p-2 font-semibold text-blue-700 dark:text-blue-400 max-w-[200px]">
-                                    <div className="line-clamp-3">
-                                      {customer.customerName} ({customer.count} payments)
-                                    </div>
-                                  </td>
-                                  <td className="p-2 text-right font-bold text-blue-700 dark:text-blue-400 whitespace-nowrap">
-                                    Rs. {customer.total.toFixed(2)}
-                                  </td>
-                                </tr>
-                              ))}
-                            </>
-                          )}
                         </>
                       )}
                     </tbody>

@@ -21,7 +21,7 @@ export default function DatePicker({
   value,
   onChange,
   onBlur,
-  placeholder = "Select date",
+  placeholder = "Today's date",
   className = "",
   required = false,
   error = false,
@@ -30,8 +30,18 @@ export default function DatePicker({
   min,
   max,
 }: DatePickerProps) {
+  // Get today's date in YYYY-MM-DD format
+  const getTodayDateStr = () => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, "0");
+    const day = String(today.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  const todayDate = getTodayDateStr();
   const [isOpen, setIsOpen] = useState(false);
-  const [displayDate, setDisplayDate] = useState(value || "");
+  const [displayDate, setDisplayDate] = useState(value || todayDate);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const calendarRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -63,21 +73,22 @@ export default function DatePicker({
     return `${day}/${month}/${year}`;
   };
 
-  // Update display date when value prop changes
+  // Always use today's date - ignore other dates
   useEffect(() => {
-    if (value !== displayDate) {
-      setDisplayDate(value || "");
-      if (value) {
-        const date = new Date(value + "T00:00:00");
-        if (!isNaN(date.getTime())) {
-          setCurrentMonth(date);
-        }
-      } else {
-        // If value is cleared, reset to current month
-        setCurrentMonth(new Date());
+    // Always set to today's date
+    const today = getTodayDateStr();
+    if (displayDate !== today) {
+      setDisplayDate(today);
+      if (onChange && hiddenInputRef.current) {
+        hiddenInputRef.current.value = today;
+        const syntheticEvent = {
+          target: { value: today, name: name || "" },
+        } as React.ChangeEvent<HTMLInputElement>;
+        onChange(syntheticEvent);
       }
     }
-  }, [value]);
+    setCurrentMonth(new Date());
+  }, []);
 
   // Calculate calendar position based on available space using fixed positioning
   const [calendarStyle, setCalendarStyle] = useState<React.CSSProperties>({});
@@ -180,34 +191,38 @@ export default function DatePicker({
   }, [isOpen]);
 
   const handleInputClick = () => {
-    if (!disabled) {
-      setIsOpen(!isOpen);
-    }
+    // Calendar is disabled - date is always today
+    return;
   };
 
   const handleIconClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!disabled) {
-      setIsOpen(!isOpen);
-      inputRef.current?.focus();
-    }
+    // Calendar is disabled - date is always today
+    return;
   };
 
   const handleDateSelect = (day: number) => {
+    // Only allow selecting today's date
+    const today = new Date();
     const year = currentMonth.getFullYear();
     const month = currentMonth.getMonth();
-    const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     
-    setDisplayDate(dateStr);
-    setIsOpen(false);
-    
-    if (onChange && hiddenInputRef.current) {
-      hiddenInputRef.current.value = dateStr;
-      const syntheticEvent = {
-        target: { value: dateStr, name: name || "" },
-      } as React.ChangeEvent<HTMLInputElement>;
-      onChange(syntheticEvent);
+    if (day === today.getDate() && month === today.getMonth() && year === today.getFullYear()) {
+      const todayStr = getTodayDateStr();
+      setDisplayDate(todayStr);
+      setIsOpen(false);
+      
+      if (onChange && hiddenInputRef.current) {
+        hiddenInputRef.current.value = todayStr;
+        const syntheticEvent = {
+          target: { value: todayStr, name: name || "" },
+        } as React.ChangeEvent<HTMLInputElement>;
+        onChange(syntheticEvent);
+      }
+    } else {
+      // Prevent selecting any date other than today
+      setIsOpen(false);
     }
   };
 
@@ -226,7 +241,7 @@ export default function DatePicker({
   const goToToday = () => {
     const today = new Date();
     setCurrentMonth(today);
-    const todayStr = getTodayDate();
+    const todayStr = getTodayDateStr();
     setDisplayDate(todayStr);
     setIsOpen(false);
     
@@ -240,16 +255,10 @@ export default function DatePicker({
   };
 
   const handleClear = () => {
-    setDisplayDate("");
+    // Don't allow clearing - always keep today's date
+    const todayStr = getTodayDateStr();
+    setDisplayDate(todayStr);
     setIsOpen(false);
-    
-    if (onChange && hiddenInputRef.current) {
-      hiddenInputRef.current.value = "";
-      const syntheticEvent = {
-        target: { value: "", name: name || "" },
-      } as React.ChangeEvent<HTMLInputElement>;
-      onChange(syntheticEvent);
-    }
   };
 
   // Generate calendar days
@@ -362,8 +371,8 @@ export default function DatePicker({
         onChange={onChange}
         className="hidden"
         required={required}
-        min={min}
-        max={max}
+        min={todayDate}
+        max={todayDate}
       />
 
       {isOpen && !disabled && createPortal(
@@ -372,12 +381,12 @@ export default function DatePicker({
           className="bg-white rounded-lg shadow-xl border border-gray-200 dark:bg-gray-800 dark:border-gray-700 p-4 w-[320px]"
           style={calendarStyle}
         >
-          {/* Header with month navigation */}
+          {/* Header with month navigation - disabled as only today is selectable */}
           <div className="flex items-center justify-between mb-4">
             <button
               type="button"
-              onClick={() => navigateMonth("prev")}
-              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              disabled
+              className="p-2 rounded-lg opacity-30 cursor-not-allowed"
               aria-label="Previous month"
             >
               <svg
@@ -399,8 +408,8 @@ export default function DatePicker({
             </h3>
             <button
               type="button"
-              onClick={() => navigateMonth("next")}
-              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              disabled
+              className="p-2 rounded-lg opacity-30 cursor-not-allowed"
               aria-label="Next month"
             >
               <svg
@@ -433,52 +442,43 @@ export default function DatePicker({
 
           {/* Calendar grid */}
           <div className="grid grid-cols-7 gap-1">
-            {days.map((day, index) => (
-              <button
-                key={index}
-                type="button"
-                onClick={() => day && handleDateSelect(day)}
-                disabled={!day}
-                className={`
-                  h-9 w-9 text-sm rounded-lg transition-all duration-150 font-medium
-                  ${!day ? "cursor-default invisible" : "cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"}
-                  ${
-                    isToday(day)
-                      ? "bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 font-semibold ring-1 ring-blue-200 dark:ring-blue-800"
-                      : ""
-                  }
-                  ${
-                    isSelected(day)
-                      ? "bg-brand-500 text-white dark:bg-brand-600 font-semibold shadow-sm hover:bg-brand-600 dark:hover:bg-brand-700"
-                      : day
-                      ? "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                      : ""
-                  }
-                `}
-              >
-                {day}
-              </button>
-            ))}
+            {days.map((day, index) => {
+              const isTodayDay = isToday(day);
+              const isDisabled = !day || !isTodayDay;
+              return (
+                <button
+                  key={index}
+                  type="button"
+                  onClick={() => day && isTodayDay && handleDateSelect(day)}
+                  disabled={isDisabled}
+                  className={`
+                    h-9 w-9 text-sm rounded-lg transition-all duration-150 font-medium
+                    ${!day ? "cursor-default invisible" : isDisabled ? "cursor-not-allowed opacity-30" : "cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"}
+                    ${
+                      isTodayDay
+                        ? "bg-brand-500 text-white dark:bg-brand-600 font-semibold shadow-sm ring-2 ring-brand-300 dark:ring-brand-700"
+                        : ""
+                    }
+                    ${
+                      isSelected(day) && isTodayDay
+                        ? "bg-brand-500 text-white dark:bg-brand-600 font-semibold shadow-sm"
+                        : day && !isTodayDay
+                        ? "text-gray-400 dark:text-gray-600"
+                        : ""
+                    }
+                  `}
+                >
+                  {day}
+                </button>
+              );
+            })}
           </div>
 
-          {/* Today and Clear buttons */}
-          <div className="mt-4 pt-3 border-t border-gray-200 dark:border-gray-700 flex gap-2">
-            <button
-              type="button"
-              onClick={goToToday}
-              className="flex-1 px-4 py-2 text-sm font-medium text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20 rounded-lg transition-colors dark:text-brand-400"
-            >
-              Today
-            </button>
-            {displayDate && (
-              <button
-                type="button"
-                onClick={handleClear}
-                className="flex-1 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-400 rounded-lg transition-colors"
-              >
-                Clear
-              </button>
-            )}
+          {/* Info message */}
+          <div className="mt-4 pt-3 border-t border-gray-200 dark:border-gray-700">
+            <p className="text-xs text-center text-gray-500 dark:text-gray-400">
+              Only today's date can be selected
+            </p>
           </div>
         </div>
         , document.body

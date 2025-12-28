@@ -66,6 +66,18 @@ export default function PurchaseView() {
   const payments = (purchase.payments || []) as PurchasePayment[];
   const totalPaid = payments.reduce((sum, p) => sum + (p?.amount || 0), 0);
 
+  // Calculate actual discount and tax amounts
+  const discountType = (purchase as any).discountType || "percent";
+  const taxType = (purchase as any).taxType || "percent";
+  
+  const actualDiscountAmount = discountType === "value" 
+    ? (purchase as any).discount 
+    : (purchase.subtotal * ((purchase as any).discount || 0)) / 100;
+    
+  const actualTaxAmount = taxType === "value" 
+    ? purchase.tax 
+    : ((purchase.subtotal - actualDiscountAmount) * purchase.tax) / 100;
+
   return (
     <>
       <PageMeta title="Purchase Details | Isma Sports Complex" description="View purchase details" />
@@ -167,16 +179,16 @@ export default function PurchaseView() {
                 </div>
                 {(purchase as any).discount > 0 && (
                   <div className="flex justify-between text-gray-600 dark:text-gray-400">
-                    <span>Discount{((purchase as any).discountType === "percent" ? " (%)" : " (Rs)")}:</span>
+                    <span>Discount{discountType === "value" ? " (Rs)" : ` (${(purchase as any).discount}%)`}:</span>
                     <span className="text-red-600 dark:text-red-400">
-                      - Rs. {Number((purchase as any).discount || 0).toFixed(2)}
+                      - Rs. {actualDiscountAmount.toFixed(2)}
                     </span>
                   </div>
                 )}
                 {purchase.tax > 0 && (
                   <div className="flex justify-between text-gray-600 dark:text-gray-400">
-                    <span>Tax{((purchase as any).taxType === "percent" ? " (%)" : " (Rs)")}:</span>
-                    <span>+ Rs. {(purchase.tax || 0).toFixed(2)}</span>
+                    <span>Tax{taxType === "value" ? " (Rs)" : ` (${purchase.tax}%)`}:</span>
+                    <span>+ Rs. {actualTaxAmount.toFixed(2)}</span>
                   </div>
                 )}
                 <div className="flex justify-between text-lg font-semibold text-gray-800 dark:text-white pt-2 border-t border-gray-200 dark:border-gray-700">
@@ -247,6 +259,26 @@ export default function PurchaseView() {
               ))}
             </tbody>
             <tfoot>
+              <tr>
+                <td colSpan={3} className="p-2 text-right">Subtotal:</td>
+                <td className="p-2 text-right">Rs. {purchase.subtotal.toFixed(2)}</td>
+              </tr>
+              {(purchase as any).discount > 0 && (
+                <tr>
+                  <td colSpan={3} className="p-2 text-right">
+                    Discount{discountType === "value" ? " (Rs)" : ` (${(purchase as any).discount}%)`}:
+                  </td>
+                  <td className="p-2 text-right text-red-600">- Rs. {actualDiscountAmount.toFixed(2)}</td>
+                </tr>
+              )}
+              {purchase.tax > 0 && (
+                <tr>
+                  <td colSpan={3} className="p-2 text-right">
+                    Tax{taxType === "value" ? " (Rs)" : ` (${purchase.tax}%)`}:
+                  </td>
+                  <td className="p-2 text-right">+ Rs. {actualTaxAmount.toFixed(2)}</td>
+                </tr>
+              )}
               <tr className="border-t-2 border-gray-800">
                 <td colSpan={3} className="p-2 text-right font-semibold">Total:</td>
                 <td className="p-2 text-right font-semibold">Rs. {purchase.total.toFixed(2)}</td>
@@ -260,6 +292,9 @@ export default function PurchaseView() {
             </p>
             <p>
               <strong>Remaining Balance:</strong> Rs. {(purchase.remainingBalance || 0).toFixed(2)}
+            </p>
+            <p>
+              <strong>Status:</strong> {purchase.remainingBalance && purchase.remainingBalance > 0 ? "Pending" : "Completed"}
             </p>
           </div>
         </div>

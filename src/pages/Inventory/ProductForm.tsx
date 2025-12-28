@@ -13,6 +13,7 @@ import Button from "../../components/ui/button/Button";
 import CategorySelect from "../../components/form/CategorySelect";
 import BrandSelect from "../../components/form/BrandSelect";
 import { ChevronLeftIcon, TrashBinIcon } from "../../icons";
+import { restrictDecimalInput } from "../../utils/numberHelpers";
 
 const productFormSchema = yup.object().shape({
   name: yup
@@ -270,6 +271,7 @@ export default function ProductForm() {
               step={0.01}
               min="0.01"
               value={formData.salePrice ?? ""}
+              onInput={restrictDecimalInput}
               onChange={(e) => {
                 if (e.target.value === "") {
                   setValue("salePrice", undefined as any);

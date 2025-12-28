@@ -16,6 +16,7 @@ import Button from "../../components/ui/button/Button";
 import { TrashBinIcon, PlusIcon } from "../../icons";
 import { getTodayDate, formatDateToString } from "../../utils/dateHelpers";
 import { extractErrorMessage, extractValidationErrors } from "../../utils/errorHandler";
+import { restrictDecimalInput, handleDecimalInput } from "../../utils/numberHelpers";
 
 const salesEntrySchema = yup.object().shape({
   customerName: yup
@@ -642,10 +643,14 @@ export default function SalesEntry() {
                         Price
                       </th>
                       <th scope="col" className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[100px]">
-                        Shop Qty
+                        {selectedProducts.some(item => ((item as any).priceType || "single") === "dozen") 
+                          ? "Shop Total Dozen" 
+                          : "Shop Qty"}
                       </th>
                       <th scope="col" className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[100px]">
-                        Warehouse Qty
+                        {selectedProducts.some(item => ((item as any).priceType || "single") === "dozen") 
+                          ? "Warehouse Total Dozen" 
+                          : "Warehouse Qty"}
                       </th>
                       <th scope="col" className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[160px]" colSpan={2}>
                         Discount
@@ -696,9 +701,10 @@ export default function SalesEntry() {
                                   ? ((item as any).priceDozen ?? "")
                                   : ((item as any).priceSingle ?? (item.customPrice ?? ""))
                               }
+                              onInput={restrictDecimalInput}
                               onChange={(e) => {
-                                const value = e.target.value === "" ? undefined : parseFloat(e.target.value);
-                                updateItemPrice(item.productId, isNaN(value as any) ? undefined : value);
+                                const value = handleDecimalInput(e.target.value);
+                                updateItemPrice(item.productId, value);
                               }}
                               className="w-full text-sm"
                             />
@@ -708,30 +714,46 @@ export default function SalesEntry() {
                           </div>
                         </td>
                         <td className="p-3">
-                          <Input
-                            type="number"
-                            min="0"
-                            max={(((item as any).priceType || "single") === "dozen"
-                              ? Math.floor((item.product.shopQuantity || 0) / 12)
-                              : (item.product.shopQuantity || 0)
-                            ).toString()}
-                            value={item.shopQuantity !== null && item.shopQuantity !== undefined ? item.shopQuantity : ""}
-                            onChange={(e) => updateItemLocationQuantity(item.productId, "shop", e.target.value)}
-                            className="w-full text-sm"
-                          />
+                          <div className="space-y-1">
+                            <Input
+                              type="number"
+                              min="0"
+                              max={(((item as any).priceType || "single") === "dozen"
+                                ? Math.floor((item.product.shopQuantity || 0) / 12)
+                                : (item.product.shopQuantity || 0)
+                              ).toString()}
+                              value={item.shopQuantity !== null && item.shopQuantity !== undefined ? item.shopQuantity : ""}
+                              onChange={(e) => updateItemLocationQuantity(item.productId, "shop", e.target.value)}
+                              className="w-full text-sm"
+                              placeholder={((item as any).priceType || "single") === "dozen" ? "Dozen" : "Units"}
+                            />
+                            {((item as any).priceType || "single") === "dozen" && (
+                              <div className="text-xs text-gray-500 dark:text-gray-400">
+                                Units: {((item.shopQuantity || 0) * 12).toFixed(0)}
+                              </div>
+                            )}
+                          </div>
                         </td>
                         <td className="p-3">
-                          <Input
-                            type="number"
-                            min="0"
-                            max={(((item as any).priceType || "single") === "dozen"
-                              ? Math.floor((item.product.warehouseQuantity || 0) / 12)
-                              : (item.product.warehouseQuantity || 0)
-                            ).toString()}
-                            value={item.warehouseQuantity !== null && item.warehouseQuantity !== undefined ? item.warehouseQuantity : ""}
-                            onChange={(e) => updateItemLocationQuantity(item.productId, "warehouse", e.target.value)}
-                            className="w-full text-sm"
-                          />
+                          <div className="space-y-1">
+                            <Input
+                              type="number"
+                              min="0"
+                              max={(((item as any).priceType || "single") === "dozen"
+                                ? Math.floor((item.product.warehouseQuantity || 0) / 12)
+                                : (item.product.warehouseQuantity || 0)
+                              ).toString()}
+                              value={item.warehouseQuantity !== null && item.warehouseQuantity !== undefined ? item.warehouseQuantity : ""}
+                              onChange={(e) => updateItemLocationQuantity(item.productId, "warehouse", e.target.value)}
+                              className="w-full text-sm"
+                              placeholder={((item as any).priceType || "single") === "dozen" ? "Dozen" : "Units"}
+                            />
+                            {((item as any).priceType || "single") === "dozen" && (
+                              <div className="text-xs text-gray-500 dark:text-gray-400">
+                                Units: {((item.warehouseQuantity || 0) * 12).toFixed(0)}
+                              </div>
+                            )}
+                          </div>
                         </td>
                         <td className="p-3" colSpan={2}>
                           <TaxDiscountInput
