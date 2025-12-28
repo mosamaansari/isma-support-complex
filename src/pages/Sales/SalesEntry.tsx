@@ -79,6 +79,9 @@ export default function SalesEntry() {
   const customerCity = watch("customerCity");
 
   useEffect(() => {
+    // Set initial date value in form
+    setValue("date", getTodayDate());
+    
     // Load products only when on this page
     if (products.length === 0 && !loading) {
       refreshProducts(1, 100).catch(console.error); // Load more products for selection

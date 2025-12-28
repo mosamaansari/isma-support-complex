@@ -94,6 +94,11 @@ export default function ExpenseForm() {
   };
 
   useEffect(() => {
+    // Set initial date value in form for new expenses
+    if (!isEdit) {
+      setValue("date", getTodayDate());
+    }
+    
     if (cards.length === 0) {
       refreshCards();
     }
