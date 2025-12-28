@@ -127,6 +127,22 @@ class ExpenseService {
     // Use provided userType if available, otherwise use detected type
     const userTypeToUse = userType || finalUserType;
 
+    // Check balance BEFORE creating expense
+    const balanceManagementService = (await import("./balanceManagement.service")).default;
+    const currentDate = new Date();
+    
+    if (data.paymentType === "cash") {
+      const currentBalance = await balanceManagementService.getCurrentCashBalance(currentDate);
+      if (currentBalance < data.amount) {
+        throw new Error(`Insufficient cash balance. Available: ${currentBalance.toFixed(2)}, Required: ${data.amount.toFixed(2)}`);
+      }
+    } else if (data.bankAccountId) {
+      const currentBalance = await balanceManagementService.getCurrentBankBalance(data.bankAccountId, currentDate);
+      if (currentBalance < data.amount) {
+        throw new Error(`Insufficient bank balance. Available: ${currentBalance.toFixed(2)}, Required: ${data.amount.toFixed(2)}`);
+      }
+    }
+
     // Always use current date and time for expense
     const expenseData: any = {
       amount: data.amount,
@@ -155,9 +171,8 @@ class ExpenseService {
     });
 
     // Update balance atomically for expense using balance management service
+    // Balance already validated above, now update after successful creation
     try {
-      const balanceManagementService = (await import("./balanceManagement.service")).default;
-
       if (expense.paymentType === "cash") {
         await balanceManagementService.updateCashBalance(
           expense.date,

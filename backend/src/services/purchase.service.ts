@@ -293,6 +293,31 @@ class PurchaseService {
       throw new Error("Total paid amount cannot exceed total amount");
     }
 
+    // Check balance BEFORE creating purchase
+    const balanceManagementService = (await import("./balanceManagement.service")).default;
+    const currentDate = new Date();
+    
+    for (const payment of data.payments) {
+      // Skip invalid payments
+      if (!payment.amount || payment.amount <= 0 || isNaN(Number(payment.amount))) {
+        continue;
+      }
+
+      const amount = Number(payment.amount);
+
+      if (payment.type === "cash") {
+        const currentBalance = await balanceManagementService.getCurrentCashBalance(currentDate);
+        if (currentBalance < amount) {
+          throw new Error(`Insufficient cash balance. Available: ${currentBalance.toFixed(2)}, Required: ${amount.toFixed(2)}`);
+        }
+      } else if ((payment.type === "bank_transfer" || payment.type === "card") && payment.bankAccountId) {
+        const currentBalance = await balanceManagementService.getCurrentBankBalance(payment.bankAccountId, currentDate);
+        if (currentBalance < amount) {
+          throw new Error(`Insufficient bank balance for account. Available: ${currentBalance.toFixed(2)}, Required: ${amount.toFixed(2)}`);
+        }
+      }
+    }
+
     // Set status based on remaining balance
     const status = remainingBalance > 0 ? "pending" : "completed";
 
@@ -375,9 +400,7 @@ class PurchaseService {
     });
 
     // Update balances atomically for payments using balance management service
-    // This must happen after purchase creation to get the purchase ID
-    const balanceManagementService = (await import("./balanceManagement.service")).default;
-
+    // Balance already validated above, now update after successful purchase creation
     for (const payment of data.payments) {
       // Skip payments with invalid amounts
       if (!payment.amount || payment.amount <= 0 || isNaN(Number(payment.amount))) {
