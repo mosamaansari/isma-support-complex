@@ -45,7 +45,7 @@ interface DataContextType {
   // Sales
   sales: Sale[];
   salesPagination: { page: number; pageSize: number; total: number; totalPages: number };
-  addSale: (sale: Omit<Sale, "id" | "createdAt">) => Promise<void>;
+  addSale: (sale: Omit<Sale, "id" | "createdAt">) => Promise<Sale>;
   cancelSale: (id: string) => Promise<void>;
   addPaymentToSale: (id: string, payment: SalePayment & { date?: string }) => Promise<void>;
   getSale: (idOrBillNumber: string) => Sale | undefined;
@@ -509,9 +509,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         apiData.date = saleData.date;
       }
 
-      await api.createSale(apiData);
+      const newSale = await api.createSale(apiData);
       await refreshSales(salesPagination?.page || 1, salesPagination?.pageSize || 10);
       await refreshProducts(productsPagination?.page || 1, productsPagination?.pageSize || 10); // Refresh products to update stock
+      return newSale;
     } catch (err: any) {
       setError(extractErrorMessage(err) || "Failed to create sale");
       throw err;

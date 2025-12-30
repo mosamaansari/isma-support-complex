@@ -15,14 +15,13 @@ interface BankBalance {
 class OpeningBalanceService {
   async getOpeningBalance(date: string) {
     // Parse date string (YYYY-MM-DD) and create date object for comparison
-    // Set time to noon to avoid timezone issues
     const dateParts = date.split("-");
     const targetDate = new Date(
-      parseInt(dateParts[0]), 
-      parseInt(dateParts[1]) - 1, 
+      parseInt(dateParts[0]),
+      parseInt(dateParts[1]) - 1,
       parseInt(dateParts[2])
     );
-    
+
     // Get opening balance for the date (compare only date part, ignore time)
     const startOfDay = new Date(targetDate);
     startOfDay.setHours(0, 0, 0, 0);
@@ -39,7 +38,27 @@ class OpeningBalanceService {
       orderBy: { createdAt: "desc" },
     });
 
-    return openingBalance;
+    if (!openingBalance) {
+      return null;
+    }
+
+    // Now calculate the running balance by adding transactions to this baseline
+    const balanceManagementService = (await import("./balanceManagement.service")).default;
+
+    const currentCash = await balanceManagementService.getCurrentCashBalance(targetDate);
+
+    // Calculate bank balances for each stored bank account
+    const bankBalances = (openingBalance.bankBalances as Array<{ bankAccountId: string; balance: number }>) || [];
+    const runningBankBalances = await Promise.all(bankBalances.map(async (b) => ({
+      bankAccountId: b.bankAccountId,
+      balance: await balanceManagementService.getCurrentBankBalance(b.bankAccountId, targetDate)
+    })));
+
+    return {
+      ...openingBalance,
+      cashBalance: currentCash,
+      bankBalances: runningBankBalances,
+    };
   }
 
   async getOpeningBalances(startDate?: string, endDate?: string) {
@@ -150,7 +169,7 @@ class OpeningBalanceService {
     // Use current date and time for transactions
     try {
       const transactionDate = new Date(); // Always use current date and time
-      
+
       if (data.cashBalance > 0) {
         await balanceTransactionService.createTransaction({
           date: transactionDate,
@@ -224,14 +243,14 @@ class OpeningBalanceService {
       }
       const oldCash = Number(openingBalance.cashBalance) || 0;
       cashDifference = data.cashBalance - oldCash;
-      updateData.cashBalance = data.cashBalance;
+      // We no longer update baseline updateData.cashBalance = data.cashBalance;
     }
     if (data.bankBalances !== undefined) {
       const oldBankBalances = (openingBalance.bankBalances as any[]) || [];
       const oldBankMap = new Map(
         oldBankBalances.map((b: any) => [b.bankAccountId, Number(b.balance) || 0])
       );
-      
+
       for (const newBankBalance of data.bankBalances) {
         const oldBalance = oldBankMap.get(newBankBalance.bankAccountId) || 0;
         const difference = newBankBalance.balance - oldBalance;
@@ -242,7 +261,7 @@ class OpeningBalanceService {
           });
         }
       }
-      updateData.bankBalances = data.bankBalances as any;
+      // We no longer update baseline updateData.bankBalances = data.bankBalances as any;
     }
     if (data.cardBalances !== undefined) updateData.cardBalances = data.cardBalances as any;
     if (data.notes !== undefined) updateData.notes = data.notes;
@@ -367,7 +386,7 @@ class OpeningBalanceService {
         finalUpdateData.updatedBy = userInfo.id;
         finalUpdateData.updatedByType = userInfo.userType || "user";
       }
-      
+
       if (Object.keys(finalUpdateData).length > 0) {
         await prisma.dailyOpeningBalance.update({
           where: { id },

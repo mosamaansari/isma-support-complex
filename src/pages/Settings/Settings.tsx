@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import PageMeta from "../../components/common/PageMeta";
 import { useData } from "../../context/DataContext";
 import { useAlert } from "../../context/AlertContext";
@@ -26,13 +26,9 @@ export default function Settings() {
   const [formData, setFormData] = useState(settings);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [importFile, setImportFile] = useState<File | null>(null);
-  const [isImporting, setIsImporting] = useState(false);
-  const [isSubmittingSettings, setIsSubmittingSettings] = useState(false);
-  const [isSubmittingBankAccount, setIsSubmittingBankAccount] = useState(false);
   const [showBankAccountForm, setShowBankAccountForm] = useState(false);
   const [editingAccount, setEditingAccount] = useState<any>(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const bankAccountsLoadedRef = useRef(false);
   const [accountToDelete, setAccountToDelete] = useState<string | null>(null);
   const [bankAccountForm, setBankAccountForm] = useState({
     accountName: "",
@@ -55,12 +51,8 @@ export default function Settings() {
 
   useEffect(() => {
     refreshSettings();
-    // Load bank accounts only once on mount to prevent duplicate API calls
-    if (!bankAccountsLoadedRef.current && bankAccounts.length === 0) {
-      bankAccountsLoadedRef.current = true;
+    if (bankAccounts.length === 0) {
       refreshBankAccounts();
-    } else if (bankAccounts.length > 0) {
-      bankAccountsLoadedRef.current = true;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -78,7 +70,6 @@ export default function Settings() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormErrors({});
-    setIsSubmittingSettings(true);
     
     // Frontend validation
     const errors: Record<string, string> = {};
@@ -94,7 +85,6 @@ export default function Settings() {
     
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors);
-      setIsSubmittingSettings(false);
       return;
     }
     
@@ -106,7 +96,6 @@ export default function Settings() {
       showSuccess("Settings updated successfully!");
       refreshSettings();
     } catch (error: any) {
-      setIsSubmittingSettings(false);
       const errorData = error.response?.data;
       
       // Handle backend validation errors
@@ -132,8 +121,6 @@ export default function Settings() {
       } else {
         showError(errorData?.message || errorData?.error || "Failed to update settings");
       }
-    } finally {
-      setIsSubmittingSettings(false);
     }
   };
 
@@ -165,13 +152,10 @@ export default function Settings() {
       return;
     }
 
-    setIsImporting(true);
-
     const reader = new FileReader();
     
     reader.onerror = () => {
       showError("Error reading file. Please try again.");
-      setIsImporting(false);
     };
 
     reader.onload = async (e) => {
@@ -180,7 +164,6 @@ export default function Settings() {
         
         if (!content || content.trim() === "") {
           showError("File is empty. Please select a valid JSON file.");
-          setIsImporting(false);
           return;
         }
 
@@ -195,14 +178,12 @@ export default function Settings() {
           console.error("JSON Parse Error:", parseError);
           console.error("File content (first 500 chars):", content.substring(0, 500));
           showError(`Invalid JSON file: ${parseError.message}. Please check the file format.`);
-          setIsImporting(false);
           return;
         }
 
         // Validate that we have some data
         if (!parsedData || (typeof parsedData !== 'object')) {
           showError("Invalid file format. Expected a JSON object.");
-          setIsImporting(false);
           return;
         }
 
@@ -217,14 +198,12 @@ export default function Settings() {
           dataToImport = parsedData;
         } else {
           showError("Invalid data structure. The file should contain exported data.");
-          setIsImporting(false);
           return;
         }
 
         // Validate data structure
         if (!dataToImport || (typeof dataToImport !== 'object')) {
           showError("Invalid data structure. The file should contain data objects.");
-          setIsImporting(false);
           return;
         }
 
@@ -233,7 +212,6 @@ export default function Settings() {
         
         showSuccess("Data imported successfully!");
         setImportFile(null);
-        setIsImporting(false);
         
         // Refresh all data
         refreshSettings();
@@ -247,7 +225,6 @@ export default function Settings() {
         console.error("Error importing data:", error);
         const errorMessage = error.response?.data?.error || error.response?.data?.message || error.message || "Error importing data. Please check the file format.";
         showError(errorMessage);
-        setIsImporting(false);
       }
     };
     
@@ -257,7 +234,6 @@ export default function Settings() {
 
   const handleBankAccountSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSubmittingBankAccount(true);
     try {
       // Ensure accountHolder is set to accountName if not provided
       const formDataToSubmit = {
@@ -286,8 +262,6 @@ export default function Settings() {
     } catch (err: any) {
       const errorMessage = err.response?.data?.error || err.response?.data?.message || "Failed to save bank account";
       showError(errorMessage);
-    } finally {
-      setIsSubmittingBankAccount(false);
     }
   };
 
@@ -451,34 +425,8 @@ export default function Settings() {
                 />
               </div>
 
-              <Button type="submit" size="sm" disabled={isSubmittingSettings}>
-                {isSubmittingSettings ? (
-                  <>
-                    <svg
-                      className="animate-spin -ml-1 mr-2 h-4 w-4"
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                    >
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                      ></circle>
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                      ></path>
-                    </svg>
-                    Saving...
-                  </>
-                ) : (
-                  "Save Shop Information"
-                )}
+              <Button type="submit" size="sm">
+                Save Shop Information
               </Button>
             </form>
           </div>
@@ -611,34 +559,8 @@ export default function Settings() {
                   </div>
 
                   <div className="flex gap-2">
-                    <Button type="submit" size="sm" disabled={isSubmittingBankAccount}>
-                      {isSubmittingBankAccount ? (
-                        <>
-                          <svg
-                            className="animate-spin -ml-1 mr-2 h-4 w-4"
-                            xmlns="http://www.w3.org/2000/svg"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                          >
-                            <circle
-                              className="opacity-25"
-                              cx="12"
-                              cy="12"
-                              r="10"
-                              stroke="currentColor"
-                              strokeWidth="4"
-                            ></circle>
-                            <path
-                              className="opacity-75"
-                              fill="currentColor"
-                              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                            ></path>
-                          </svg>
-                          Saving...
-                        </>
-                      ) : (
-                        <>{editingAccount ? "Update" : "Add"} Account</>
-                      )}
+                    <Button type="submit" size="sm">
+                      {editingAccount ? "Update" : "Add"} Account
                     </Button>
                     <Button
                       type="button"
@@ -648,7 +570,6 @@ export default function Settings() {
                         setShowBankAccountForm(false);
                         setEditingAccount(null);
                       }}
-                      disabled={isSubmittingBankAccount}
                     >
                       Cancel
                     </Button>
@@ -738,43 +659,16 @@ export default function Settings() {
                   onChange={(e) =>
                     setImportFile(e.target.files?.[0] || null)
                   }
-                  disabled={isImporting}
-                  className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm shadow-theme-xs focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:focus:border-brand-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm shadow-theme-xs focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:focus:border-brand-800"
                 />
                 <Button
                   onClick={handleImport}
                   size="sm"
                   variant="outline"
                   className="mt-2"
-                  disabled={!importFile || isImporting}
+                  disabled={!importFile}
                 >
-                  {isImporting ? (
-                    <>
-                      <svg
-                        className="animate-spin -ml-1 mr-2 h-4 w-4"
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                      >
-                        <circle
-                          className="opacity-25"
-                          cx="12"
-                          cy="12"
-                          r="10"
-                          stroke="currentColor"
-                          strokeWidth="4"
-                        ></circle>
-                        <path
-                          className="opacity-75"
-                          fill="currentColor"
-                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                        ></path>
-                      </svg>
-                      Importing...
-                    </>
-                  ) : (
-                    "Import Data"
-                  )}
+                  Import Data
                 </Button>
                 <p className="mt-2 text-sm text-red-600 dark:text-red-400">
                   Warning: Importing will replace all existing data!

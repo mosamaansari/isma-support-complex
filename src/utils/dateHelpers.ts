@@ -39,20 +39,26 @@ export const getDateRangeFromType = (reportType: "daily" | "weekly" | "monthly" 
   let start: Date, end: Date;
 
   switch (reportType) {
-    case "daily":
-      start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-      end = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    case "daily": {
+      const baseDate = startDate ? getLocalDate(startDate) : today;
+      start = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate());
+      end = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate());
       break;
-    case "weekly":
-      start = new Date(today);
-      start.setDate(today.getDate() - 7);
+    }
+    case "weekly": {
+      const baseDate = startDate ? getLocalDate(startDate) : today;
+      start = new Date(baseDate);
+      start.setDate(baseDate.getDate() - 7);
       start = new Date(start.getFullYear(), start.getMonth(), start.getDate());
-      end = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      end = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate());
       break;
-    case "monthly":
-      start = new Date(today.getFullYear(), today.getMonth(), 1);
-      end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    }
+    case "monthly": {
+      const baseDate = startDate ? getLocalDate(startDate) : today;
+      start = new Date(baseDate.getFullYear(), baseDate.getMonth(), 1);
+      end = new Date(baseDate.getFullYear(), baseDate.getMonth() + 1, 0);
       break;
+    }
     default:
       if (!startDate || !endDate) return null;
       start = getLocalDate(startDate);

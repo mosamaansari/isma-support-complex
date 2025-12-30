@@ -76,13 +76,21 @@ class DailyClosingBalanceService {
       endDate: dateStr,
     });
 
-    // Calculate closing balances
+    // Calculate closing balances starting from the determined baseline
     let closingCash = startingCash;
     const closingBankBalances: Record<string, number> = { ...startingBankBalances };
+
     const closingCardBalances: Record<string, number> = { ...startingCardBalances };
 
     // Process balance transactions
     for (const transaction of transactions) {
+      // IMPORTANT: Skip 'opening_balance' transactions if we are starting from 
+      // today's opening balance record, to avoid double counting.
+      // These transactions represent the initial baseline setting.
+      if (openingBalance && transaction.source === "opening_balance") {
+        continue;
+      }
+
       const amount = Number(transaction.amount);
       if (transaction.paymentType === "cash") {
         if (transaction.type === "income") {
@@ -99,113 +107,31 @@ class DailyClosingBalanceService {
         } else {
           closingBankBalances[transaction.bankAccountId] -= amount;
         }
-      }
-    }
-
-    // Calculate card balances from sales, purchases, and expenses
-    // Get sales with card payments for this date
-    const sales = await prisma.sale.findMany({
-      where: {
-        date: {
-          gte: dateObj,
-          lt: new Date(dateObj.getTime() + 24 * 60 * 60 * 1000), // Next day
-        },
-        status: "completed",
-      },
-      select: {
-        payments: true,
-      },
-    });
-
-    // Get purchases with card payments for this date
-    const purchases = await prisma.purchase.findMany({
-      where: {
-        date: {
-          gte: dateObj,
-          lt: new Date(dateObj.getTime() + 24 * 60 * 60 * 1000), // Next day
-        },
-        status: "completed",
-      },
-      select: {
-        payments: true,
-      },
-    });
-
-    // Get expenses with card payments for this date
-    const expenses = await prisma.expense.findMany({
-      where: {
-        date: {
-          gte: dateObj,
-          lt: new Date(dateObj.getTime() + 24 * 60 * 60 * 1000), // Next day
-        },
-      },
-      select: {
-        paymentType: true,
-        amount: true,
-        cardId: true,
-      },
-    });
-
-    // Process sales card payments
-    for (const sale of sales) {
-      const payments = (sale.payments as Array<{ type: string; amount: number; cardId?: string; date?: string }> | null) || [];
-      for (const payment of payments) {
-        if (payment.type === "card" && payment.cardId) {
-          const paymentDate = payment.date ? new Date(payment.date) : dateObj;
-          const paymentDateStr = formatLocalYMD(paymentDate);
-          if (paymentDateStr === dateStr) {
-            const amount = Number(payment.amount || 0);
-            if (!closingCardBalances[payment.cardId]) {
-              closingCardBalances[payment.cardId] = 0;
-            }
-            closingCardBalances[payment.cardId] += amount; // Card payments are income
-          }
+      } else if (transaction.paymentType === "card" && transaction.bankAccountId) {
+        // We reuse bankAccountId for cardId in balance transactions
+        const cardId = transaction.bankAccountId;
+        if (!closingCardBalances[cardId]) {
+          closingCardBalances[cardId] = 0;
         }
-      }
-    }
-
-    // Process purchase card payments
-    for (const purchase of purchases) {
-      const payments = (purchase.payments as Array<{ type: string; amount: number; cardId?: string; date?: string }> | null) || [];
-      for (const payment of payments) {
-        if (payment.type === "card" && payment.cardId) {
-          const paymentDate = payment.date ? new Date(payment.date) : dateObj;
-          const paymentDateStr = formatLocalYMD(paymentDate);
-          if (paymentDateStr === dateStr) {
-            const amount = Number(payment.amount || 0);
-            if (!closingCardBalances[payment.cardId]) {
-              closingCardBalances[payment.cardId] = 0;
-            }
-            closingCardBalances[payment.cardId] -= amount; // Purchase card payments are expense
-          }
+        if (transaction.type === "income") {
+          closingCardBalances[cardId] += amount;
+        } else {
+          closingCardBalances[cardId] -= amount;
         }
-      }
-    }
-
-    // Process expense card payments (if cardId exists, it's a card payment)
-    for (const expense of expenses) {
-      if (expense.cardId) {
-        const amount = Number(expense.amount || 0);
-        if (!closingCardBalances[expense.cardId]) {
-          closingCardBalances[expense.cardId] = 0;
-        }
-        closingCardBalances[expense.cardId] -= amount; // Expenses are deductions
       }
     }
 
     // Convert to array format
     const bankBalancesArray: BankBalance[] = Object.entries(closingBankBalances)
-      .filter(([_, balance]) => balance > 0)
       .map(([bankAccountId, balance]) => ({
         bankAccountId,
-        balance,
+        balance: Number(balance),
       }));
 
-    const cardBalancesArray: CardBalance[] = Object.entries(closingCardBalances)
-      .filter(([_, balance]) => balance > 0)
+    const cardBalancesArray: CardBalance[] = (Object.entries(closingCardBalances) as [string, number][])
       .map(([cardId, balance]) => ({
         cardId,
-        balance,
+        balance: Number(balance),
       }));
 
     // Store closing balance
@@ -251,7 +177,7 @@ class DailyClosingBalanceService {
     if (closingBalance) {
       // Calculate card balances on-the-fly
       const cardBalances = await this.calculateCardBalancesForDate(dateObj);
-      
+
       return {
         date: formatLocalYMD(closingBalance.date),
         cashBalance: Number(closingBalance.cashBalance),
@@ -263,7 +189,7 @@ class DailyClosingBalanceService {
     // If not found, calculate it
     const calculated = await this.calculateAndStoreClosingBalance(dateObj);
     const cardBalances = await this.calculateCardBalancesForDate(dateObj);
-    
+
     return {
       date: formatLocalYMD(calculated.date),
       cashBalance: Number(calculated.cashBalance),

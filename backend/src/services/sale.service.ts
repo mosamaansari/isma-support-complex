@@ -321,9 +321,13 @@ class SaleService {
     // Validate that date is today (if provided)
     validateTodayDate(data.date, 'sale date');
 
-    // Generate bill number
-    const today = new Date();
-    const dateStr = today.toISOString().split("T")[0].replace(/-/g, "");
+    // Generate bill number based on target date to stay consistent with client
+    const targetDateForBill = data.date ? new Date(data.date) : new Date();
+    const yearOutput = targetDateForBill.getFullYear();
+    const monthOutput = String(targetDateForBill.getMonth() + 1).padStart(2, '0');
+    const dayOutput = String(targetDateForBill.getDate()).padStart(2, '0');
+    const dateStr = `${yearOutput}${monthOutput}${dayOutput}`;
+
     const count = await prisma.sale.count({
       where: {
         billNumber: {
@@ -598,7 +602,7 @@ class SaleService {
         customerName: customerName || null,
         customerPhone: customerPhone || null,
         customerCity: customerCity || null,
-        date: new Date(), // Always use current date/time
+        date: data.date ? new Date(data.date) : new Date(),
         userId: user.id,
         userName: user.name,
         createdBy: user.id,
@@ -693,7 +697,7 @@ class SaleService {
           continue;
         }
 
-        // Handle cash, bank_transfer, and card payments (card maps to bank_transfer for balance tracking)
+        // Handle cash, bank_transfer, and card payments
         if (payment.type === "cash") {
           await balanceManagementService.updateCashBalance(
             sale.date,
@@ -708,9 +712,8 @@ class SaleService {
             }
           );
           logger.info(`Updated cash balance: +${payment.amount} for sale ${sale.billNumber}`);
-        } else if (payment.type === "bank_transfer" || payment.type === "card") {
-          // Card payments are treated as bank transfers for balance tracking
-          const bankAccountId = payment.bankAccountId || sale.bankAccountId || payment.cardId;
+        } else if (payment.type === "bank_transfer") {
+          const bankAccountId = payment.bankAccountId || sale.bankAccountId;
           if (bankAccountId) {
             await balanceManagementService.updateBankBalance(
               bankAccountId,
@@ -718,7 +721,7 @@ class SaleService {
               Number(payment.amount),
               "income",
               {
-                description: `Sale - Bill #${sale.billNumber}${sale.customerName ? ` - ${sale.customerName}` : ""}${payment.type === "card" ? " (Card)" : ""}`,
+                description: `Sale - Bill #${sale.billNumber}${sale.customerName ? ` - ${sale.customerName}` : ""}`,
                 source: "sale",
                 sourceId: sale.id,
                 userId: user.id,
@@ -726,8 +729,26 @@ class SaleService {
               }
             );
             logger.info(`Updated bank balance: +${payment.amount} for sale ${sale.billNumber}, bank: ${bankAccountId}`);
+          }
+        } else if (payment.type === "card") {
+          const cardId = payment.cardId || sale.cardId;
+          if (cardId) {
+            await balanceManagementService.updateCardBalance(
+              cardId,
+              sale.date,
+              Number(payment.amount),
+              "income",
+              {
+                description: `Sale - Bill #${sale.billNumber}${sale.customerName ? ` - ${sale.customerName}` : ""} (Card)`,
+                source: "sale",
+                sourceId: sale.id,
+                userId: user.id,
+                userName: user.name,
+              }
+            );
+            logger.info(`Updated card balance: +${payment.amount} for sale ${sale.billNumber}, card: ${cardId}`);
           } else {
-            logger.warn(`Skipping ${payment.type} payment without bankAccountId for sale ${sale.billNumber}`);
+            logger.warn(`Skipping card payment without cardId for sale ${sale.billNumber}`);
           }
         }
         // Note: credit payments don't create balance transactions (they're future payments)
@@ -953,8 +974,8 @@ class SaleService {
             }
           );
           logger.info(`Updated cash balance: +${amount} for sale payment ${sale.billNumber}`);
-        } else if (payment.type === "bank_transfer" || payment.type === "card") {
-          const bankAccountId = payment.bankAccountId || payment.cardId || sale.bankAccountId;
+        } else if (payment.type === "bank_transfer" && (payment.bankAccountId || sale.bankAccountId)) {
+          const bankAccountId = payment.bankAccountId || sale.bankAccountId;
           if (bankAccountId) {
             await balanceManagementService.updateBankBalance(
               bankAccountId,
@@ -962,7 +983,7 @@ class SaleService {
               amount,
               "income",
               {
-                description: `Sale Payment - Bill #${sale.billNumber}${sale.customerName ? ` - ${sale.customerName}` : ""}${payment.type === "card" ? " (Card)" : ""}`,
+                description: `Sale Payment - Bill #${sale.billNumber}${sale.customerName ? ` - ${sale.customerName}` : ""}`,
                 source: "sale_payment",
                 sourceId: sale.id,
                 userId: userId || "system",
@@ -970,11 +991,26 @@ class SaleService {
               }
             );
             logger.info(`Updated bank balance: +${amount} for sale payment ${sale.billNumber}, bank: ${bankAccountId}`);
-          } else {
-            logger.warn(`Skipping ${payment.type} payment without bankAccountId for sale ${sale.billNumber}`);
+          }
+        } else if (payment.type === "card" && (payment.cardId || sale.cardId)) {
+          const cardId = payment.cardId || sale.cardId;
+          if (cardId) {
+            await balanceManagementService.updateCardBalance(
+              cardId,
+              paymentDate,
+              amount,
+              "income",
+              {
+                description: `Sale Payment - Bill #${sale.billNumber}${sale.customerName ? ` - ${sale.customerName}` : ""} (Card)`,
+                source: "sale_payment",
+                sourceId: sale.id,
+                userId: userId || "system",
+                userName: userName,
+              }
+            );
+            logger.info(`Updated card balance: +${amount} for sale payment ${sale.billNumber}, card: ${cardId}`);
           }
         }
-        // Note: credit payments don't create balance transactions (they're future payments)
       }
     } catch (error: any) {
       logger.error("Error updating balance for sale payment:", error);

@@ -130,7 +130,7 @@ class ExpenseService {
     // Check balance BEFORE creating expense
     const balanceManagementService = (await import("./balanceManagement.service")).default;
     const currentDate = new Date();
-    
+
     if (data.paymentType === "cash") {
       const currentBalance = await balanceManagementService.getCurrentCashBalance(currentDate);
       if (currentBalance < data.amount) {
@@ -189,6 +189,20 @@ class ExpenseService {
       } else if (expense.bankAccountId) {
         await balanceManagementService.updateBankBalance(
           expense.bankAccountId,
+          expense.date,
+          Number(expense.amount),
+          "expense",
+          {
+            description: expense.description || `Expense - ${expense.category}`,
+            source: "expense",
+            sourceId: expense.id,
+            userId: user.id,
+            userName: user.name,
+          }
+        );
+      } else if (expense.cardId) {
+        await balanceManagementService.updateCardBalance(
+          expense.cardId,
           expense.date,
           Number(expense.amount),
           "expense",

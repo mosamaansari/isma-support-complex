@@ -36,7 +36,7 @@ export interface Product {
 }
 
 // Sales Types
-export type PaymentType = "cash" | "bank_transfer";
+export type PaymentType = "cash" | "bank_transfer" | "card";
 
 export interface SaleItem {
   productId: string;
@@ -56,7 +56,7 @@ export interface SaleItem {
 }
 
 export interface SalePayment {
-  type: "cash" | "bank_transfer";
+  type: "cash" | "bank_transfer" | "card";
   amount?: number;
   bankAccountId?: string;
 }
@@ -132,7 +132,7 @@ export interface PurchaseItem {
 }
 
 export interface PurchasePayment {
-  type: "cash" | "bank_transfer";
+  type: "cash" | "bank_transfer" | "card";
   amount?: number;
   bankAccountId?: string;
   date?: string;
@@ -255,6 +255,14 @@ export interface DateRangeReport {
   sales: Sale[];
   purchases: Purchase[];
   expenses: Expense[];
+  transactions?: Array<{
+    type: string;
+    datetime: Date;
+    paymentType: string;
+    amount: number;
+    source: string;
+    description: string;
+  }>;
 }
 
 // Customer Types

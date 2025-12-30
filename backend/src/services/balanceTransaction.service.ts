@@ -4,7 +4,7 @@ import logger from "../utils/logger";
 interface TransactionFilters {
   startDate?: string;
   endDate?: string;
-  paymentType?: "cash" | "bank_transfer";
+  paymentType?: "cash" | "bank_transfer" | "card";
   bankAccountId?: string;
   type?: "income" | "expense";
 }
@@ -17,9 +17,15 @@ class BalanceTransactionService {
     const where: any = {};
 
     if (filters.startDate && filters.endDate) {
+      const start = new Date(filters.startDate);
+      console.log("date", start)
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(filters.endDate);
+      end.setHours(23, 59, 59, 999);
+
       where.date = {
-        gte: new Date(filters.startDate),
-        lte: new Date(filters.endDate),
+        gte: start,
+        lte: end,
       };
     }
 
@@ -60,7 +66,7 @@ class BalanceTransactionService {
       start.setHours(0, 0, 0, 0);
       const end = new Date(endDate);
       end.setHours(23, 59, 59, 999);
-      
+
       where.date = {
         gte: start,
         lte: end,
@@ -93,7 +99,7 @@ class BalanceTransactionService {
       start.setHours(0, 0, 0, 0);
       const end = new Date(endDate);
       end.setHours(23, 59, 59, 999);
-      
+
       where.date = {
         gte: start,
         lte: end,
@@ -118,7 +124,7 @@ class BalanceTransactionService {
     date: Date;
     type: "income" | "expense";
     amount: number;
-    paymentType: "cash" | "bank_transfer";
+    paymentType: "cash" | "bank_transfer" | "card";
     bankAccountId?: string;
     description?: string;
     source: string;
@@ -180,7 +186,7 @@ class BalanceTransactionService {
       start.setHours(0, 0, 0, 0);
       const end = new Date(endDate);
       end.setHours(23, 59, 59, 999);
-      
+
       where.date = {
         gte: start,
         lte: end,
@@ -207,7 +213,7 @@ class BalanceTransactionService {
       const month = String(txDate.getMonth() + 1).padStart(2, '0');
       const day = String(txDate.getDate()).padStart(2, '0');
       const dateStr = `${year}-${month}-${day}`;
-      
+
       if (!groupedByDate[dateStr]) {
         groupedByDate[dateStr] = [];
       }

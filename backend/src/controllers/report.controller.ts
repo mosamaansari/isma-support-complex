@@ -59,7 +59,9 @@ class ReportController {
       await reportService.generateSalesReportPDF(filters, res);
     } catch (error: any) {
       logger.error("Export sales report PDF error:", error);
-      res.status(500).json({ error: "Internal server error" });
+      if (!res.writableEnded) {
+        res.status(500).json({ error: "Internal server error" });
+      }
     }
   }
 
@@ -73,7 +75,9 @@ class ReportController {
       await reportService.generateExpensesReportPDF(filters, res);
     } catch (error: any) {
       logger.error("Export expenses report PDF error:", error);
-      res.status(500).json({ error: "Internal server error" });
+      if (!res.writableEnded) {
+        res.status(500).json({ error: "Internal server error" });
+      }
     }
   }
 
@@ -87,7 +91,9 @@ class ReportController {
       await reportService.generateProfitLossReportPDF(filters, res);
     } catch (error: any) {
       logger.error("Export profit/loss report PDF error:", error);
-      res.status(500).json({ error: "Internal server error" });
+      if (!res.writableEnded) {
+        res.status(500).json({ error: "Internal server error" });
+      }
     }
   }
 }

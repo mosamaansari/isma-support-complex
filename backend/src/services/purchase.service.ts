@@ -296,7 +296,7 @@ class PurchaseService {
     // Check balance BEFORE creating purchase
     const balanceManagementService = (await import("./balanceManagement.service")).default;
     const currentDate = new Date();
-    
+
     for (const payment of data.payments) {
       // Skip invalid payments
       if (!payment.amount || payment.amount <= 0 || isNaN(Number(payment.amount))) {
@@ -426,15 +426,15 @@ class PurchaseService {
             }
           );
           logger.info(`Updated cash balance: -${amount} for purchase ${purchase.id}`);
-        } else if ((payment.type === "bank_transfer" || payment.type === "card") && payment.bankAccountId) {
-          // Bank transfer and card payments in purchases are treated as bank transfers
+        } else if (payment.type === "bank_transfer" && payment.bankAccountId) {
+          // Bank transfer payments in purchases
           await balanceManagementService.updateBankBalance(
             payment.bankAccountId,
             purchase.date,
             amount,
             "expense",
             {
-              description: `Purchase - ${data.supplierName}${payment.type === "card" ? " (Card)" : ""}`,
+              description: `Purchase - ${data.supplierName}`,
               source: "purchase_payment",
               sourceId: purchase.id,
               userId: user.id,
@@ -442,8 +442,27 @@ class PurchaseService {
             }
           );
           logger.info(`Updated bank balance: -${amount} for purchase ${purchase.id}, bank: ${payment.bankAccountId}`);
-        } else if ((payment.type === "bank_transfer" || payment.type === "card") && !payment.bankAccountId) {
-          logger.warn(`Skipping ${payment.type} payment without bankAccountId for purchase ${purchase.id}`);
+        } else if (payment.type === "card" && (payment.cardId || payment.bankAccountId)) {
+          // Card payments in purchases
+          const cardId = payment.cardId || payment.bankAccountId;
+          if (cardId) {
+            await balanceManagementService.updateCardBalance(
+              cardId,
+              purchase.date,
+              amount,
+              "expense",
+              {
+                description: `Purchase - ${data.supplierName} (Card)`,
+                source: "purchase_payment",
+                sourceId: purchase.id,
+                userId: user.id,
+                userName: user.name,
+              }
+            );
+            logger.info(`Updated card balance: -${amount} for purchase ${purchase.id}, card: ${cardId}`);
+          }
+        } else if ((payment.type === "bank_transfer" || payment.type === "card") && !payment.bankAccountId && !payment.cardId) {
+          logger.warn(`Skipping ${payment.type} payment without account ID for purchase ${purchase.id}`);
         }
       } catch (error: any) {
         logger.error(`Error updating balance for payment type ${payment.type} in purchase ${purchase.id}:`, error);
@@ -923,15 +942,14 @@ class PurchaseService {
             }
           );
           logger.info(`Updated cash balance: -${amount} for purchase payment ${purchase.id}`);
-        } else if ((payment.type === "bank_transfer" || payment.type === "card") && payment.bankAccountId) {
-          // Bank transfer and card payments in purchases are treated as bank transfers
+        } else if (payment.type === "bank_transfer" && payment.bankAccountId) {
           await balanceManagementService.updateBankBalance(
             payment.bankAccountId,
             paymentDate,
             amount,
             "expense",
             {
-              description: `Purchase Payment - ${purchase.supplierName}${payment.type === "card" ? " (Card)" : ""}`,
+              description: `Purchase Payment - ${purchase.supplierName}`,
               source: "purchase_payment",
               sourceId: purchase.id,
               userId: userId,
@@ -939,8 +957,26 @@ class PurchaseService {
             }
           );
           logger.info(`Updated bank balance: -${amount} for purchase payment ${purchase.id}, bank: ${payment.bankAccountId}`);
-        } else if ((payment.type === "bank_transfer" || payment.type === "card") && !payment.bankAccountId) {
-          logger.warn(`Skipping ${payment.type} payment without bankAccountId for purchase ${purchase.id}`);
+        } else if (payment.type === "card" && (payment.cardId || payment.bankAccountId)) {
+          const cardId = payment.cardId || payment.bankAccountId;
+          if (cardId) {
+            await balanceManagementService.updateCardBalance(
+              cardId,
+              paymentDate,
+              amount,
+              "expense",
+              {
+                description: `Purchase Payment - ${purchase.supplierName} (Card)`,
+                source: "purchase_payment",
+                sourceId: purchase.id,
+                userId: userId,
+                userName: userName,
+              }
+            );
+            logger.info(`Updated card balance: -${amount} for purchase payment ${purchase.id}, card: ${cardId}`);
+          }
+        } else if ((payment.type === "bank_transfer" || payment.type === "card") && !payment.bankAccountId && !payment.cardId) {
+          logger.warn(`Skipping ${payment.type} payment without account ID for purchase ${purchase.id}`);
         }
       }
     } catch (error: any) {

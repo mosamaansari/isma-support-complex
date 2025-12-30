@@ -35,7 +35,9 @@ export default function AddCashModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedType, setSelectedType] = useState<"cash" | "bank">(initialType || "cash");
   const [selectedBankId, setSelectedBankId] = useState<string | undefined>(initialBankId);
-  
+  const [mode, setMode] = useState<"add" | "set">("add");
+  const [currentRunningBalance, setCurrentRunningBalance] = useState<number>(0);
+
   // Field-specific errors
   const [errors, setErrors] = useState<{
     amount?: string;
@@ -52,8 +54,24 @@ export default function AddCashModal({
       setAmount(0);
       setDescription("");
       setErrors({});
+      setMode("add");
+
+      // Fetch current running balance to help user
+      const dateStr = selectedDate || getTodayDate();
+      api.getOpeningBalance(dateStr).then(balance => {
+        if (balance) {
+          if (initialType === "bank" && initialBankId) {
+            const bank = (balance.bankBalances as any[])?.find((b: any) => b.bankAccountId === initialBankId);
+            setCurrentRunningBalance(Number(bank?.balance) || 0);
+          } else {
+            setCurrentRunningBalance(Number(balance.cashBalance) || 0);
+          }
+        } else {
+          setCurrentRunningBalance(0);
+        }
+      }).catch(() => setCurrentRunningBalance(0));
     }
-  }, [isOpen, initialType, initialBankId]);
+  }, [isOpen, initialType, initialBankId, selectedDate]);
 
   const handleSubmit = async () => {
     // Clear previous errors
@@ -93,21 +111,22 @@ export default function AddCashModal({
         };
         await api.createOpeningBalanceWithBanks(createData);
       } else {
-        // Update existing opening balance - add to existing balance
-        const currentCash = Number(todayBalance.cashBalance) || 0;
+        // Update existing opening balance
         const bankBalances = (todayBalance.bankBalances as any[]) || [];
-        
         let updatedBankBalances = [...bankBalances];
-        if (selectedType === "bank" && selectedBankId) {
+
+        let newCash = Number(todayBalance.cashBalance) || 0;
+
+        if (selectedType === "cash") {
+          newCash = mode === "add" ? newCash + amount : amount;
+        } else if (selectedType === "bank" && selectedBankId) {
           const existingBankIndex = updatedBankBalances.findIndex(
             (b: any) => b.bankAccountId === selectedBankId
           );
-          const existingBalance = existingBankIndex >= 0
-            ? Number(updatedBankBalances[existingBankIndex].balance) || 0
-            : 0;
-          
+
           if (existingBankIndex >= 0) {
-            updatedBankBalances[existingBankIndex].balance = existingBalance + amount;
+            const currentBankBal = Number(updatedBankBalances[existingBankIndex].balance) || 0;
+            updatedBankBalances[existingBankIndex].balance = mode === "add" ? currentBankBal + amount : amount;
           } else {
             updatedBankBalances.push({ bankAccountId: selectedBankId, balance: amount });
           }
@@ -115,18 +134,14 @@ export default function AddCashModal({
 
         const updateData: any = {
           notes: description || todayBalance.notes || undefined,
+          cashBalance: selectedType === "cash" ? newCash : undefined,
+          bankBalances: selectedType === "bank" ? updatedBankBalances : undefined,
         };
-
-        if (selectedType === "cash") {
-          updateData.cashBalance = currentCash + amount;
-        } else {
-          updateData.bankBalances = updatedBankBalances;
-        }
 
         await api.updateOpeningBalanceWithBanks(todayBalance.id, updateData);
       }
 
-      showSuccess(`${selectedType === "cash" ? "Cash" : "Bank balance"} added successfully!`);
+      showSuccess(`${selectedType === "cash" ? "Cash" : "Bank balance"} ${mode === "add" ? "added" : "set"} successfully!`);
       setAmount(0);
       setDescription("");
       setSelectedType("cash");
@@ -137,12 +152,12 @@ export default function AddCashModal({
     } catch (error: any) {
       // Parse validation errors from backend
       const errorData = error.response?.data;
-      
+
       if (errorData?.error) {
         // Check if it's a validation error object
         if (typeof errorData.error === 'object') {
           const validationErrors: any = {};
-          
+
           // Map backend validation errors to field errors
           if (errorData.error.bankBalances) {
             validationErrors.bankAccount = Array.isArray(errorData.error.bankBalances)
@@ -159,7 +174,7 @@ export default function AddCashModal({
               ? errorData.error.date[0]
               : errorData.error.date;
           }
-          
+
           // If we have field-specific errors, use them
           if (Object.keys(validationErrors).length > 0) {
             setErrors(validationErrors);
@@ -202,6 +217,39 @@ export default function AddCashModal({
         )}
 
         <div className="space-y-4">
+          {/* Mode Selection */}
+          <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
+            <button
+              onClick={() => {
+                setMode("add");
+                setAmount(0);
+              }}
+              className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-all ${mode === "add"
+                  ? "bg-white dark:bg-gray-700 text-brand-600 dark:text-brand-400 shadow-sm"
+                  : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                }`}
+            >
+              Add Amount
+            </button>
+            <button
+              onClick={() => {
+                setMode("set");
+                setAmount(currentRunningBalance);
+              }}
+              className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-all ${mode === "set"
+                  ? "bg-white dark:bg-gray-700 text-brand-600 dark:text-brand-400 shadow-sm"
+                  : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                }`}
+            >
+              Set New Balance
+            </button>
+          </div>
+
+          <div className="p-3 bg-brand-50 dark:bg-brand-900/10 rounded-lg border border-brand-100 dark:border-brand-900/20">
+            <p className="text-xs text-brand-700 dark:text-brand-300">
+              Current Running Balance: <span className="font-bold">Rs. {currentRunningBalance.toFixed(2)}</span>
+            </p>
+          </div>
           {/* Type Selection - Only show if not pre-selected */}
           {!isPreSelected && (
             <div>
@@ -276,13 +324,12 @@ export default function AddCashModal({
 
           <div>
             <Label>
-              Amount <span className="text-error-500">*</span>
+              {mode === "add" ? "Amount to Add" : "New Total Balance"} <span className="text-error-500">*</span>
             </Label>
             <Input
               type="number"
               step={0.01}
-              min="0.01"
-              value={amount || ""}
+              value={amount || 0}
               onChange={(e) => {
                 const value = e.target.value === "" ? 0 : parseFloat(e.target.value);
                 setAmount(isNaN(value) ? 0 : value);
@@ -312,11 +359,11 @@ export default function AddCashModal({
           <div className="flex gap-3 pt-4">
             <Button
               onClick={handleSubmit}
-              disabled={isSubmitting || amount <= 0 || (selectedType === "bank" && !selectedBankId)}
+              disabled={isSubmitting || (mode === "add" && amount <= 0) || (selectedType === "bank" && !selectedBankId)}
               className="flex-1"
               size="sm"
             >
-              {isSubmitting ? "Adding..." : "Add"}
+              {isSubmitting ? "Processing..." : mode === "add" ? "Add" : "Set Balance"}
             </Button>
             <Button
               variant="outline"
