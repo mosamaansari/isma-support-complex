@@ -46,7 +46,6 @@ class CronService {
         logger.error("Error in cron job:", error);
       }
     }, {
-      scheduled: true,
       timezone: "Asia/Karachi",
     });
 

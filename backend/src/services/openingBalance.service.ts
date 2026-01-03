@@ -56,7 +56,7 @@ class OpeningBalanceService {
             bankBalances: bankBalancesArray,
             cardBalances: cardBalancesArray,
             notes: "Auto-loaded from previous day's closing balance",
-            userId: null,
+            userId: null as string | null,
             userName: "System",
             createdAt: targetDate,
             updatedAt: targetDate,
