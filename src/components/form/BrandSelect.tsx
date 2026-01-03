@@ -125,9 +125,10 @@ export default function BrandSelect({
                 type="button"
                 size="sm"
                 onClick={handleAddBrand}
+                loading={isSubmitting}
                 disabled={isSubmitting || !newBrandName.trim()}
               >
-                {isSubmitting ? "Adding..." : "Add Brand"}
+                Add Brand
               </Button>
               <Button
                 type="button"

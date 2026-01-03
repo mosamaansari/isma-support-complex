@@ -1,0 +1,151 @@
+import * as cron from "node-cron";
+import logger from "../utils/logger";
+import prisma from "../config/database";
+import dailyClosingBalanceService from "./dailyClosingBalance.service";
+import openingBalanceService from "./openingBalance.service";
+import { formatLocalYMD, parseLocalYMD, getTodayInPakistan } from "../utils/date";
+
+/**
+ * Cron service to automatically handle daily tasks:
+ * 1. Calculate and store previous day's closing balance
+ * 2. Create today's opening balance from previous day's closing balance
+ * 
+ * Runs daily at 12:00 AM (midnight)
+ */
+class CronService {
+  private cronJob: cron.ScheduledTask | null = null;
+
+  /**
+   * Start the cron job
+   * Runs daily at 12:00 AM (midnight) to handle previous day's closing and current day's opening
+   */
+  start() {
+    // Run every day at 12:00 AM (midnight)
+    this.cronJob = cron.schedule("0 0 * * *", async () => {
+      try {
+        logger.info("Cron job started at midnight: Calculating previous day closing balance and creating today's opening balance");
+        
+        // Step 1: Calculate and store previous day's closing balance
+        // Use Pakistan timezone to get yesterday's date
+        const today = getTodayInPakistan();
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+        yesterday.setHours(0, 0, 0, 0);
+        const yesterdayStr = formatLocalYMD(yesterday);
+        
+        try {
+          await dailyClosingBalanceService.calculateAndStoreClosingBalance(yesterday);
+          logger.info(`Successfully calculated and stored closing balance for ${yesterdayStr}`);
+        } catch (error) {
+          logger.error(`Error calculating closing balance for ${yesterdayStr}:`, error);
+        }
+        
+        // Step 2: Create today's opening balance from previous day's closing
+        await this.autoCreateOpeningBalanceFromPreviousDay();
+      } catch (error) {
+        logger.error("Error in cron job:", error);
+      }
+    }, {
+      scheduled: true,
+      timezone: "Asia/Karachi",
+    });
+
+    logger.info("Cron service started - will run daily at 12:00 AM (midnight)");
+  }
+
+  /**
+   * Stop the cron job
+   */
+  stop() {
+    if (this.cronJob) {
+      this.cronJob.stop();
+      logger.info("Cron service stopped");
+    }
+  }
+
+  /**
+   * Automatically create opening balance from previous day's closing balance
+   * This ensures that if system wasn't run for a day, opening balance is still available
+   * IMPORTANT: This should NOT create balance transactions - it's just setting the baseline
+   */
+  async autoCreateOpeningBalanceFromPreviousDay() {
+    try {
+      // Use Pakistan timezone to get today's date
+      const today = getTodayInPakistan();
+      const todayStr = formatLocalYMD(today);
+      const todayDateObj = parseLocalYMD(todayStr);
+
+      // Check if opening balance already exists for today
+      const existingOpening = await prisma.dailyOpeningBalance.findUnique({
+        where: { date: todayDateObj },
+      });
+      
+      if (existingOpening) {
+        logger.info(`Opening balance already exists for ${todayStr}, skipping auto-create`);
+        return;
+      }
+
+      // Get previous day's closing balance
+      const previousDay = new Date(today);
+      previousDay.setDate(previousDay.getDate() - 1);
+      previousDay.setHours(0, 0, 0, 0);
+      const previousDayStr = formatLocalYMD(previousDay);
+      
+      // First, ensure previous day's closing balance is calculated
+      try {
+        await dailyClosingBalanceService.calculateAndStoreClosingBalance(previousDay);
+      } catch (error) {
+        logger.error(`Error calculating closing balance for ${previousDayStr}:`, error);
+      }
+
+      // Get previous day closing balance
+      const previousClosing = await dailyClosingBalanceService.getPreviousDayClosingBalance(todayStr);
+
+      if (!previousClosing) {
+        logger.warn(`No previous closing balance found for ${previousDayStr}, cannot auto-create opening balance`);
+        return;
+      }
+
+      // Create opening balance from previous closing balance
+      // IMPORTANT: Do NOT create balance transactions here - this is just the baseline
+      // Balance transactions will be created when actual transactions happen (sales, purchases, expenses)
+      const bankBalancesArray = (previousClosing.bankBalances as Array<{ bankAccountId: string; balance: number }>) || [];
+      const cardBalancesArray = (previousClosing.cardBalances as Array<{ cardId: string; balance: number }>) || [];
+
+      // Create opening balance record directly (without creating transactions)
+      await prisma.dailyOpeningBalance.create({
+        data: {
+          date: todayDateObj,
+          cashBalance: Number(previousClosing.cashBalance) || 0,
+          bankBalances: bankBalancesArray as any,
+          cardBalances: cardBalancesArray as any,
+          notes: "Auto-created from previous day's closing balance (via cron job)",
+          userName: "System Auto",
+          createdBy: null,
+          createdByType: "admin",
+        },
+      });
+
+      logger.info(`Successfully auto-created opening balance for ${todayStr} from previous day's closing balance`);
+    } catch (error: any) {
+      // If opening balance already exists (race condition), that's okay
+      if (error.code === "P2002" || (error.message && error.message.includes("already exists"))) {
+        logger.info(`Opening balance already exists for today (created by user or another process)`);
+      } else {
+        logger.error("Error in auto-create opening balance:", error);
+        throw error;
+      }
+    }
+  }
+
+  /**
+   * Manually trigger the auto-create opening balance (for testing or manual execution)
+   */
+  async manualTriggerAutoCreate() {
+    logger.info("Manual trigger: Auto-creating opening balance from previous day");
+    await this.autoCreateOpeningBalanceFromPreviousDay();
+  }
+}
+
+export default new CronService();
+

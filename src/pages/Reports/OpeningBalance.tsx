@@ -9,6 +9,7 @@ import api from "../../services/api";
 import { getTodayDate } from "../../utils/dateHelpers";
 import TransactionHistorySection from "../../components/openingBalance/TransactionHistorySection";
 import AddCashModal from "../../components/modals/AddCashModal";
+import { formatCompleteAmount } from "../../utils/priceHelpers";
 
 export default function OpeningBalance() {
   const { showError } = useAlert();
@@ -108,12 +109,8 @@ export default function OpeningBalance() {
   const totalBalance = cashBalance + totalBankBalance;
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-PK", {
-      style: "currency",
-      currency: "PKR",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 2,
-    }).format(amount);
+    // Use formatCompleteAmount to show complete amounts (without K/M abbreviation)
+    return formatCompleteAmount(amount);
   };
 
   const handleCardClick = (type: "cash" | "bank" | "total" | "banks", bankId?: string, bankName?: string) => {
@@ -393,6 +390,13 @@ export default function OpeningBalance() {
         }}
         onSuccess={() => {
           loadOpeningBalance();
+          // If history is open, close and reopen to refresh
+          if (showHistory) {
+            setShowHistory(false);
+            setTimeout(() => {
+              handleCardClick(historyType, historyBankId, historyBankName);
+            }, 100);
+          }
         }}
         type={transactionType}
         bankAccountId={selectedBankId}

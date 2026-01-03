@@ -2,30 +2,1462 @@ import prisma from "../config/database";
 import logger from "../utils/logger";
 import PDFDocument from "pdfkit";
 import { Response } from "express";
+import { formatLocalYMD, parseLocalYMD, parseLocalISO } from "../utils/date";
+import balanceTransactionService from "./balanceTransaction.service";
+import dailyClosingBalanceService from "./dailyClosingBalance.service";
 
+/**
+ * Parse payment date from UTC ISO string to local date for comparison
+ * Payment dates are stored in UTC format (e.g., "2026-01-03T08:59:16.870Z")
+ * We need to extract the date components and create a local date for comparison
+ */
+function parsePaymentDate(dateStr: string | undefined | null): Date | null {
+  if (!dateStr) return null;
+  
+  // If it's a UTC ISO string (ends with Z), parse it properly
+  if (typeof dateStr === 'string' && dateStr.endsWith('Z')) {
+    const date = new Date(dateStr);
+    // Extract UTC date components to avoid timezone shift
+    const year = date.getUTCFullYear();
+    const month = date.getUTCMonth();
+    const day = date.getUTCDate();
+    // Create local date using UTC components (this represents the actual date in Pakistan)
+    return new Date(year, month, day, 0, 0, 0, 0);
+  }
+  
+  // Try parseLocalISO for local ISO strings
+  try {
+    const date = parseLocalISO(dateStr);
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const day = date.getDate();
+    return new Date(year, month, day, 0, 0, 0, 0);
+  } catch {
+    // Fallback to regular Date parsing
+    const date = new Date(dateStr);
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const day = date.getDate();
+    return new Date(year, month, day, 0, 0, 0, 0);
+  }
+}
+
+/**
+ * Comprehensive Report Service
+ * Provides accurate step-by-step balance calculations for:
+ * - Daily reports
+ * - Monthly reports  
+ * - Custom date range reports
+ * 
+ * All reports show:
+ * - Opening balance
+ * - Balance after adding opening amount
+ * - Balance after expenses
+ * - Balance after sales
+ * - Balance after purchases
+ * 
+ * Everything sorted by date and time (ASC)
+ */
 class ReportService {
+  /**
+   * Get comprehensive daily report with step-by-step balance calculations
+   */
+  async getDailyReport(date: string) {
+    const dateObj = parseLocalYMD(date);
+    const startOfDay = new Date(dateObj);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(dateObj);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    // IMPORTANT: Opening Balance = Previous day's closing balance (baseline only)
+    // It should NOT include manual additions made today
+    // Get previous day's closing balance as the opening balance
+    const previousClosing = await dailyClosingBalanceService.getPreviousDayClosingBalance(date);
+    
+    let openingBalance: any;
+    if (previousClosing) {
+      // Use previous day's closing as today's opening balance (baseline)
+      openingBalance = {
+        id: `opening-${date}`,
+        date: dateObj,
+        cashBalance: previousClosing.cashBalance,
+        bankBalances: previousClosing.bankBalances as any,
+        cardBalances: previousClosing.cardBalances as any,
+        notes: "Previous day's closing balance (baseline)",
+        userId: null,
+        userName: "System",
+        createdAt: dateObj,
+        updatedAt: dateObj,
+        createdBy: null,
+        createdByType: null,
+        updatedBy: null,
+        updatedByType: null,
+      };
+    } else {
+      // No previous closing, start with zero
+      openingBalance = {
+        id: `zero-${date}`,
+        date: dateObj,
+        cashBalance: 0,
+        bankBalances: [],
+        cardBalances: [],
+        notes: "No previous balance found",
+        userId: null,
+        userName: "System",
+        createdAt: dateObj,
+        updatedAt: dateObj,
+        createdBy: null,
+        createdByType: null,
+        updatedBy: null,
+        updatedByType: null,
+      };
+    }
+
+    // Get all balance transactions for this date, sorted by createdAt (ASC)
+    const transactions = await balanceTransactionService.getTransactions({
+      startDate: date,
+      endDate: date,
+    });
+
+    // Sort by createdAt ascending (oldest first)
+    transactions.sort((a: any, b: any) => {
+      const aTime = new Date(a.createdAt || a.date).getTime();
+      const bTime = new Date(b.createdAt || b.date).getTime();
+      return aTime - bTime;
+    });
+
+    // Get bank accounts for mapping
+    const banks = await prisma.bankAccount.findMany({ where: { isActive: true } });
+    const bankMap = new Map(banks.map((b) => [b.id, b]));
+
+    // Build step-by-step transaction list
+    const steps: any[] = [];
+    
+    // Starting balance
+    const openingCash = Number(openingBalance.cashBalance || 0);
+    const openingBankBalances = (openingBalance.bankBalances as Array<{ bankAccountId: string; balance: number }>) || [];
+    
+    let runningCash = openingCash;
+    const runningBankBalances = new Map<string, number>();
+    openingBankBalances.forEach((b) => {
+      runningBankBalances.set(b.bankAccountId, Number(b.balance || 0));
+    });
+
+    // Add opening balance step
+    steps.push({
+      step: 1,
+      type: "Opening Balance",
+      datetime: startOfDay,
+      cashBefore: openingCash,
+      cashAfter: openingCash,
+      cashChange: 0,
+      bankBalancesBefore: openingBankBalances.map((b) => ({
+        bankAccountId: b.bankAccountId,
+        bankName: bankMap.get(b.bankAccountId)?.bankName || "Unknown",
+        accountNumber: bankMap.get(b.bankAccountId)?.accountNumber || "",
+        balance: Number(b.balance || 0),
+      })),
+      bankBalancesAfter: openingBankBalances.map((b) => ({
+        bankAccountId: b.bankAccountId,
+        bankName: bankMap.get(b.bankAccountId)?.bankName || "Unknown",
+        accountNumber: bankMap.get(b.bankAccountId)?.accountNumber || "",
+        balance: Number(b.balance || 0),
+      })),
+      description: "Opening Balance",
+      source: "Opening Balance",
+    });
+
+    // Process each transaction in chronological order
+    let stepNumber = 2;
+    for (const tx of transactions) {
+      // IMPORTANT: Skip 'opening_balance' transactions to avoid double counting
+      // The opening balance is already set from previous day's closing balance
+      // These transactions represent the initial baseline setting and should not be processed again
+      if (tx.source === "opening_balance") {
+        logger.info(`Skipping opening_balance transaction in report: ${tx.id}, amount=${tx.amount}`);
+        continue;
+      }
+
+      // IMPORTANT: Filter transactions by actual date to ensure only transactions for the selected date are included
+      // Use the transaction's date field (not createdAt) as it represents the actual transaction date
+      const txDate = tx.date ? new Date(tx.date) : new Date(tx.createdAt);
+      
+      // Normalize dates to compare only date part (ignore time)
+      const txYear = txDate.getFullYear();
+      const txMonth = txDate.getMonth();
+      const txDay = txDate.getDate();
+      const txDateOnly = new Date(txYear, txMonth, txDay);
+      
+      const reportYear = dateObj.getFullYear();
+      const reportMonth = dateObj.getMonth();
+      const reportDay = dateObj.getDate();
+      const reportDateOnly = new Date(reportYear, reportMonth, reportDay);
+      
+      // Skip transactions that don't match the report date
+      if (txDateOnly.getTime() !== reportDateOnly.getTime()) {
+        logger.info(`Skipping transaction ${tx.id} - date mismatch: txDate=${txYear}-${String(txMonth + 1).padStart(2, '0')}-${String(txDay).padStart(2, '0')}, reportDate=${reportYear}-${String(reportMonth + 1).padStart(2, '0')}-${String(reportDay).padStart(2, '0')}`);
+        continue;
+      }
+
+      const paymentType = tx.paymentType || "cash";
+      const amount = Number(tx.amount || 0);
+      const type = tx.type || "income";
+
+      // Determine transaction type and description
+      let txType = "Transaction";
+      let description = tx.description || "";
+      
+      if (tx.source === "sale" || tx.source === "sale_payment") {
+        txType = "Sale";
+        const sale = await prisma.sale.findUnique({ where: { id: tx.sourceId || "" }, include: { customer: true } }).catch((): null => null);
+        if (sale) {
+          description = `Sale - Bill #${sale.billNumber}${sale.customerName ? ` - ${sale.customerName}` : ""}`;
+        }
+      } else if (tx.source === "purchase" || tx.source === "purchase_payment") {
+        txType = "Purchase";
+        const purchase = await prisma.purchase.findUnique({ where: { id: tx.sourceId || "" }, include: { supplier: true } }).catch((): null => null);
+        if (purchase) {
+          description = `Purchase - ${purchase.supplierName || "N/A"}`;
+        }
+      } else if (tx.source === "expense") {
+        txType = "Expense";
+        const expense = await prisma.expense.findUnique({ where: { id: tx.sourceId || "" } }).catch((): null => null);
+        if (expense) {
+          description = `Expense - ${expense.category}${expense.description ? `: ${expense.description}` : ""}`;
+        }
+      } else if (tx.source?.includes("opening_balance") || tx.source === "add_opening_balance") {
+        txType = "Opening Balance Addition";
+        description = tx.description || "Opening Balance Addition";
+      }
+
+      // Calculate before and after balances
+      const cashBefore = runningCash;
+      const bankBalancesBefore = Array.from(runningBankBalances.entries()).map(([id, balance]) => ({
+        bankAccountId: id,
+        bankName: bankMap.get(id)?.bankName || "Unknown",
+        accountNumber: bankMap.get(id)?.accountNumber || "",
+        balance,
+      }));
+
+      // Update running balances
+      if (paymentType === "cash") {
+        if (type === "income") {
+          runningCash += amount;
+        } else {
+          runningCash -= amount;
+        }
+      } else if (paymentType === "bank_transfer" && tx.bankAccountId) {
+        const current = runningBankBalances.get(tx.bankAccountId) || 0;
+        if (type === "income") {
+          runningBankBalances.set(tx.bankAccountId, current + amount);
+      } else {
+          runningBankBalances.set(tx.bankAccountId, current - amount);
+        }
+      }
+
+      const cashAfter = runningCash;
+      const bankBalancesAfter = Array.from(runningBankBalances.entries()).map(([id, balance]) => ({
+        bankAccountId: id,
+        bankName: bankMap.get(id)?.bankName || "Unknown",
+        accountNumber: bankMap.get(id)?.accountNumber || "",
+        balance,
+      }));
+
+      // Double-check: Only add to steps if date matches (extra safety check for daily report)
+      const finalTxDate = new Date(tx.date || tx.createdAt);
+      const finalTxDateOnly = new Date(finalTxDate.getFullYear(), finalTxDate.getMonth(), finalTxDate.getDate());
+      const reportDateOnlyCheck = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate());
+      
+      if (finalTxDateOnly.getTime() === reportDateOnlyCheck.getTime()) {
+        steps.push({
+          step: stepNumber++,
+          type: txType,
+          datetime: txDate,
+          paymentType,
+          amount,
+          cashBefore,
+          cashAfter,
+          cashChange: type === "income" ? amount : -amount,
+          bankAccountId: tx.bankAccountId,
+          bankName: tx.bankAccountId ? bankMap.get(tx.bankAccountId)?.bankName : null,
+          bankBalancesBefore,
+          bankBalancesAfter,
+          description,
+          source: tx.source || "unknown",
+          sourceId: tx.sourceId,
+          userName: tx.userName,
+        });
+      } else {
+        logger.warn(`Transaction ${tx.id} date check failed in daily report steps push: txDate=${finalTxDateOnly.toISOString().split('T')[0]}, reportDate=${reportDateOnlyCheck.toISOString().split('T')[0]}`);
+      }
+    }
+
+    // Calculate closing balance
+    const closingCash = runningCash;
+    const closingBankBalances = Array.from(runningBankBalances.entries()).map(([id, balance]) => ({
+      bankAccountId: id,
+      bankName: bankMap.get(id)?.bankName || "Unknown",
+      accountNumber: bankMap.get(id)?.accountNumber || "",
+      balance,
+    }));
+
+    // IMPORTANT: For Sales and Purchases, we need to look at PAYMENT DATES, not sale/purchase dates
+    // Fetch all sales and purchases that might have payments on this date
+    // We'll filter by payment dates later
+    const allSales = await prisma.sale.findMany({
+      where: {
+        // Fetch sales from a wider range to catch payments that might be on different dates
+        createdAt: { gte: new Date(startOfDay.getTime() - 30 * 24 * 60 * 60 * 1000) }, // 30 days before
+      },
+      include: { customer: true },
+      orderBy: { createdAt: "asc" },
+    });
+
+    const allPurchases = await prisma.purchase.findMany({
+      where: {
+        // Fetch purchases from a wider range to catch payments that might be on different dates
+        createdAt: { gte: new Date(startOfDay.getTime() - 30 * 24 * 60 * 60 * 1000) }, // 30 days before
+      },
+      include: { supplier: true },
+      orderBy: { createdAt: "asc" },
+    });
+
+    // Filter sales by payment dates (not sale date)
+    const sales = allSales.filter((sale) => {
+      const payments = (sale.payments as Array<{ type?: string; amount?: number; date?: string; cardId?: string; bankAccountId?: string }> | null) || [];
+      if (payments.length === 0) {
+        // If no payments array, check if sale date matches
+        const saleDate = new Date(sale.date);
+        const saleYear = saleDate.getFullYear();
+        const saleMonth = saleDate.getMonth();
+        const saleDay = saleDate.getDate();
+        const saleDateOnly = new Date(saleYear, saleMonth, saleDay, 0, 0, 0, 0);
+        return saleDateOnly.getTime() === startOfDay.getTime();
+      }
+      // Check if any payment has a date matching the target date
+      return payments.some((payment) => {
+        if (!payment.date) {
+          // If payment has no date, use sale date
+          const saleDate = new Date(sale.date);
+          const saleYear = saleDate.getFullYear();
+          const saleMonth = saleDate.getMonth();
+          const saleDay = saleDate.getDate();
+          const saleDateOnly = new Date(saleYear, saleMonth, saleDay, 0, 0, 0, 0);
+          return saleDateOnly.getTime() === startOfDay.getTime();
+        }
+        const paymentDateOnly = parsePaymentDate(payment.date);
+        if (!paymentDateOnly) return false;
+        return paymentDateOnly.getTime() === startOfDay.getTime();
+      });
+    });
+
+    // Filter purchases by payment dates (not purchase date)
+    const purchases = allPurchases.filter((purchase) => {
+      const payments = (purchase.payments as Array<{ type?: string; amount?: number; date?: string; cardId?: string; bankAccountId?: string }> | null) || [];
+      if (payments.length === 0) {
+        // If no payments array, check if purchase date matches
+        const purchaseDate = new Date(purchase.date);
+        const purchaseYear = purchaseDate.getFullYear();
+        const purchaseMonth = purchaseDate.getMonth();
+        const purchaseDay = purchaseDate.getDate();
+        const purchaseDateOnly = new Date(purchaseYear, purchaseMonth, purchaseDay, 0, 0, 0, 0);
+        return purchaseDateOnly.getTime() === startOfDay.getTime();
+      }
+      // Check if any payment has a date matching the target date
+      return payments.some((payment) => {
+        if (!payment.date) {
+          // If payment has no date, use purchase date
+          const purchaseDate = new Date(purchase.date);
+          const purchaseYear = purchaseDate.getFullYear();
+          const purchaseMonth = purchaseDate.getMonth();
+          const purchaseDay = purchaseDate.getDate();
+          const purchaseDateOnly = new Date(purchaseYear, purchaseMonth, purchaseDay, 0, 0, 0, 0);
+          return purchaseDateOnly.getTime() === startOfDay.getTime();
+        }
+        const paymentDateOnly = parsePaymentDate(payment.date);
+        if (!paymentDateOnly) return false;
+        return paymentDateOnly.getTime() === startOfDay.getTime();
+      });
+    });
+
+    // Expenses use the date field directly (not payment dates)
+    const expenses = await prisma.expense.findMany({
+      where: { date: { gte: startOfDay, lte: endOfDay } },
+      orderBy: { createdAt: "asc" },
+    });
+
+    // Extract opening balance additions from transactions
+    // These are transactions with source "add_opening_balance" or containing "opening_balance" (but not the initial "opening_balance")
+    const openingBalanceAdditions = transactions
+      .filter((tx: any) => {
+        // Include transactions that are opening balance additions (not the initial opening_balance)
+        const isAddition = (tx.source === "add_opening_balance" || 
+                           (tx.source && tx.source.includes("opening_balance") && tx.source !== "opening_balance"));
+        if (!isAddition) return false;
+        
+        // IMPORTANT: Filter by date to ensure only additions for the selected date are included
+        const txDate = new Date(tx.date || tx.createdAt);
+        const txYear = txDate.getFullYear();
+        const txMonth = txDate.getMonth();
+        const txDay = txDate.getDate();
+        const txDateOnly = new Date(txYear, txMonth, txDay);
+        
+        const reportYear = dateObj.getFullYear();
+        const reportMonth = dateObj.getMonth();
+        const reportDay = dateObj.getDate();
+        const reportDateOnly = new Date(reportYear, reportMonth, reportDay);
+        
+        // Only include if transaction date matches report date
+        return txDateOnly.getTime() === reportDateOnly.getTime();
+      })
+      .map((tx: any) => {
+        // Use bankAccount from transaction if available, otherwise use bankMap
+        const bankAccount = tx.bankAccount || (tx.bankAccountId ? bankMap.get(tx.bankAccountId) : null);
+        return {
+          id: tx.id,
+          date: tx.date || tx.createdAt,
+          createdAt: tx.createdAt,
+          time: tx.createdAt || tx.date,
+          amount: Number(tx.amount || 0),
+          paymentType: tx.paymentType || "cash",
+          bankAccountId: tx.bankAccountId,
+          bankAccount: bankAccount,
+          description: tx.description || "Opening Balance Addition",
+          userName: tx.userName,
+          source: tx.source,
+          beforeBalance: tx.beforeBalance ? Number(tx.beforeBalance) : null,
+          afterBalance: tx.afterBalance ? Number(tx.afterBalance) : null,
+          changeAmount: tx.changeAmount ? Number(tx.changeAmount) : null,
+          type: tx.type || "income",
+        };
+      });
+
+    return {
+      date,
+      openingBalance: {
+        cash: openingCash,
+        banks: openingBankBalances.map((b) => ({
+          ...b,
+          bankName: bankMap.get(b.bankAccountId)?.bankName || "Unknown",
+          accountNumber: bankMap.get(b.bankAccountId)?.accountNumber || "",
+          balance: Number(b.balance || 0),
+        })),
+        total: openingCash + openingBankBalances.reduce((sum, b) => sum + Number(b.balance || 0), 0),
+      },
+      closingBalance: {
+        cash: closingCash,
+        banks: closingBankBalances,
+        total: closingCash + closingBankBalances.reduce((sum, b) => sum + Number(b.balance || 0), 0),
+      },
+      openingBalanceAdditions, // Opening balance additions for this date
+      steps, // Step-by-step transactions
+      summary: {
+      sales: {
+          count: sales.length,
+          // Calculate total from payments that occurred on this date
+          total: sales.reduce((sum, s) => {
+            const payments = (s.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
+            if (payments.length === 0) {
+              // No payments array, use total if sale date matches
+              const saleDate = new Date(s.date);
+              saleDate.setHours(0, 0, 0, 0);
+              return saleDate.getTime() === startOfDay.getTime() ? sum + Number(s.total || 0) : sum;
+            }
+            // Sum only payments that occurred on this date
+            return sum + payments.reduce((paymentSum, payment) => {
+              const paymentDate = payment.date ? new Date(payment.date) : new Date(s.date);
+              paymentDate.setHours(0, 0, 0, 0);
+              if (paymentDate.getTime() === startOfDay.getTime()) {
+                return paymentSum + Number(payment.amount || 0);
+              }
+              return paymentSum;
+            }, 0);
+          }, 0),
+      },
+      purchases: {
+          count: purchases.length,
+          // Calculate total from payments that occurred on this date
+          total: purchases.reduce((sum, p) => {
+            const payments = (p.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
+            if (payments.length === 0) {
+              // No payments array, use total if purchase date matches
+              const purchaseDate = new Date(p.date);
+              purchaseDate.setHours(0, 0, 0, 0);
+              return purchaseDate.getTime() === startOfDay.getTime() ? sum + Number(p.total || 0) : sum;
+            }
+            // Sum only payments that occurred on this date
+            return sum + payments.reduce((paymentSum, payment) => {
+              const paymentDate = payment.date ? new Date(payment.date) : new Date(p.date);
+              paymentDate.setHours(0, 0, 0, 0);
+              if (paymentDate.getTime() === startOfDay.getTime()) {
+                return paymentSum + Number(payment.amount || 0);
+              }
+              return paymentSum;
+            }, 0);
+          }, 0),
+      },
+      expenses: {
+        count: expenses.length,
+          total: expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0),
+        },
+      },
+      sales: {
+        // Expand sales into payment rows - each payment becomes a separate row
+        items: sales.flatMap((sale) => {
+          const payments = (sale.payments as Array<{ type?: string; amount?: number; date?: string; cardId?: string; bankAccountId?: string }> | null) || [];
+          if (payments.length === 0) {
+            // If no payments array, create a single row from sale date
+            const saleDate = new Date(sale.date);
+            saleDate.setHours(0, 0, 0, 0);
+            if (saleDate.getTime() === startOfDay.getTime()) {
+              return [{
+                ...sale,
+                paymentAmount: Number(sale.total || 0),
+                paymentDate: sale.date,
+                paymentType: sale.paymentType || "cash",
+                paymentIndex: 0,
+              }];
+            }
+            return [];
+          }
+          // Create a row for each payment that matches the target date
+          return payments
+            .map((payment, index) => {
+              const paymentDateOnly = payment.date ? parsePaymentDate(payment.date) : null;
+              if (!paymentDateOnly) {
+                // Fallback to sale date
+                const saleDate = new Date(sale.date);
+                const saleYear = saleDate.getFullYear();
+                const saleMonth = saleDate.getMonth();
+                const saleDay = saleDate.getDate();
+                const saleDateOnly = new Date(saleYear, saleMonth, saleDay, 0, 0, 0, 0);
+                if (saleDateOnly.getTime() === startOfDay.getTime()) {
+                  return {
+                    ...sale,
+                    paymentAmount: Number(payment.amount || 0),
+                    paymentDate: sale.date,
+                    paymentType: payment.type || sale.paymentType || "cash",
+                    paymentIndex: index,
+                  };
+                }
+                return null;
+              }
+              if (paymentDateOnly.getTime() === startOfDay.getTime()) {
+                return {
+                  ...sale,
+                  paymentAmount: Number(payment.amount || 0),
+                  paymentDate: payment.date || sale.date,
+                  paymentType: payment.type || sale.paymentType || "cash",
+                  paymentIndex: index,
+                };
+              }
+              return null;
+            })
+            .filter((row) => row !== null);
+        }),
+        total: sales.reduce((sum, s) => {
+          const payments = (s.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
+          if (payments.length === 0) {
+            const saleDate = new Date(s.date);
+            saleDate.setHours(0, 0, 0, 0);
+            return saleDate.getTime() === startOfDay.getTime() ? sum + Number(s.total || 0) : sum;
+          }
+          return sum + payments.reduce((paymentSum, payment) => {
+            const paymentDateOnly = payment.date ? parsePaymentDate(payment.date) : null;
+            if (!paymentDateOnly) {
+              const saleDate = new Date(s.date);
+              const saleYear = saleDate.getFullYear();
+              const saleMonth = saleDate.getMonth();
+              const saleDay = saleDate.getDate();
+              const saleDateOnly = new Date(saleYear, saleMonth, saleDay, 0, 0, 0, 0);
+              if (saleDateOnly.getTime() === startOfDay.getTime()) {
+                return paymentSum + Number(payment.amount || 0);
+              }
+              return paymentSum;
+            }
+            if (paymentDateOnly.getTime() === startOfDay.getTime()) {
+              return paymentSum + Number(payment.amount || 0);
+            }
+            return paymentSum;
+          }, 0);
+        }, 0),
+        cash: sales.reduce((sum, s) => {
+          const payments = (s.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
+          const cashPayments = payments.filter(p => p.type === "cash");
+          if (cashPayments.length > 0) {
+            return sum + cashPayments.reduce((paymentSum, payment) => {
+              const paymentDateOnly = payment.date ? parsePaymentDate(payment.date) : null;
+              if (!paymentDateOnly) {
+                const saleDate = new Date(s.date);
+                const saleYear = saleDate.getFullYear();
+                const saleMonth = saleDate.getMonth();
+                const saleDay = saleDate.getDate();
+                const saleDateOnly = new Date(saleYear, saleMonth, saleDay, 0, 0, 0, 0);
+                if (saleDateOnly.getTime() === startOfDay.getTime()) {
+                  return paymentSum + Number(payment.amount || 0);
+                }
+                return paymentSum;
+              }
+              if (paymentDateOnly.getTime() === startOfDay.getTime()) {
+                return paymentSum + Number(payment.amount || 0);
+              }
+              return paymentSum;
+            }, 0);
+          }
+          if (payments.length === 0) {
+            const saleDate = new Date(s.date);
+            saleDate.setHours(0, 0, 0, 0);
+            if (saleDate.getTime() === startOfDay.getTime()) {
+              return sum + Number(s.total || 0);
+            }
+          }
+          return sum;
+        }, 0),
+        bank_transfer: sales.reduce((sum, s) => {
+          const payments = (s.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
+          const bankPayments = payments.filter(p => p.type === "bank_transfer");
+          return sum + bankPayments.reduce((paymentSum, payment) => {
+            const paymentDate = payment.date ? new Date(payment.date) : new Date(s.date);
+            paymentDate.setHours(0, 0, 0, 0);
+            if (paymentDate.getTime() === startOfDay.getTime()) {
+              return paymentSum + Number(payment.amount || 0);
+            }
+            return paymentSum;
+          }, 0);
+        }, 0),
+        card: sales.reduce((sum, s) => {
+          const payments = (s.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
+          const cardPayments = payments.filter(p => p.type === "card");
+          return sum + cardPayments.reduce((paymentSum, payment) => {
+            const paymentDate = payment.date ? new Date(payment.date) : new Date(s.date);
+            paymentDate.setHours(0, 0, 0, 0);
+            if (paymentDate.getTime() === startOfDay.getTime()) {
+              return paymentSum + Number(payment.amount || 0);
+            }
+            return paymentSum;
+          }, 0);
+        }, 0),
+      },
+      purchases: {
+        // Expand purchases into payment rows - each payment becomes a separate row
+        items: purchases.flatMap((purchase) => {
+          const payments = (purchase.payments as Array<{ type?: string; amount?: number; date?: string; cardId?: string; bankAccountId?: string }> | null) || [];
+          if (payments.length === 0) {
+            // If no payments array, create a single row from purchase date
+            const purchaseDate = new Date(purchase.date);
+            purchaseDate.setHours(0, 0, 0, 0);
+            if (purchaseDate.getTime() === startOfDay.getTime()) {
+              return [{
+                ...purchase,
+                paymentAmount: Number(purchase.total || 0),
+                paymentDate: purchase.date,
+                paymentType: "cash",
+                paymentIndex: 0,
+              }];
+            }
+            return [];
+          }
+          // Create a row for each payment that matches the target date
+          return payments
+            .map((payment, index) => {
+              const paymentDateOnly = payment.date ? parsePaymentDate(payment.date) : null;
+              if (!paymentDateOnly) {
+                // Fallback to purchase date
+                const purchaseDate = new Date(purchase.date);
+                const purchaseYear = purchaseDate.getFullYear();
+                const purchaseMonth = purchaseDate.getMonth();
+                const purchaseDay = purchaseDate.getDate();
+                const purchaseDateOnly = new Date(purchaseYear, purchaseMonth, purchaseDay, 0, 0, 0, 0);
+                if (purchaseDateOnly.getTime() === startOfDay.getTime()) {
+                  return {
+                    ...purchase,
+                    paymentAmount: Number(payment.amount || 0),
+                    paymentDate: purchase.date,
+                    paymentType: payment.type || "cash",
+                    paymentIndex: index,
+                  };
+                }
+                return null;
+              }
+              if (paymentDateOnly.getTime() === startOfDay.getTime()) {
+                return {
+                  ...purchase,
+                  paymentAmount: Number(payment.amount || 0),
+                  paymentDate: payment.date || purchase.date,
+                  paymentType: payment.type || "cash",
+                  paymentIndex: index,
+                };
+              }
+              return null;
+            })
+            .filter((row) => row !== null);
+        }),
+        total: purchases.reduce((sum, p) => {
+          const payments = (p.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
+          if (payments.length === 0) {
+            const purchaseDate = new Date(p.date);
+            purchaseDate.setHours(0, 0, 0, 0);
+            return purchaseDate.getTime() === startOfDay.getTime() ? sum + Number(p.total || 0) : sum;
+          }
+          return sum + payments.reduce((paymentSum, payment) => {
+            const paymentDate = payment.date ? new Date(payment.date) : new Date(p.date);
+            paymentDate.setHours(0, 0, 0, 0);
+            if (paymentDate.getTime() === startOfDay.getTime()) {
+              return paymentSum + Number(payment.amount || 0);
+            }
+            return paymentSum;
+          }, 0);
+        }, 0),
+        cash: purchases.reduce((sum, p) => {
+          const payments = (p.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
+          const cashPayments = payments.filter(pay => pay.type === "cash");
+          return sum + cashPayments.reduce((paymentSum, payment) => {
+            const paymentDate = payment.date ? new Date(payment.date) : new Date(p.date);
+            paymentDate.setHours(0, 0, 0, 0);
+            if (paymentDate.getTime() === startOfDay.getTime()) {
+              return paymentSum + Number(payment.amount || 0);
+            }
+            return paymentSum;
+          }, 0);
+        }, 0),
+        bank_transfer: purchases.reduce((sum, p) => {
+          const payments = (p.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
+          const bankPayments = payments.filter(pay => pay.type === "bank_transfer");
+          return sum + bankPayments.reduce((paymentSum, payment) => {
+            const paymentDate = payment.date ? new Date(payment.date) : new Date(p.date);
+            paymentDate.setHours(0, 0, 0, 0);
+            if (paymentDate.getTime() === startOfDay.getTime()) {
+              return paymentSum + Number(payment.amount || 0);
+            }
+            return paymentSum;
+          }, 0);
+        }, 0),
+        card: purchases.reduce((sum, p) => {
+          const payments = (p.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
+          const cardPayments = payments.filter(pay => pay.type === "card");
+          return sum + cardPayments.reduce((paymentSum, payment) => {
+            const paymentDate = payment.date ? new Date(payment.date) : new Date(p.date);
+            paymentDate.setHours(0, 0, 0, 0);
+            if (paymentDate.getTime() === startOfDay.getTime()) {
+              return paymentSum + Number(payment.amount || 0);
+            }
+            return paymentSum;
+          }, 0);
+        }, 0),
+      },
+      expenses: {
+        items: expenses,
+        total: expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0),
+        cash: expenses.filter(e => e.paymentType === "cash").reduce((sum, e) => sum + Number(e.amount || 0), 0),
+        bank_transfer: expenses.filter(e => e.paymentType === "bank_transfer").reduce((sum, e) => sum + Number(e.amount || 0), 0),
+        card: 0, // Expenses don't use card payments
+      },
+    };
+  }
+
+  /**
+   * Get monthly report - aggregates daily reports for the month
+   */
+  async getMonthlyReport(year: number, month: number) {
+    const startDate = new Date(year, month - 1, 1);
+    const endDate = new Date(year, month, 0, 23, 59, 59, 999);
+    
+    return this.getDateRangeReport(formatLocalYMD(startDate), formatLocalYMD(endDate));
+  }
+
+  /**
+   * Get comprehensive date range report with step-by-step calculations
+   */
+  async getDateRangeReport(startDate: string, endDate: string) {
+    const start = parseLocalYMD(startDate);
+    start.setHours(0, 0, 0, 0);
+    const end = parseLocalYMD(endDate);
+    end.setHours(23, 59, 59, 999);
+
+    // IMPORTANT: Opening Balance = Previous day's closing balance (baseline only)
+    // It should NOT include manual additions made during the date range
+    // Always use previous day's closing balance, not the openingBalance record (which might have additions)
+    const previousClosing = await dailyClosingBalanceService.getPreviousDayClosingBalance(startDate);
+    
+    let openingBalance: any;
+    if (previousClosing) {
+      // Use previous day's closing as opening balance for start date (baseline)
+      openingBalance = {
+        id: `opening-${startDate}`,
+        date: start,
+        cashBalance: previousClosing.cashBalance,
+        bankBalances: previousClosing.bankBalances as any,
+        cardBalances: previousClosing.cardBalances as any,
+        notes: "Previous day's closing balance (baseline)",
+        userId: null,
+        userName: "System",
+        createdAt: start,
+        updatedAt: start,
+        createdBy: null,
+        createdByType: null,
+        updatedBy: null,
+        updatedByType: null,
+      };
+    } else {
+      openingBalance = {
+        id: `zero-${startDate}`,
+        date: start,
+        cashBalance: 0,
+        bankBalances: [],
+        cardBalances: [],
+        notes: "No previous balance found",
+        userId: null,
+        userName: "System",
+        createdAt: start,
+        updatedAt: start,
+        createdBy: null,
+        createdByType: null,
+        updatedBy: null,
+        updatedByType: null,
+      };
+    }
+
+    // Get all balance transactions for the date range, sorted by createdAt (ASC)
+    const transactions = await balanceTransactionService.getTransactions({
+      startDate,
+      endDate,
+    });
+
+    transactions.sort((a: any, b: any) => {
+      const aTime = new Date(a.createdAt || a.date).getTime();
+      const bTime = new Date(b.createdAt || b.date).getTime();
+      return aTime - bTime;
+    });
+
+    // Get bank accounts
+    const banks = await prisma.bankAccount.findMany({ where: { isActive: true } });
+    const bankMap = new Map(banks.map((b) => [b.id, b]));
+
+    // Build step-by-step transaction list
+    const steps: any[] = [];
+    
+    const openingCash = Number(openingBalance.cashBalance || 0);
+    const openingBankBalances = (openingBalance.bankBalances as Array<{ bankAccountId: string; balance: number }>) || [];
+    
+    let runningCash = openingCash;
+    const runningBankBalances = new Map<string, number>();
+    openingBankBalances.forEach((b) => {
+      runningBankBalances.set(b.bankAccountId, Number(b.balance || 0));
+    });
+
+    // Add opening balance step
+    steps.push({
+      step: 1,
+      type: "Opening Balance",
+      datetime: start,
+      cashBefore: openingCash,
+      cashAfter: openingCash,
+      cashChange: 0,
+      bankBalancesBefore: openingBankBalances.map((b) => ({
+        bankAccountId: b.bankAccountId,
+        bankName: bankMap.get(b.bankAccountId)?.bankName || "Unknown",
+        accountNumber: bankMap.get(b.bankAccountId)?.accountNumber || "",
+        balance: Number(b.balance || 0),
+      })),
+      bankBalancesAfter: openingBankBalances.map((b) => ({
+        bankAccountId: b.bankAccountId,
+        bankName: bankMap.get(b.bankAccountId)?.bankName || "Unknown",
+        accountNumber: bankMap.get(b.bankAccountId)?.accountNumber || "",
+        balance: Number(b.balance || 0),
+      })),
+      description: "Opening Balance",
+      source: "Opening Balance",
+    });
+
+    // Process transactions
+    let stepNumber = 2;
+    for (const tx of transactions) {
+      // IMPORTANT: Skip 'opening_balance' transactions to avoid double counting
+      // The opening balance is already set from previous day's closing balance
+      // These transactions represent the initial baseline setting and should not be processed again
+      if (tx.source === "opening_balance") {
+        logger.info(`Skipping opening_balance transaction in date range report: ${tx.id}, amount=${tx.amount}`);
+        continue;
+      }
+
+      // IMPORTANT: Filter transactions by actual date to ensure only transactions within the date range are included
+      const txDate = new Date(tx.date || tx.createdAt);
+      const txDateOnly = new Date(txDate.getFullYear(), txDate.getMonth(), txDate.getDate());
+      
+      // Skip transactions that are outside the date range
+      if (txDateOnly.getTime() < start.getTime() || txDateOnly.getTime() > end.getTime()) {
+        logger.info(`Skipping transaction ${tx.id} - outside date range: txDate=${txDateOnly.toISOString().split('T')[0]}, range=${start.toISOString().split('T')[0]} to ${end.toISOString().split('T')[0]}`);
+        continue;
+      }
+
+      const paymentType = tx.paymentType || "cash";
+      const amount = Number(tx.amount || 0);
+      const type = tx.type || "income";
+
+      let txType = "Transaction";
+      let description = tx.description || "";
+      
+      if (tx.source === "sale" || tx.source === "sale_payment") {
+        txType = "Sale";
+        const sale = await prisma.sale.findUnique({ where: { id: tx.sourceId || "" }, include: { customer: true } }).catch((): null => null);
+        if (sale) {
+          description = `Sale - Bill #${sale.billNumber}${sale.customerName ? ` - ${sale.customerName}` : ""}`;
+        }
+      } else if (tx.source === "purchase" || tx.source === "purchase_payment") {
+        txType = "Purchase";
+        const purchase = await prisma.purchase.findUnique({ where: { id: tx.sourceId || "" }, include: { supplier: true } }).catch((): null => null);
+        if (purchase) {
+          description = `Purchase - ${purchase.supplierName || "N/A"}`;
+        }
+      } else if (tx.source === "expense") {
+        txType = "Expense";
+        const expense = await prisma.expense.findUnique({ where: { id: tx.sourceId || "" } }).catch((): null => null);
+        if (expense) {
+          description = `Expense - ${expense.category}${expense.description ? `: ${expense.description}` : ""}`;
+        }
+      } else if (tx.source?.includes("opening_balance") || tx.source === "add_opening_balance") {
+        txType = "Opening Balance Addition";
+        description = tx.description || "Opening Balance Addition";
+      }
+
+      const cashBefore = runningCash;
+      const bankBalancesBefore = Array.from(runningBankBalances.entries()).map(([id, balance]) => ({
+        bankAccountId: id,
+        bankName: bankMap.get(id)?.bankName || "Unknown",
+        accountNumber: bankMap.get(id)?.accountNumber || "",
+        balance,
+      }));
+
+      if (paymentType === "cash") {
+        if (type === "income") {
+          runningCash += amount;
+        } else {
+          runningCash -= amount;
+        }
+      } else if (paymentType === "bank_transfer" && tx.bankAccountId) {
+        const current = runningBankBalances.get(tx.bankAccountId) || 0;
+        if (type === "income") {
+          runningBankBalances.set(tx.bankAccountId, current + amount);
+        } else {
+          runningBankBalances.set(tx.bankAccountId, current - amount);
+        }
+      }
+
+      const cashAfter = runningCash;
+      const bankBalancesAfter = Array.from(runningBankBalances.entries()).map(([id, balance]) => ({
+        bankAccountId: id,
+        bankName: bankMap.get(id)?.bankName || "Unknown",
+        accountNumber: bankMap.get(id)?.accountNumber || "",
+        balance,
+      }));
+
+      steps.push({
+        step: stepNumber++,
+        type: txType,
+        datetime: txDate,
+        paymentType,
+        amount,
+        cashBefore,
+        cashAfter,
+        cashChange: type === "income" ? amount : -amount,
+        bankAccountId: tx.bankAccountId,
+        bankName: tx.bankAccountId ? bankMap.get(tx.bankAccountId)?.bankName : null,
+        bankBalancesBefore,
+        bankBalancesAfter,
+        description,
+        source: tx.source || "unknown",
+        sourceId: tx.sourceId,
+        userName: tx.userName,
+      });
+    }
+
+    // Calculate closing balance
+    const closingCash = runningCash;
+    const closingBankBalances = Array.from(runningBankBalances.entries()).map(([id, balance]) => ({
+      bankAccountId: id,
+      bankName: bankMap.get(id)?.bankName || "Unknown",
+      accountNumber: bankMap.get(id)?.accountNumber || "",
+      balance,
+    }));
+
+    // IMPORTANT: For Sales and Purchases, filter by PAYMENT DATES, not sale/purchase dates
+    // Fetch all sales and purchases that might have payments in the date range
+    const allSalesForRange = await prisma.sale.findMany({
+      where: {
+        createdAt: { gte: new Date(start.getTime() - 30 * 24 * 60 * 60 * 1000) }, // 30 days before start
+      },
+      include: { customer: true },
+      orderBy: { createdAt: "asc" },
+    });
+
+    const allPurchasesForRange = await prisma.purchase.findMany({
+      where: {
+        createdAt: { gte: new Date(start.getTime() - 30 * 24 * 60 * 60 * 1000) }, // 30 days before start
+      },
+      include: { supplier: true },
+      orderBy: { createdAt: "asc" },
+    });
+
+    // Filter sales by payment dates within the range
+    const sales = allSalesForRange.filter((sale) => {
+      const payments = (sale.payments as Array<{ type?: string; amount?: number; date?: string; cardId?: string; bankAccountId?: string }> | null) || [];
+      if (payments.length === 0) {
+        // If no payments array, check if sale date is in range
+        const saleDate = new Date(sale.date);
+        const saleYear = saleDate.getFullYear();
+        const saleMonth = saleDate.getMonth();
+        const saleDay = saleDate.getDate();
+        const saleDateOnly = new Date(saleYear, saleMonth, saleDay);
+        return saleDateOnly.getTime() >= start.getTime() && saleDateOnly.getTime() <= end.getTime();
+      }
+      // Check if any payment has a date within the range
+      return payments.some((payment) => {
+        const rawDate = payment.date ? new Date(payment.date) : new Date(sale.date);
+        const paymentYear = rawDate.getFullYear();
+        const paymentMonth = rawDate.getMonth();
+        const paymentDay = rawDate.getDate();
+        const paymentDateOnly = new Date(paymentYear, paymentMonth, paymentDay);
+        return paymentDateOnly.getTime() >= start.getTime() && paymentDateOnly.getTime() <= end.getTime();
+      });
+    });
+
+    // Filter purchases by payment dates within the range
+    const purchases = allPurchasesForRange.filter((purchase) => {
+      const payments = (purchase.payments as Array<{ type?: string; amount?: number; date?: string; cardId?: string; bankAccountId?: string }> | null) || [];
+      if (payments.length === 0) {
+        // If no payments array, check if purchase date is in range
+        const purchaseDate = new Date(purchase.date);
+        const purchaseYear = purchaseDate.getFullYear();
+        const purchaseMonth = purchaseDate.getMonth();
+        const purchaseDay = purchaseDate.getDate();
+        const purchaseDateOnly = new Date(purchaseYear, purchaseMonth, purchaseDay);
+        return purchaseDateOnly.getTime() >= start.getTime() && purchaseDateOnly.getTime() <= end.getTime();
+      }
+      // Check if any payment has a date within the range
+      return payments.some((payment) => {
+        const paymentDateOnly = payment.date ? parsePaymentDate(payment.date) : null;
+        if (!paymentDateOnly) {
+          const purchaseDate = new Date(purchase.date);
+          const purchaseYear = purchaseDate.getFullYear();
+          const purchaseMonth = purchaseDate.getMonth();
+          const purchaseDay = purchaseDate.getDate();
+          const purchaseDateOnly = new Date(purchaseYear, purchaseMonth, purchaseDay, 0, 0, 0, 0);
+          return purchaseDateOnly.getTime() >= start.getTime() && purchaseDateOnly.getTime() <= end.getTime();
+        }
+        return paymentDateOnly.getTime() >= start.getTime() && paymentDateOnly.getTime() <= end.getTime();
+      });
+    });
+
+    // Expenses use the date field directly (not payment dates)
+    const expenses = await prisma.expense.findMany({
+      where: { date: { gte: start, lte: end } },
+      orderBy: { createdAt: "asc" },
+    });
+
+    // Extract opening balance additions from transactions for the date range
+    const openingBalanceAdditions = transactions
+      .filter((tx: any) => {
+        // Include transactions that are opening balance additions (not the initial opening_balance)
+        const isAddition = (tx.source === "add_opening_balance" || 
+                           (tx.source && tx.source.includes("opening_balance") && tx.source !== "opening_balance"));
+        if (!isAddition) return false;
+        
+        // Check if transaction date is within the range
+        const txDate = new Date(tx.date || tx.createdAt);
+        txDate.setHours(0, 0, 0, 0);
+        return txDate.getTime() >= start.getTime() && txDate.getTime() <= end.getTime();
+      })
+      .map((tx: any) => {
+        // Use bankAccount from transaction if available, otherwise use bankMap
+        const bankAccount = tx.bankAccount || (tx.bankAccountId ? bankMap.get(tx.bankAccountId) : null);
+        return {
+          id: tx.id,
+          date: tx.date || tx.createdAt,
+          createdAt: tx.createdAt,
+          time: tx.createdAt || tx.date,
+          amount: Number(tx.amount || 0),
+          paymentType: tx.paymentType || "cash",
+          bankAccountId: tx.bankAccountId,
+          bankAccount: bankAccount,
+          description: tx.description || "Opening Balance Addition",
+          userName: tx.userName,
+          source: tx.source,
+          beforeBalance: tx.beforeBalance ? Number(tx.beforeBalance) : null,
+          afterBalance: tx.afterBalance ? Number(tx.afterBalance) : null,
+          changeAmount: tx.changeAmount ? Number(tx.changeAmount) : null,
+          type: tx.type || "income",
+        };
+      });
+
+    return {
+      startDate,
+      endDate,
+      openingBalance: {
+        cash: openingCash,
+        banks: openingBankBalances.map((b) => ({
+          ...b,
+          bankName: bankMap.get(b.bankAccountId)?.bankName || "Unknown",
+          accountNumber: bankMap.get(b.bankAccountId)?.accountNumber || "",
+          balance: Number(b.balance || 0),
+        })),
+        total: openingCash + openingBankBalances.reduce((sum, b) => sum + Number(b.balance || 0), 0),
+      },
+      closingBalance: {
+        cash: closingCash,
+        banks: closingBankBalances,
+        total: closingCash + closingBankBalances.reduce((sum, b) => sum + Number(b.balance || 0), 0),
+      },
+      openingBalanceAdditions, // Opening balance additions for the date range
+      steps, // Step-by-step transactions sorted by date/time ASC
+      summary: {
+        sales: {
+          count: sales.length,
+          // Calculate total from payments that occurred in the date range
+          total: sales.reduce((sum, s) => {
+            const payments = (s.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
+            if (payments.length === 0) {
+              // No payments array, use total if sale date is in range
+              const saleDate = new Date(s.date);
+              saleDate.setHours(0, 0, 0, 0);
+              return (saleDate.getTime() >= start.getTime() && saleDate.getTime() <= end.getTime()) 
+                ? sum + Number(s.total || 0) 
+                : sum;
+            }
+            // Sum only payments that occurred in the date range
+            return sum + payments.reduce((paymentSum, payment) => {
+              const paymentDateOnly = payment.date ? parsePaymentDate(payment.date) : null;
+              if (!paymentDateOnly) {
+                const saleDate = new Date(s.date);
+                const saleYear = saleDate.getFullYear();
+                const saleMonth = saleDate.getMonth();
+                const saleDay = saleDate.getDate();
+                const saleDateOnly = new Date(saleYear, saleMonth, saleDay, 0, 0, 0, 0);
+                if (saleDateOnly.getTime() >= start.getTime() && saleDateOnly.getTime() <= end.getTime()) {
+                  return paymentSum + Number(payment.amount || 0);
+                }
+                return paymentSum;
+              }
+              if (paymentDateOnly.getTime() >= start.getTime() && paymentDateOnly.getTime() <= end.getTime()) {
+                return paymentSum + Number(payment.amount || 0);
+              }
+              return paymentSum;
+            }, 0);
+          }, 0),
+        },
+        purchases: {
+          count: purchases.length,
+          // Calculate total from payments that occurred in the date range
+          total: purchases.reduce((sum, p) => {
+            const payments = (p.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
+            if (payments.length === 0) {
+              // No payments array, use total if purchase date is in range
+              const purchaseDate = new Date(p.date);
+        purchaseDate.setHours(0, 0, 0, 0);
+              return (purchaseDate.getTime() >= start.getTime() && purchaseDate.getTime() <= end.getTime())
+                ? sum + Number(p.total || 0)
+                : sum;
+            }
+            // Sum only payments that occurred in the date range
+            return sum + payments.reduce((paymentSum, payment) => {
+              const paymentDateOnly = payment.date ? parsePaymentDate(payment.date) : null;
+              if (!paymentDateOnly) {
+                const purchaseDate = new Date(p.date);
+                const purchaseYear = purchaseDate.getFullYear();
+                const purchaseMonth = purchaseDate.getMonth();
+                const purchaseDay = purchaseDate.getDate();
+                const purchaseDateOnly = new Date(purchaseYear, purchaseMonth, purchaseDay, 0, 0, 0, 0);
+                if (purchaseDateOnly.getTime() >= start.getTime() && purchaseDateOnly.getTime() <= end.getTime()) {
+                  return paymentSum + Number(payment.amount || 0);
+                }
+                return paymentSum;
+              }
+              if (paymentDateOnly.getTime() >= start.getTime() && paymentDateOnly.getTime() <= end.getTime()) {
+                return paymentSum + Number(payment.amount || 0);
+              }
+              return paymentSum;
+            }, 0);
+          }, 0),
+        },
+        expenses: {
+          count: expenses.length,
+          total: expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0),
+        },
+      },
+      sales: {
+        // Expand sales into payment rows - each payment becomes a separate row
+        items: sales.flatMap((sale) => {
+          const payments = (sale.payments as Array<{ type?: string; amount?: number; date?: string; cardId?: string; bankAccountId?: string }> | null) || [];
+          if (payments.length === 0) {
+            // If no payments array, create a single row from sale date if in range
+            const saleDate = new Date(sale.date);
+            saleDate.setHours(0, 0, 0, 0);
+            if (saleDate.getTime() >= start.getTime() && saleDate.getTime() <= end.getTime()) {
+              return [{
+                ...sale,
+                paymentAmount: Number(sale.total || 0),
+                paymentDate: sale.date,
+                paymentType: sale.paymentType || "cash",
+                paymentIndex: 0,
+              }];
+            }
+            return [];
+          }
+          // Create a row for each payment that matches the date range
+          return payments
+            .map((payment, index) => {
+              const paymentDateOnly = payment.date ? parsePaymentDate(payment.date) : null;
+              if (!paymentDateOnly) {
+                const saleDate = new Date(sale.date);
+                const saleYear = saleDate.getFullYear();
+                const saleMonth = saleDate.getMonth();
+                const saleDay = saleDate.getDate();
+                const saleDateOnly = new Date(saleYear, saleMonth, saleDay, 0, 0, 0, 0);
+                if (saleDateOnly.getTime() >= start.getTime() && saleDateOnly.getTime() <= end.getTime()) {
+                  return {
+                    ...sale,
+                    paymentAmount: Number(payment.amount || 0),
+                    paymentDate: sale.date,
+                    paymentType: payment.type || sale.paymentType || "cash",
+                    paymentIndex: index,
+                  };
+                }
+                return null;
+              }
+              if (paymentDateOnly.getTime() >= start.getTime() && paymentDateOnly.getTime() <= end.getTime()) {
+                return {
+                  ...sale,
+                  paymentAmount: Number(payment.amount || 0),
+                  paymentDate: payment.date || sale.date,
+                  paymentType: payment.type || sale.paymentType || "cash",
+                  paymentIndex: index,
+                };
+              }
+              return null;
+            })
+            .filter((row) => row !== null);
+        }),
+        total: sales.reduce((sum, s) => {
+          const payments = (s.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
+          if (payments.length === 0) {
+            const saleDate = new Date(s.date);
+            saleDate.setHours(0, 0, 0, 0);
+            return saleDate.getTime() >= start.getTime() && saleDate.getTime() <= end.getTime() ? sum + Number(s.total || 0) : sum;
+          }
+          return sum + payments.reduce((paymentSum, payment) => {
+            const paymentDateOnly = payment.date ? parsePaymentDate(payment.date) : null;
+            if (!paymentDateOnly) {
+              const saleDate = new Date(s.date);
+              const saleYear = saleDate.getFullYear();
+              const saleMonth = saleDate.getMonth();
+              const saleDay = saleDate.getDate();
+              const saleDateOnly = new Date(saleYear, saleMonth, saleDay, 0, 0, 0, 0);
+              if (saleDateOnly.getTime() >= start.getTime() && saleDateOnly.getTime() <= end.getTime()) {
+                return paymentSum + Number(payment.amount || 0);
+              }
+              return paymentSum;
+            }
+            if (paymentDateOnly.getTime() >= start.getTime() && paymentDateOnly.getTime() <= end.getTime()) {
+              return paymentSum + Number(payment.amount || 0);
+            }
+            return paymentSum;
+          }, 0);
+        }, 0),
+        cash: sales.reduce((sum, s) => {
+          const payments = (s.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
+          const cashPayments = payments.filter(p => p.type === "cash");
+          return sum + cashPayments.reduce((paymentSum, payment) => {
+            const paymentDate = payment.date ? new Date(payment.date) : new Date(s.date);
+            paymentDate.setHours(0, 0, 0, 0);
+            if (paymentDate.getTime() >= start.getTime() && paymentDate.getTime() <= end.getTime()) {
+              return paymentSum + Number(payment.amount || 0);
+            }
+            return paymentSum;
+          }, 0);
+        }, 0),
+        bank_transfer: sales.reduce((sum, s) => {
+          const payments = (s.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
+          const bankPayments = payments.filter(p => p.type === "bank_transfer");
+          return sum + bankPayments.reduce((paymentSum, payment) => {
+            const paymentDate = payment.date ? new Date(payment.date) : new Date(s.date);
+            paymentDate.setHours(0, 0, 0, 0);
+            if (paymentDate.getTime() >= start.getTime() && paymentDate.getTime() <= end.getTime()) {
+              return paymentSum + Number(payment.amount || 0);
+            }
+            return paymentSum;
+          }, 0);
+        }, 0),
+        card: sales.reduce((sum, s) => {
+          const payments = (s.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
+          const cardPayments = payments.filter(p => p.type === "card");
+          return sum + cardPayments.reduce((paymentSum, payment) => {
+            const paymentDate = payment.date ? new Date(payment.date) : new Date(s.date);
+            paymentDate.setHours(0, 0, 0, 0);
+            if (paymentDate.getTime() >= start.getTime() && paymentDate.getTime() <= end.getTime()) {
+              return paymentSum + Number(payment.amount || 0);
+            }
+            return paymentSum;
+          }, 0);
+        }, 0),
+      },
+      purchases: {
+        // Expand purchases into payment rows - each payment becomes a separate row
+        items: purchases.flatMap((purchase) => {
+          const payments = (purchase.payments as Array<{ type?: string; amount?: number; date?: string; cardId?: string; bankAccountId?: string }> | null) || [];
+          if (payments.length === 0) {
+            // If no payments array, create a single row from purchase date if in range
+            const purchaseDate = new Date(purchase.date);
+            purchaseDate.setHours(0, 0, 0, 0);
+            if (purchaseDate.getTime() >= start.getTime() && purchaseDate.getTime() <= end.getTime()) {
+              return [{
+                ...purchase,
+                paymentAmount: Number(purchase.total || 0),
+                paymentDate: purchase.date,
+                paymentType: "cash",
+                paymentIndex: 0,
+              }];
+            }
+            return [];
+          }
+          // Create a row for each payment that matches the date range
+          return payments
+            .map((payment, index) => {
+              const paymentDate = payment.date ? new Date(payment.date) : new Date(purchase.date);
+              paymentDate.setHours(0, 0, 0, 0);
+              if (paymentDate.getTime() >= start.getTime() && paymentDate.getTime() <= end.getTime()) {
+                return {
+                  ...purchase,
+                  paymentAmount: Number(payment.amount || 0),
+                  paymentDate: payment.date || purchase.date,
+                  paymentType: payment.type || "cash",
+                  paymentIndex: index,
+                };
+              }
+              return null;
+            })
+            .filter((row) => row !== null);
+        }),
+        total: purchases.reduce((sum, p) => {
+          const payments = (p.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
+          if (payments.length === 0) {
+            const purchaseDate = new Date(p.date);
+            purchaseDate.setHours(0, 0, 0, 0);
+            return purchaseDate.getTime() >= start.getTime() && purchaseDate.getTime() <= end.getTime() ? sum + Number(p.total || 0) : sum;
+          }
+          return sum + payments.reduce((paymentSum, payment) => {
+            const paymentDateOnly = payment.date ? parsePaymentDate(payment.date) : null;
+            if (!paymentDateOnly) {
+              const purchaseDate = new Date(p.date);
+              const purchaseYear = purchaseDate.getFullYear();
+              const purchaseMonth = purchaseDate.getMonth();
+              const purchaseDay = purchaseDate.getDate();
+              const purchaseDateOnly = new Date(purchaseYear, purchaseMonth, purchaseDay, 0, 0, 0, 0);
+              if (purchaseDateOnly.getTime() >= start.getTime() && purchaseDateOnly.getTime() <= end.getTime()) {
+                return paymentSum + Number(payment.amount || 0);
+              }
+              return paymentSum;
+            }
+            if (paymentDateOnly.getTime() >= start.getTime() && paymentDateOnly.getTime() <= end.getTime()) {
+              return paymentSum + Number(payment.amount || 0);
+            }
+            return paymentSum;
+          }, 0);
+        }, 0),
+        cash: purchases.reduce((sum, p) => {
+          const payments = (p.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
+          const cashPayments = payments.filter(pay => pay.type === "cash");
+          return sum + cashPayments.reduce((paymentSum, payment) => {
+            const paymentDate = payment.date ? new Date(payment.date) : new Date(p.date);
+            paymentDate.setHours(0, 0, 0, 0);
+            if (paymentDate.getTime() >= start.getTime() && paymentDate.getTime() <= end.getTime()) {
+              return paymentSum + Number(payment.amount || 0);
+            }
+            return paymentSum;
+          }, 0);
+        }, 0),
+        bank_transfer: purchases.reduce((sum, p) => {
+          const payments = (p.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
+          const bankPayments = payments.filter(pay => pay.type === "bank_transfer");
+          return sum + bankPayments.reduce((paymentSum, payment) => {
+            const paymentDate = payment.date ? new Date(payment.date) : new Date(p.date);
+            paymentDate.setHours(0, 0, 0, 0);
+            if (paymentDate.getTime() >= start.getTime() && paymentDate.getTime() <= end.getTime()) {
+              return paymentSum + Number(payment.amount || 0);
+            }
+            return paymentSum;
+          }, 0);
+        }, 0),
+        card: purchases.reduce((sum, p) => {
+          const payments = (p.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
+          const cardPayments = payments.filter(pay => pay.type === "card");
+          return sum + cardPayments.reduce((paymentSum, payment) => {
+            const paymentDate = payment.date ? new Date(payment.date) : new Date(p.date);
+            paymentDate.setHours(0, 0, 0, 0);
+            if (paymentDate.getTime() >= start.getTime() && paymentDate.getTime() <= end.getTime()) {
+              return paymentSum + Number(payment.amount || 0);
+            }
+            return paymentSum;
+          }, 0);
+        }, 0),
+      },
+      expenses: {
+        items: expenses,
+        total: expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0),
+        cash: expenses.filter(e => e.paymentType === "cash").reduce((sum, e) => sum + Number(e.amount || 0), 0),
+        bank_transfer: expenses.filter(e => e.paymentType === "bank_transfer").reduce((sum, e) => sum + Number(e.amount || 0), 0),
+        card: 0, // Expenses don't use card payments
+      },
+      // Generate daily reports for each day in the range for date-wise display
+      dailyReports: await this.generateDailyReportsForRange(startDate, endDate),
+    };
+  }
+
+  /**
+   * Generate daily reports for each day in a date range
+   */
+  private async generateDailyReportsForRange(startDate: string, endDate: string): Promise<any[]> {
+    const start = parseLocalYMD(startDate);
+    start.setHours(0, 0, 0, 0);
+    const end = parseLocalYMD(endDate);
+    end.setHours(23, 59, 59, 999);
+
+    const dailyReports: any[] = [];
+    const currentDate = new Date(start);
+
+    // Generate a daily report for each day in the range
+    while (currentDate.getTime() <= end.getTime()) {
+      const dateStr = formatLocalYMD(currentDate);
+      try {
+        const dailyReport = await this.getDailyReport(dateStr);
+        dailyReports.push(dailyReport);
+      } catch (error) {
+        logger.error(`Error generating daily report for ${dateStr}:`, error);
+        // Continue with other dates even if one fails
+      }
+      
+      // Move to next day
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    return dailyReports;
+  }
+
+  // Keep old methods for backward compatibility (simplified versions)
   async getSalesReport(filters: { startDate?: string; endDate?: string }) {
-    const where: any = { status: "completed" };
+    const where: any = {};
 
     if (filters.startDate && filters.endDate) {
-      const start = new Date(filters.startDate);
+      const start = parseLocalYMD(filters.startDate);
       start.setHours(0, 0, 0, 0);
-      const end = new Date(filters.endDate);
+      const end = parseLocalYMD(filters.endDate);
       end.setHours(23, 59, 59, 999);
 
-      where.date = {
-        gte: start,
-        lte: end,
-      };
+      where.date = { gte: start, lte: end };
     }
 
     const sales = await prisma.sale.findMany({
       where,
-      include: {
-        items: true,
-        customer: true,
-      },
-      orderBy: { createdAt: "desc" },
+      include: { items: true, customer: true },
+      orderBy: { createdAt: "asc" },
     });
 
     const totalSales = sales.reduce((sum, sale) => sum + Number(sale.total), 0);
@@ -45,25 +1477,20 @@ class ReportService {
     const where: any = {};
 
     if (filters.startDate && filters.endDate) {
-      const start = new Date(filters.startDate);
+      const start = parseLocalYMD(filters.startDate);
       start.setHours(0, 0, 0, 0);
-      const end = new Date(filters.endDate);
+      const end = parseLocalYMD(filters.endDate);
       end.setHours(23, 59, 59, 999);
 
-      where.date = {
-        gte: start,
-        lte: end,
-      };
+      where.date = { gte: start, lte: end };
     }
 
     const expenses = await prisma.expense.findMany({
       where,
-      orderBy: { createdAt: "desc" },
+      orderBy: { createdAt: "asc" },
     });
 
     const totalExpenses = expenses.reduce((sum, exp) => sum + Number(exp.amount), 0);
-
-    // Group by category
     const categoryTotals = expenses.reduce((acc, exp) => {
       acc[exp.category] = (acc[exp.category] || 0) + Number(exp.amount);
       return acc;
@@ -81,30 +1508,27 @@ class ReportService {
   async getProfitLossReport(filters: { startDate?: string; endDate?: string }) {
     const dateFilter: any = {};
     if (filters.startDate && filters.endDate) {
-      const start = new Date(filters.startDate);
+      const start = parseLocalYMD(filters.startDate);
       start.setHours(0, 0, 0, 0);
-      const end = new Date(filters.endDate);
+      const end = parseLocalYMD(filters.endDate);
       end.setHours(23, 59, 59, 999);
 
       dateFilter.gte = start;
       dateFilter.lte = end;
     }
 
-    // Get sales
     const sales = await prisma.sale.findMany({
       where: {
-        status: "completed",
         date: Object.keys(dateFilter).length > 0 ? dateFilter : undefined,
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: { createdAt: "asc" },
     });
 
-    // Get expenses
     const expenses = await prisma.expense.findMany({
       where: {
         date: Object.keys(dateFilter).length > 0 ? dateFilter : undefined,
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: { createdAt: "asc" },
     });
 
     const totalSales = sales.reduce((sum, sale) => sum + Number(sale.total), 0);
@@ -123,251 +1547,509 @@ class ReportService {
     };
   }
 
+  // PDF generation methods (simplified - can be enhanced later)
+  async generateDailyReportPDF(date: string, res: Response) {
+    try {
+      const report = await this.getDailyReport(date);
+      const settings = await prisma.shopSettings.findFirst();
+
+      const doc = new PDFDocument({ 
+        margin: 50,
+        size: 'A4',
+        info: {
+          Title: `Daily Report - ${date}`,
+          Author: settings?.shopName || "Isma Sports Complex",
+        }
+      });
+
+      doc.on('error', (err) => {
+        logger.error("PDFkit error:", err);
+        if (!res.headersSent) {
+          res.status(500).json({ error: "Failed to generate PDF" });
+        }
+      });
+
+      if (!res.headersSent) {
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `attachment; filename=daily-report-${date}.pdf`);
+      }
+
+      doc.pipe(res);
+
+      // Helper function to format currency
+      const formatCurrency = (amount: number) => {
+        return `Rs. ${Number(amount).toFixed(2)}`;
+      };
+
+      // Helper function to add section header (compact)
+      const addSectionHeader = (text: string, fontSize: number = 14) => {
+        if (doc.y > 700) doc.addPage();
+        doc.moveDown(0.5);
+        doc.fontSize(fontSize).fillColor('#1e40af').text(text, { underline: true });
+        doc.fillColor('#000000');
+        doc.moveDown(0.3);
+      };
+
+      // Helper function to add table row (compact)
+      const addTableRow = (label: string, value: string, isBold: boolean = false) => {
+        if (doc.y > 750) doc.addPage();
+        doc.fontSize(10);
+        if (isBold) doc.font('Helvetica-Bold');
+        doc.text(label, 50, doc.y, { width: 200 });
+        doc.text(value, 250, doc.y, { width: 250, align: 'right' });
+        if (isBold) doc.font('Helvetica');
+        doc.moveDown(0.4);
+      };
+
+      // Simple Professional Header
+      doc.fontSize(20).fillColor('#1e3a8a').font('Helvetica-Bold').text(settings?.shopName || "Isma Sports Complex", { align: "center" });
+      doc.moveDown(0.3);
+      doc.fontSize(13).fillColor('#374151').font('Helvetica').text("Daily Report", { align: "center" });
+      doc.moveDown(0.2);
+      doc.fontSize(10).fillColor('#6b7280').text(`${new Date(date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`, { align: "center" });
+      doc.moveDown(0.4);
+      doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke('#9ca3af');
+      doc.moveDown(0.3);
+
+      // Professional Summary Table with Payment Breakdown
+      const summaryTableTop = doc.y;
+      const summaryRowHeight = 14;
+      
+      // Helper to draw summary cell
+      const drawSummaryCell = (x: number, y: number, width: number, height: number, fillColor?: string) => {
+        if (fillColor) {
+          doc.rect(x, y, width, height).fill(fillColor);
+        }
+        doc.moveTo(x, y).lineTo(x + width, y).stroke('#000000');
+        doc.moveTo(x + width, y).lineTo(x + width, y + height).stroke('#000000');
+        doc.moveTo(x + width, y + height).lineTo(x, y + height).stroke('#000000');
+        doc.moveTo(x, y + height).lineTo(x, y).stroke('#000000');
+      };
+
+      // Summary table columns (Item, Cash, Bank, Total - Card removed)
+      const sumColX = [50, 200, 320, 440];
+      const sumColWidths = [150, 120, 120, 105];
+      
+      // Header row - dark blue background with white text for better visibility
+      doc.fontSize(9).font('Helvetica-Bold');
+      
+      // Draw all header cells first with background
+      drawSummaryCell(sumColX[0], summaryTableTop, sumColWidths[0], summaryRowHeight, '#1e40af');
+      drawSummaryCell(sumColX[1], summaryTableTop, sumColWidths[1], summaryRowHeight, '#1e40af');
+      drawSummaryCell(sumColX[2], summaryTableTop, sumColWidths[2], summaryRowHeight, '#1e40af');
+      drawSummaryCell(sumColX[3], summaryTableTop, sumColWidths[3], summaryRowHeight, '#1e40af');
+      
+      // Now add white text on top of the cells
+      doc.fillColor('#ffffff');
+      doc.text("Item", sumColX[0] + 5, summaryTableTop + 4, { width: sumColWidths[0] - 10 });
+      doc.text("Cash", sumColX[1] + 5, summaryTableTop + 4, { width: sumColWidths[1] - 10, align: 'right' });
+      doc.text("Bank", sumColX[2] + 5, summaryTableTop + 4, { width: sumColWidths[2] - 10, align: 'right' });
+      doc.text("Total", sumColX[3] + 5, summaryTableTop + 4, { width: sumColWidths[3] - 10, align: 'right' });
+      doc.fillColor('#000000');
+
+      let currentRow = 1;
+      doc.font('Helvetica').fontSize(8);
+
+      // Opening Balance Row
+      const openingCash = report.openingBalance.cash || 0;
+      const openingBank = report.openingBalance.banks?.reduce((sum: number, b: any) => sum + Number(b.balance || 0), 0) || 0;
+      const openingTotal = openingCash + openingBank;
+      drawSummaryCell(sumColX[0], summaryTableTop + (currentRow * summaryRowHeight), sumColWidths[0], summaryRowHeight);
+      doc.font('Helvetica-Bold').fillColor('#1f2937');
+      doc.text("Opening", sumColX[0] + 5, summaryTableTop + (currentRow * summaryRowHeight) + 4, { width: sumColWidths[0] - 10 });
+      doc.font('Helvetica').fillColor('#000000');
+      drawSummaryCell(sumColX[1], summaryTableTop + (currentRow * summaryRowHeight), sumColWidths[1], summaryRowHeight);
+      doc.fillColor('#374151');
+      doc.text(formatCurrency(openingCash), sumColX[1] + 5, summaryTableTop + (currentRow * summaryRowHeight) + 4, { width: sumColWidths[1] - 10, align: 'right' });
+      doc.fillColor('#000000');
+      drawSummaryCell(sumColX[2], summaryTableTop + (currentRow * summaryRowHeight), sumColWidths[2], summaryRowHeight);
+      doc.fillColor('#374151');
+      doc.text(formatCurrency(openingBank), sumColX[2] + 5, summaryTableTop + (currentRow * summaryRowHeight) + 4, { width: sumColWidths[2] - 10, align: 'right' });
+      doc.fillColor('#000000');
+      drawSummaryCell(sumColX[3], summaryTableTop + (currentRow * summaryRowHeight), sumColWidths[3], summaryRowHeight);
+      doc.font('Helvetica-Bold').fillColor('#1f2937');
+      doc.text(formatCurrency(openingTotal), sumColX[3] + 5, summaryTableTop + (currentRow * summaryRowHeight) + 4, { width: sumColWidths[3] - 10, align: 'right' });
+      doc.font('Helvetica').fillColor('#000000');
+      currentRow++;
+
+      // Additional Balance Added Row
+      const additionalTotal = report.openingBalanceAdditions?.reduce((sum: number, add: any) => sum + Number(add.amount || 0), 0) || 0;
+      if (additionalTotal > 0) {
+        const additionalCash = report.openingBalanceAdditions?.filter((add: any) => add.paymentType === "cash").reduce((sum: number, add: any) => sum + Number(add.amount || 0), 0) || 0;
+        const additionalBank = report.openingBalanceAdditions?.filter((add: any) => add.paymentType === "bank_transfer").reduce((sum: number, add: any) => sum + Number(add.amount || 0), 0) || 0;
+        drawSummaryCell(sumColX[0], summaryTableTop + (currentRow * summaryRowHeight), sumColWidths[0], summaryRowHeight);
+        doc.font('Helvetica-Bold').fillColor('#1f2937');
+        doc.text("Added", sumColX[0] + 5, summaryTableTop + (currentRow * summaryRowHeight) + 4, { width: sumColWidths[0] - 10 });
+        doc.font('Helvetica').fillColor('#000000');
+        drawSummaryCell(sumColX[1], summaryTableTop + (currentRow * summaryRowHeight), sumColWidths[1], summaryRowHeight);
+        doc.fillColor('#16a34a');
+        doc.text(formatCurrency(additionalCash), sumColX[1] + 5, summaryTableTop + (currentRow * summaryRowHeight) + 4, { width: sumColWidths[1] - 10, align: 'right' });
+        doc.fillColor('#000000');
+        drawSummaryCell(sumColX[2], summaryTableTop + (currentRow * summaryRowHeight), sumColWidths[2], summaryRowHeight);
+        doc.fillColor('#16a34a');
+        doc.text(formatCurrency(additionalBank), sumColX[2] + 5, summaryTableTop + (currentRow * summaryRowHeight) + 4, { width: sumColWidths[2] - 10, align: 'right' });
+        doc.fillColor('#000000');
+        drawSummaryCell(sumColX[3], summaryTableTop + (currentRow * summaryRowHeight), sumColWidths[3], summaryRowHeight);
+        doc.font('Helvetica-Bold').fillColor('#16a34a');
+        doc.text(formatCurrency(additionalTotal), sumColX[3] + 5, summaryTableTop + (currentRow * summaryRowHeight) + 4, { width: sumColWidths[3] - 10, align: 'right' });
+        doc.font('Helvetica').fillColor('#000000');
+        currentRow++;
+      }
+
+      // Sales Row
+      const salesCash = report.sales?.cash || 0;
+      const salesBank = report.sales?.bank_transfer || 0;
+      const salesTotal = report.sales?.total || 0;
+      drawSummaryCell(sumColX[0], summaryTableTop + (currentRow * summaryRowHeight), sumColWidths[0], summaryRowHeight);
+      doc.font('Helvetica-Bold').fillColor('#1f2937');
+      doc.text("Sales", sumColX[0] + 5, summaryTableTop + (currentRow * summaryRowHeight) + 4, { width: sumColWidths[0] - 10 });
+      doc.font('Helvetica').fillColor('#000000');
+      drawSummaryCell(sumColX[1], summaryTableTop + (currentRow * summaryRowHeight), sumColWidths[1], summaryRowHeight);
+      doc.fillColor('#16a34a');
+      doc.text(formatCurrency(salesCash), sumColX[1] + 5, summaryTableTop + (currentRow * summaryRowHeight) + 4, { width: sumColWidths[1] - 10, align: 'right' });
+      doc.fillColor('#000000');
+      drawSummaryCell(sumColX[2], summaryTableTop + (currentRow * summaryRowHeight), sumColWidths[2], summaryRowHeight);
+      doc.fillColor('#16a34a');
+      doc.text(formatCurrency(salesBank), sumColX[2] + 5, summaryTableTop + (currentRow * summaryRowHeight) + 4, { width: sumColWidths[2] - 10, align: 'right' });
+      doc.fillColor('#000000');
+      drawSummaryCell(sumColX[3], summaryTableTop + (currentRow * summaryRowHeight), sumColWidths[3], summaryRowHeight);
+      doc.font('Helvetica-Bold').fillColor('#16a34a');
+      doc.text(formatCurrency(salesTotal), sumColX[3] + 5, summaryTableTop + (currentRow * summaryRowHeight) + 4, { width: sumColWidths[3] - 10, align: 'right' });
+      doc.font('Helvetica').fillColor('#000000');
+      currentRow++;
+
+      // Purchases Row
+      const purchasesCash = report.purchases?.cash || 0;
+      const purchasesBank = report.purchases?.bank_transfer || 0;
+      const purchasesTotal = report.purchases?.total || 0;
+      drawSummaryCell(sumColX[0], summaryTableTop + (currentRow * summaryRowHeight), sumColWidths[0], summaryRowHeight);
+      doc.font('Helvetica-Bold').fillColor('#1f2937');
+      doc.text("Purchase", sumColX[0] + 5, summaryTableTop + (currentRow * summaryRowHeight) + 4, { width: sumColWidths[0] - 10 });
+      doc.font('Helvetica').fillColor('#000000');
+      drawSummaryCell(sumColX[1], summaryTableTop + (currentRow * summaryRowHeight), sumColWidths[1], summaryRowHeight);
+      doc.fillColor('#ea580c');
+      doc.text(formatCurrency(purchasesCash), sumColX[1] + 5, summaryTableTop + (currentRow * summaryRowHeight) + 4, { width: sumColWidths[1] - 10, align: 'right' });
+      doc.fillColor('#000000');
+      drawSummaryCell(sumColX[2], summaryTableTop + (currentRow * summaryRowHeight), sumColWidths[2], summaryRowHeight);
+      doc.fillColor('#ea580c');
+      doc.text(formatCurrency(purchasesBank), sumColX[2] + 5, summaryTableTop + (currentRow * summaryRowHeight) + 4, { width: sumColWidths[2] - 10, align: 'right' });
+      doc.fillColor('#000000');
+      drawSummaryCell(sumColX[3], summaryTableTop + (currentRow * summaryRowHeight), sumColWidths[3], summaryRowHeight);
+      doc.font('Helvetica-Bold').fillColor('#ea580c');
+      doc.text(formatCurrency(purchasesTotal), sumColX[3] + 5, summaryTableTop + (currentRow * summaryRowHeight) + 4, { width: sumColWidths[3] - 10, align: 'right' });
+      doc.font('Helvetica').fillColor('#000000');
+      currentRow++;
+
+      // Expenses Row
+      const expensesCash = report.expenses?.cash || 0;
+      const expensesBank = report.expenses?.bank_transfer || 0;
+      const expensesTotal = report.expenses?.total || 0;
+      drawSummaryCell(sumColX[0], summaryTableTop + (currentRow * summaryRowHeight), sumColWidths[0], summaryRowHeight);
+      doc.font('Helvetica-Bold').fillColor('#1f2937');
+      doc.text("Expense", sumColX[0] + 5, summaryTableTop + (currentRow * summaryRowHeight) + 4, { width: sumColWidths[0] - 10 });
+      doc.font('Helvetica').fillColor('#000000');
+      drawSummaryCell(sumColX[1], summaryTableTop + (currentRow * summaryRowHeight), sumColWidths[1], summaryRowHeight);
+      doc.fillColor('#dc2626');
+      doc.text(formatCurrency(expensesCash), sumColX[1] + 5, summaryTableTop + (currentRow * summaryRowHeight) + 4, { width: sumColWidths[1] - 10, align: 'right' });
+      doc.fillColor('#000000');
+      drawSummaryCell(sumColX[2], summaryTableTop + (currentRow * summaryRowHeight), sumColWidths[2], summaryRowHeight);
+      doc.fillColor('#dc2626');
+      doc.text(formatCurrency(expensesBank), sumColX[2] + 5, summaryTableTop + (currentRow * summaryRowHeight) + 4, { width: sumColWidths[2] - 10, align: 'right' });
+      doc.fillColor('#000000');
+      drawSummaryCell(sumColX[3], summaryTableTop + (currentRow * summaryRowHeight), sumColWidths[3], summaryRowHeight);
+      doc.font('Helvetica-Bold').fillColor('#dc2626');
+      doc.text(formatCurrency(expensesTotal), sumColX[3] + 5, summaryTableTop + (currentRow * summaryRowHeight) + 4, { width: sumColWidths[3] - 10, align: 'right' });
+      doc.font('Helvetica').fillColor('#000000');
+      currentRow++;
+
+      // Closing Balance Row
+      const closingCash = report.closingBalance.cash || 0;
+      const closingBank = report.closingBalance.banks?.reduce((sum: number, b: any) => sum + Number(b.balance || 0), 0) || 0;
+      const closingTotal = report.closingBalance.total || 0;
+      drawSummaryCell(sumColX[0], summaryTableTop + (currentRow * summaryRowHeight), sumColWidths[0], summaryRowHeight, '#dbeafe');
+      doc.font('Helvetica-Bold').fillColor('#1e3a8a');
+      doc.text("Closing", sumColX[0] + 5, summaryTableTop + (currentRow * summaryRowHeight) + 4, { width: sumColWidths[0] - 10 });
+      drawSummaryCell(sumColX[1], summaryTableTop + (currentRow * summaryRowHeight), sumColWidths[1], summaryRowHeight, '#dbeafe');
+      doc.fillColor('#1e3a8a');
+      doc.text(formatCurrency(closingCash), sumColX[1] + 5, summaryTableTop + (currentRow * summaryRowHeight) + 4, { width: sumColWidths[1] - 10, align: 'right' });
+      drawSummaryCell(sumColX[2], summaryTableTop + (currentRow * summaryRowHeight), sumColWidths[2], summaryRowHeight, '#dbeafe');
+      doc.fillColor('#1e3a8a');
+      doc.text(formatCurrency(closingBank), sumColX[2] + 5, summaryTableTop + (currentRow * summaryRowHeight) + 4, { width: sumColWidths[2] - 10, align: 'right' });
+      drawSummaryCell(sumColX[3], summaryTableTop + (currentRow * summaryRowHeight), sumColWidths[3], summaryRowHeight, '#dbeafe');
+      doc.font('Helvetica-Bold').fillColor('#1e3a8a');
+      doc.text(formatCurrency(closingTotal), sumColX[3] + 5, summaryTableTop + (currentRow * summaryRowHeight) + 4, { width: sumColWidths[3] - 10, align: 'right' });
+      doc.font('Helvetica').fillColor('#000000');
+
+      doc.y = summaryTableTop + ((currentRow + 1) * summaryRowHeight) + 5;
+      doc.moveDown(0.3);
+      doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke('#cccccc');
+      doc.moveDown(0.3);
+
+      // Simple Transaction Table Title
+      doc.fontSize(10).font('Helvetica-Bold').fillColor('#374151').text("All Transactions", 50, doc.y);
+      doc.fillColor('#000000');
+      doc.font('Helvetica');
+      doc.moveDown(0.2);
+
+      // Detailed Transactions Table (Using steps array with balance before/after)
+      const transactionSteps = report.steps || [];
+      
+      if (transactionSteps.length > 0) {
+        if (doc.y > 680) doc.addPage();
+        
+        // Helper function to draw cell borders
+        const drawCellBorders = (x: number, y: number, width: number, height: number) => {
+          // Top, Right, Bottom, Left borders
+          doc.moveTo(x, y).lineTo(x + width, y).stroke('#000000'); // Top
+          doc.moveTo(x + width, y).lineTo(x + width, y + height).stroke('#000000'); // Right
+          doc.moveTo(x + width, y + height).lineTo(x, y + height).stroke('#000000'); // Bottom
+          doc.moveTo(x, y + height).lineTo(x, y).stroke('#000000'); // Left
+        };
+        
+        // Professional table header - clear and visible with dark background and white text
+        doc.fontSize(8).font('Helvetica-Bold');
+        const tableTop = doc.y;
+        const rowHeight = 14;
+        // Removed Amount column - columns: Time, Type, Description, By, Pay, Before, After, Change
+        // Expanded columns to use more space on the right
+        const colX = [50, 100, 135, 220, 270, 340, 410, 480];
+        const colWidths = [50, 35, 85, 50, 70, 70, 70, 70];
+        
+        // Draw header with dark blue background for better visibility
+        colX.forEach((x, idx) => {
+          doc.rect(x, tableTop, colWidths[idx], rowHeight).fill('#1e40af');
+          drawCellBorders(x, tableTop, colWidths[idx], rowHeight);
+        });
+        
+        // Header text - white text on dark background for maximum visibility
+        // Columns: Time, Type, Description, By, Pay, Before, After, Change (Amount removed)
+        doc.fillColor('#ffffff');
+        doc.text("Time", colX[0] + 3, tableTop + 4, { width: colWidths[0] - 6 });
+        doc.text("Type", colX[1] + 3, tableTop + 4, { width: colWidths[1] - 6 });
+        doc.text("Description", colX[2] + 3, tableTop + 4, { width: colWidths[2] - 6 });
+        doc.text("By", colX[3] + 3, tableTop + 4, { width: colWidths[3] - 6 });
+        doc.text("Pay", colX[4] + 3, tableTop + 4, { width: colWidths[4] - 6 });
+        doc.text("Before", colX[5] + 3, tableTop + 4, { width: colWidths[5] - 6, align: 'right' });
+        doc.text("After", colX[6] + 3, tableTop + 4, { width: colWidths[6] - 6, align: 'right' });
+        doc.text("Change", colX[7] + 3, tableTop + 4, { width: colWidths[7] - 6, align: 'right' });
+        doc.fillColor('#000000');
+        
+        doc.y = tableTop + rowHeight;
+        
+        // Table rows - professional spacing
+        doc.font('Helvetica').fontSize(7);
+        transactionSteps.forEach((step: any, index: number) => {
+          if (doc.y > 750) {
+            doc.addPage();
+            // Redraw header on new page
+            doc.fontSize(8).font('Helvetica-Bold').fillColor('#1f2937');
+            const newTableTop = doc.y;
+            colX.forEach((x, idx) => {
+              doc.rect(x, newTableTop, colWidths[idx], rowHeight).fill('#f3f4f6');
+              drawCellBorders(x, newTableTop, colWidths[idx], rowHeight);
+            });
+            doc.text("Time", colX[0] + 3, newTableTop + 4, { width: colWidths[0] - 6 });
+            doc.text("Type", colX[1] + 3, newTableTop + 4, { width: colWidths[1] - 6 });
+            doc.text("Description", colX[2] + 3, newTableTop + 4, { width: colWidths[2] - 6 });
+            doc.text("By", colX[3] + 3, newTableTop + 4, { width: colWidths[3] - 6 });
+            doc.text("Pay", colX[4] + 3, newTableTop + 4, { width: colWidths[4] - 6 });
+            doc.text("Before", colX[5] + 3, newTableTop + 4, { width: colWidths[5] - 6, align: 'right' });
+            doc.text("After", colX[6] + 3, newTableTop + 4, { width: colWidths[6] - 6, align: 'right' });
+            doc.text("Change", colX[7] + 3, newTableTop + 4, { width: colWidths[7] - 6, align: 'right' });
+            doc.fillColor('#000000');
+            doc.y = newTableTop + rowHeight;
+            doc.font('Helvetica').fontSize(7);
+          }
+
+          // Format time correctly using local time components (no timezone conversion)
+          let timeStr = "00:00";
+          if (step.datetime) {
+            const stepDate = step.datetime instanceof Date ? step.datetime : new Date(step.datetime);
+            // Extract local time components directly to avoid timezone conversion
+            const hours = String(stepDate.getHours()).padStart(2, '0');
+            const minutes = String(stepDate.getMinutes()).padStart(2, '0');
+            timeStr = `${hours}:${minutes}`;
+          }
+          const typeColor = step.type === "Sale" ? '#16a34a' : step.type === "Purchase" ? '#ea580c' : step.type === "Expense" ? '#dc2626' : step.type === "Opening Balance" ? '#3b82f6' : '#9333ea';
+          
+          const currentY = doc.y;
+          
+          // Alternate row background for better readability
+          if (index % 2 === 0) {
+            colX.forEach((x, idx) => {
+              doc.rect(x, currentY, colWidths[idx], rowHeight).fill('#f9fafb');
+            });
+          }
+          
+          // Draw cell borders for this row
+          colX.forEach((x, idx) => {
+            drawCellBorders(x, currentY, colWidths[idx], rowHeight);
+          });
+          
+          // Time
+          doc.fillColor('#1f2937');
+          doc.text(timeStr, colX[0] + 3, currentY + 4, { width: colWidths[0] - 6 });
+          
+          // Type (compact)
+          doc.fillColor(typeColor);
+          const typeShort = step.type === "Opening Balance Addition" ? "Add" : step.type === "Opening Balance" ? "Open" : step.type.substring(0, 5);
+          doc.text(typeShort, colX[1] + 3, currentY + 4, { width: colWidths[1] - 6 });
+          doc.fillColor('#000000');
+          
+          // Description (truncated to fit)
+          let description = step.description || "";
+          if (description.length > 18) description = description.substring(0, 15) + "...";
+          doc.fillColor('#1f2937');
+          doc.text(description, colX[2] + 3, currentY + 4, { width: colWidths[2] - 6 });
+          doc.fillColor('#000000');
+          
+          // User name (who did it)
+          const userName = step.userName || "System";
+          doc.fillColor('#4b5563');
+          doc.text(userName.length > 7 ? userName.substring(0, 5) + ".." : userName, colX[3] + 3, currentY + 4, { width: colWidths[3] - 6 });
+          doc.fillColor('#000000');
+          
+          // Payment type
+          const paymentType = step.paymentType || "cash";
+          const paymentText = paymentType === "bank_transfer" ? "Bank" : paymentType === "cash" ? "Cash" : "Card";
+          doc.fillColor('#4b5563');
+          doc.text(paymentText, colX[4] + 3, currentY + 4, { width: colWidths[4] - 6 });
+          doc.fillColor('#000000');
+          
+          // Balance Before - Show according to payment type (Cash or Bank)
+          let balanceBefore = 0;
+          if (paymentType === "cash") {
+            // For cash payments, show cash balance before
+            balanceBefore = Number(step.cashBefore || 0);
+          } else if (paymentType === "bank_transfer" && step.bankAccountId) {
+            // For bank payments, show the specific bank's balance before
+            if (step.bankBalancesBefore && step.bankBalancesBefore.length > 0) {
+              const bankBalance = step.bankBalancesBefore.find((b: any) => b.bankAccountId === step.bankAccountId);
+              balanceBefore = Number(bankBalance?.balance || 0);
+            } else {
+              balanceBefore = 0;
+            }
+          } else {
+            // Fallback to cash balance
+            balanceBefore = Number(step.cashBefore || 0);
+          }
+          doc.fillColor('#6b7280');
+          doc.text(balanceBefore.toFixed(0), colX[5] + 3, currentY + 4, { width: colWidths[5] - 6, align: 'right' });
+          doc.fillColor('#000000');
+          
+          // Balance After - Show according to payment type (Cash or Bank)
+          let balanceAfter = 0;
+          if (paymentType === "cash") {
+            // For cash payments, show cash balance after
+            balanceAfter = Number(step.cashAfter || 0);
+          } else if (paymentType === "bank_transfer" && step.bankAccountId) {
+            // For bank payments, show the specific bank's balance after
+            if (step.bankBalancesAfter && step.bankBalancesAfter.length > 0) {
+              const bankBalance = step.bankBalancesAfter.find((b: any) => b.bankAccountId === step.bankAccountId);
+              balanceAfter = Number(bankBalance?.balance || 0);
+            } else {
+              balanceAfter = 0;
+            }
+          } else {
+            // Fallback to cash balance
+            balanceAfter = Number(step.cashAfter || 0);
+          }
+          doc.fillColor('#1f2937');
+          doc.text(balanceAfter.toFixed(0), colX[6] + 3, currentY + 4, { width: colWidths[6] - 6, align: 'right' });
+          doc.fillColor('#000000');
+          
+          // Change
+          const change = balanceAfter - balanceBefore;
+          const changeColor = change >= 0 ? '#16a34a' : '#dc2626';
+          doc.fillColor(changeColor);
+          const changeText = `${change >= 0 ? '+' : ''}${Math.abs(change).toFixed(0)}`;
+          doc.text(changeText, colX[7] + 3, currentY + 4, { width: colWidths[7] - 6, align: 'right' });
+          doc.fillColor('#000000');
+          
+          doc.y = currentY + rowHeight;
+        });
+        
+        // Table footer border - extended to match wider table
+        const tableEndX = colX[colX.length - 1] + colWidths[colWidths.length - 1];
+        doc.moveTo(50, doc.y).lineTo(tableEndX, doc.y).stroke('#000000');
+        doc.moveDown(0.2);
+        doc.fontSize(7).font('Helvetica-Bold');
+        doc.text(`Total: ${transactionSteps.length} transactions`, 50, doc.y, { width: tableEndX - 50, align: 'right' });
+        doc.font('Helvetica');
+      } else {
+        doc.fontSize(8).text("No transactions found for this date.", 50, doc.y);
+        doc.moveDown(0.2);
+      }
+
+      // Compact footer
+      doc.moveDown(0.2);
+      doc.fontSize(7).fillColor('#666666').text(
+        `Generated: ${new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`,
+        { align: "center" }
+      );
+      doc.fillColor('#000000');
+
+      doc.end();
+    } catch (error) {
+      logger.error("Error generating PDF:", error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Internal server error" });
+      }
+    }
+  }
+
   async generateSalesReportPDF(filters: { startDate?: string; endDate?: string }, res: Response) {
     const report = await this.getSalesReport(filters);
     const settings = await prisma.shopSettings.findFirst();
 
-    // Fetch balance transactions for these sales
-    const balanceTransactionService = (await import("./balanceTransaction.service")).default;
-    let balanceTransactions: any[] = [];
-    try {
-      if (filters.startDate && filters.endDate) {
-        balanceTransactions = await balanceTransactionService.getTransactions({
-          startDate: filters.startDate,
-          endDate: filters.endDate,
-        });
-      }
-    } catch (e) {
-      logger.error("Error fetching balance transactions for Sales PDF:", e);
-    }
-
-    const balanceTxMap = new Map<string, any>();
-    balanceTransactions.forEach((tx: any) => {
-      const normalizedPaymentType = tx.paymentType === 'card' ? 'bank_transfer' : (tx.paymentType || 'cash');
-      const key = `${tx.source || ''}_${tx.sourceId || ''}_${normalizedPaymentType}`;
-      balanceTxMap.set(key, tx);
-    });
-
     const doc = new PDFDocument({ margin: 50 });
-
-    doc.on('error', (err) => {
-      logger.error("PDFkit error in Sales Report:", err);
-      doc.unpipe(res);
-      if (!res.headersSent) {
-        res.status(500).json({ error: "Failed to generate PDF" });
-      }
-    });
-
-    // Set response headers only if not already sent
     if (!res.headersSent) {
       res.setHeader("Content-Type", "application/pdf");
-      res.setHeader(
-        "Content-Disposition",
-        `attachment; filename=sales-report-${new Date().toISOString().split("T")[0]}.pdf`
-      );
+      res.setHeader("Content-Disposition", `attachment; filename=sales-report-${new Date().toISOString().split("T")[0]}.pdf`);
     }
-
     doc.pipe(res);
 
-    try {
-      // Header
-      doc.fontSize(20).text(settings?.shopName || "Isma Sports Complex", { align: "center" });
-      doc.moveDown();
-      doc.fontSize(16).text("Sales Report", { align: "center" });
-      if (filters.startDate && filters.endDate) {
-        doc.fontSize(12).text(
-          `${new Date(filters.startDate).toLocaleDateString()} - ${new Date(filters.endDate).toLocaleDateString()}`,
-          { align: "center" }
-        );
-      }
-      doc.moveDown(2);
-
-      // Summary
-      doc.fontSize(14).text("Summary", { underline: true });
-      doc.moveDown();
-      doc.fontSize(12).text(`Total Sales: Rs. ${Number(report.summary.totalSales || 0).toFixed(2)}`);
-      doc.text(`Total Bills: ${report.summary.totalBills}`);
-      doc.text(`Average Bill: Rs. ${Number(report.summary.averageBill || 0).toFixed(2)}`);
-      doc.moveDown(2);
-
-      // Sales Details
-      if (report.sales.length > 0) {
-        doc.fontSize(14).text("Sales Details", { underline: true });
-        doc.moveDown();
-
-        // Headers for a table-like view
-        doc.fontSize(9).font("Helvetica-Bold");
-        doc.text("Bill #", 50, doc.y);
-        doc.text("Customer", 120, doc.y - 9);
-        doc.text("Amount", 250, doc.y - 9, { width: 70, align: "right" });
-        doc.text("Before", 330, doc.y - 9, { width: 70, align: "right" });
-        doc.text("After", 410, doc.y - 9, { width: 70, align: "right" });
-        doc.text("Date", 490, doc.y - 9);
-        doc.moveDown(0.5);
-        doc.font("Helvetica");
-
-        report.sales.forEach((sale: any) => {
-          // Find balance transaction
-          // Start with sale_payment, fallback to sale
-          const paymentType = sale.paymentType === 'card' ? 'bank_transfer' : (sale.paymentType || 'cash');
-          const key = `sale_payment_${sale.id}_${paymentType}`;
-          const key2 = `sale_${sale.id}_${paymentType}`;
-          const balanceTx = balanceTxMap.get(key) || balanceTxMap.get(key2);
-
-          if (doc.y > 700) {
-            doc.addPage();
-          }
-
-          const initialY = doc.y;
-          doc.fontSize(9).text(sale.billNumber || 'N/A', 50, initialY);
-          doc.text((sale.customerName || "Walk-in").substring(0, 20), 120, initialY);
-          doc.text(`Rs. ${Number(sale.total || 0).toFixed(2)}`, 250, initialY, { width: 70, align: "right" });
-
-          const beforeStr = balanceTx?.beforeBalance !== undefined ? `Rs. ${Number(balanceTx.beforeBalance).toFixed(2)}` : "-";
-          const afterStr = balanceTx?.afterBalance !== undefined ? `Rs. ${Number(balanceTx.afterBalance).toFixed(2)}` : "-";
-
-          doc.text(beforeStr, 330, initialY, { width: 70, align: "right" });
-          doc.text(afterStr, 410, initialY, { width: 70, align: "right" });
-          doc.text(new Date(sale.createdAt).toLocaleDateString(), 490, initialY);
-          doc.moveDown(0.8);
-        });
-      } else {
-        doc.fontSize(12).text("No sales found for the selected period.");
-      }
-    } catch (error) {
-      logger.error("Error building Sales Report PDF contents:", error);
-      doc.unpipe(res);
-      if (!res.headersSent) {
-        res.status(500).json({ error: "Internal server error while building PDF" });
-      }
-    } finally {
-      doc.end();
+    doc.fontSize(20).text(settings?.shopName || "Isma Sports Complex", { align: "center" });
+    doc.moveDown();
+    doc.fontSize(16).text("Sales Report", { align: "center" });
+    if (filters.startDate && filters.endDate) {
+      doc.fontSize(12).text(`${new Date(filters.startDate).toLocaleDateString()} - ${new Date(filters.endDate).toLocaleDateString()}`, { align: "center" });
     }
+    doc.moveDown(2);
+
+    doc.fontSize(14).text("Summary", { underline: true });
+    doc.moveDown();
+    doc.fontSize(12).text(`Total Sales: Rs. ${Number(report.summary.totalSales || 0).toFixed(2)}`);
+    doc.text(`Total Bills: ${report.summary.totalBills}`);
+    doc.text(`Average Bill: Rs. ${Number(report.summary.averageBill || 0).toFixed(2)}`);
+
+    doc.end();
   }
 
   async generateExpensesReportPDF(filters: { startDate?: string; endDate?: string }, res: Response) {
     const report = await this.getExpensesReport(filters);
     const settings = await prisma.shopSettings.findFirst();
 
-    // Fetch balance transactions for these expenses
-    const balanceTransactionService = (await import("./balanceTransaction.service")).default;
-    let balanceTransactions: any[] = [];
-    try {
-      if (filters.startDate && filters.endDate) {
-        balanceTransactions = await balanceTransactionService.getTransactions({
-          startDate: filters.startDate,
-          endDate: filters.endDate,
-        });
-      }
-    } catch (e) {
-      logger.error("Error fetching balance transactions for Expenses PDF:", e);
-    }
-
-    const balanceTxMap = new Map<string, any>();
-    balanceTransactions.forEach((tx: any) => {
-      const normalizedPaymentType = tx.paymentType === 'card' ? 'bank_transfer' : (tx.paymentType || 'cash');
-      const key = `${tx.source || ''}_${tx.sourceId || ''}_${normalizedPaymentType}`;
-      balanceTxMap.set(key, tx);
-    });
-
     const doc = new PDFDocument({ margin: 50 });
-
-    doc.on('error', (err) => {
-      logger.error("PDFkit error in Expenses Report:", err);
-      doc.unpipe(res);
-      if (!res.headersSent) {
-        res.status(500).json({ error: "Failed to generate PDF" });
-      }
-    });
-
-    // Set response headers only if not already sent
     if (!res.headersSent) {
       res.setHeader("Content-Type", "application/pdf");
-      res.setHeader(
-        "Content-Disposition",
-        `attachment; filename=expenses-report-${new Date().toISOString().split("T")[0]}.pdf`
-      );
+      res.setHeader("Content-Disposition", `attachment; filename=expenses-report-${new Date().toISOString().split("T")[0]}.pdf`);
     }
-
     doc.pipe(res);
 
-    try {
-      // Header
-      doc.fontSize(20).text(settings?.shopName || "Isma Sports Complex", { align: "center" });
-      doc.moveDown();
-      doc.fontSize(16).text("Expenses Report", { align: "center" });
-      if (filters.startDate && filters.endDate) {
-        doc.fontSize(12).text(
-          `${new Date(filters.startDate).toLocaleDateString()} - ${new Date(filters.endDate).toLocaleDateString()}`,
-          { align: "center" }
-        );
-      }
-      doc.moveDown(2);
-
-      // Summary
-      doc.fontSize(14).text("Summary", { underline: true });
-      doc.moveDown();
-      doc.fontSize(12).text(`Total Expenses: Rs. ${Number(report.summary.totalExpenses || 0).toFixed(2)}`);
-      doc.moveDown();
-
-      // Category Breakdown
-      if (report.summary.categoryTotals && Object.keys(report.summary.categoryTotals).length > 0) {
-        doc.fontSize(14).text("Category Breakdown", { underline: true });
-        doc.moveDown();
-        Object.entries(report.summary.categoryTotals).forEach(([category, total]) => {
-          doc.fontSize(11).text(`${category}: Rs. ${Number(total || 0).toFixed(2)}`);
-        });
-        doc.moveDown(2);
-      }
-
-      // Expense Details
-      if (report.expenses.length > 0) {
-        doc.fontSize(14).text("Expense Details", { underline: true });
-        doc.moveDown();
-
-        // Headers
-        const tableTop = doc.y;
-        doc.fontSize(9).font("Helvetica-Bold");
-        doc.text("Description", 50, tableTop);
-        doc.text("Amount", 250, tableTop, { width: 70, align: "right" });
-        doc.text("Before", 330, tableTop, { width: 70, align: "right" });
-        doc.text("After", 410, tableTop, { width: 70, align: "right" });
-        doc.text("Category/Date", 490, tableTop);
-        doc.moveDown(0.5);
-        doc.font("Helvetica");
-
-        report.expenses.forEach((expense: any) => {
-          const key = `expense_${expense.id}_${expense.paymentType || 'cash'}`;
-          const balanceTx = balanceTxMap.get(key);
-
-          if (doc.y > 700) {
-            doc.addPage();
-          }
-
-          const initialY = doc.y;
-          doc.fontSize(9).text((expense.description || '').substring(0, 30), 50, initialY);
-          doc.text(`Rs. ${Number(expense.amount || 0).toFixed(2)}`, 250, initialY, { width: 70, align: "right" });
-
-          const beforeStr = balanceTx?.beforeBalance !== undefined ? `Rs. ${Number(balanceTx.beforeBalance).toFixed(2)}` : "-";
-          const afterStr = balanceTx?.afterBalance !== undefined ? `Rs. ${Number(balanceTx.afterBalance).toFixed(2)}` : "-";
-
-          doc.text(beforeStr, 330, initialY, { width: 70, align: "right" });
-          doc.text(afterStr, 410, initialY, { width: 70, align: "right" });
-          doc.text(`${expense.category} | ${new Date(expense.date).toLocaleDateString()}`, 490, initialY);
-          doc.moveDown(0.8);
-        });
-      } else {
-        doc.fontSize(12).text("No expenses found for the selected period.");
-      }
-    } catch (error) {
-      logger.error("Error building Expenses Report PDF contents:", error);
-      doc.unpipe(res);
-      if (!res.headersSent) {
-        res.status(500).json({ error: "Internal server error while building PDF" });
-      }
-    } finally {
-      doc.end();
+    doc.fontSize(20).text(settings?.shopName || "Isma Sports Complex", { align: "center" });
+    doc.moveDown();
+    doc.fontSize(16).text("Expenses Report", { align: "center" });
+    if (filters.startDate && filters.endDate) {
+      doc.fontSize(12).text(`${new Date(filters.startDate).toLocaleDateString()} - ${new Date(filters.endDate).toLocaleDateString()}`, { align: "center" });
     }
+    doc.moveDown(2);
+
+    doc.fontSize(14).text("Summary", { underline: true });
+    doc.moveDown();
+    doc.fontSize(12).text(`Total Expenses: Rs. ${Number(report.summary.totalExpenses || 0).toFixed(2)}`);
+
+    doc.end();
   }
 
   async generateProfitLossReportPDF(filters: { startDate?: string; endDate?: string }, res: Response) {
@@ -375,1238 +2057,29 @@ class ReportService {
     const settings = await prisma.shopSettings.findFirst();
 
     const doc = new PDFDocument({ margin: 50 });
-
-    doc.on('error', (err) => {
-      logger.error("PDFkit error in Profit/Loss Report:", err);
-      doc.unpipe(res);
-      if (!res.headersSent) {
-        res.status(500).json({ error: "Failed to generate PDF" });
-      }
-    });
-
     if (!res.headersSent) {
       res.setHeader("Content-Type", "application/pdf");
-      res.setHeader(
-        "Content-Disposition",
-        `attachment; filename=profit-loss-report-${new Date().toISOString().split("T")[0]}.pdf`
-      );
+      res.setHeader("Content-Disposition", `attachment; filename=profit-loss-report-${new Date().toISOString().split("T")[0]}.pdf`);
     }
-
     doc.pipe(res);
 
-    try {
-      // Header
-      doc.fontSize(20).text(settings?.shopName || "Isma Sports Complex", { align: "center" });
-      doc.moveDown();
-      doc.fontSize(16).text("Profit & Loss Report", { align: "center" });
-      if (filters.startDate && filters.endDate) {
-        doc.fontSize(12).text(
-          `${new Date(filters.startDate).toLocaleDateString()} - ${new Date(filters.endDate).toLocaleDateString()}`,
-          { align: "center" }
-        );
-      }
-      doc.moveDown(2);
-
-      // Summary
-      doc.fontSize(14).text("Financial Summary", { underline: true });
-      doc.moveDown();
-      doc.fontSize(12).text(`Total Sales: Rs. ${Number(report.totalSales || 0).toFixed(2)}`);
-      doc.text(`Total Expenses: Rs. ${Number(report.totalExpenses || 0).toFixed(2)}`);
-      doc.moveDown();
-      doc.fontSize(14).text(`Profit: Rs. ${Number(report.profit || 0).toFixed(2)}`, { underline: true });
-      doc.text(`Profit Margin: ${Number(report.profitMargin || 0).toFixed(2)}%`);
-    } catch (error) {
-      logger.error("Error building Profit/Loss Report PDF contents:", error);
-      doc.unpipe(res);
-      if (!res.headersSent) {
-        res.status(500).json({ error: "Internal server error while building PDF" });
-      }
-    } finally {
-      doc.end();
+    doc.fontSize(20).text(settings?.shopName || "Isma Sports Complex", { align: "center" });
+    doc.moveDown();
+    doc.fontSize(16).text("Profit & Loss Report", { align: "center" });
+    if (filters.startDate && filters.endDate) {
+      doc.fontSize(12).text(`${new Date(filters.startDate).toLocaleDateString()} - ${new Date(filters.endDate).toLocaleDateString()}`, { align: "center" });
     }
-  }
-
-  async getDailyReport(date: string) {
-    // Parse date string (YYYY-MM-DD) properly to avoid timezone issues
-    logger.info(`Getting daily report for date: ${date}`);
-    const dateParts = date.split("-");
-    if (dateParts.length !== 3) {
-      throw new Error(`Invalid date format: ${date}. Expected YYYY-MM-DD`);
-    }
-
-    // Create date at noon UTC to avoid timezone issues, then convert to local date
-    const utcDate = new Date(Date.UTC(
-      parseInt(dateParts[0]),
-      parseInt(dateParts[1]) - 1,
-      parseInt(dateParts[2]),
-      12, 0, 0, 0 // Noon UTC to avoid daylight saving issues
-    ));
-
-    // Convert to local date components
-    const localYear = utcDate.getFullYear();
-    const localMonth = utcDate.getMonth();
-    const localDate = utcDate.getDate();
-
-    // Create targetDate using local date components
-    const targetDate = new Date(localYear, localMonth, localDate, 0, 0, 0, 0);
-
-    const nextDate = new Date(localYear, localMonth, localDate + 1, 0, 0, 0, 0);
-
-    logger.info(`Parsed date ${date} -> targetDate: ${targetDate.toISOString()}, nextDate: ${nextDate.toISOString()}`);
-    const dailyClosingBalanceService = (await import("./dailyClosingBalance.service")).default;
-    const balanceTransactionService = (await import("./balanceTransaction.service")).default;
-
-    // Recalculate and fetch the current closing balance record (source of truth from ledger)
-    const closingBalanceRecord = await dailyClosingBalanceService.calculateAndStoreClosingBalance(targetDate);
-
-    // Get baseline opening balance record
-    const openingBalance = await prisma.dailyOpeningBalance.findFirst({
-      where: {
-        date: {
-          gte: targetDate,
-          lt: nextDate,
-        },
-      },
-      orderBy: { createdAt: "asc" },
-    });
-
-    let openingCash = 0;
-    let openingBankBalances: any[] = [];
-    let openingCardBalances: any[] = [];
-
-    if (openingBalance) {
-      openingCash = Number(openingBalance.cashBalance || 0);
-      openingBankBalances = (openingBalance.bankBalances as any[]) || [];
-      openingCardBalances = (openingBalance.cardBalances as any[]) || [];
-    } else {
-      const prevClosing = await dailyClosingBalanceService.getPreviousDayClosingBalance(date);
-      if (prevClosing) {
-        openingCash = Number(prevClosing.cashBalance || 0);
-        openingBankBalances = (prevClosing.bankBalances as any[]) || [];
-        openingCardBalances = (prevClosing.cardBalances as any[]) || [];
-      }
-    }
-
-    const cards = await prisma.card.findMany();
-    const cardMap = new Map(cards.map((card) => [card.id, card]));
-    const banks = await prisma.bankAccount.findMany();
-    const bankMap = new Map(banks.map((bank) => [bank.id, bank]));
-
-    const mapBanks = (bals: any[]) => bals.map(b => ({
-      ...b,
-      bankName: bankMap.get(b.bankAccountId)?.bankName || "Unknown",
-      accountNumber: bankMap.get(b.bankAccountId)?.accountNumber || "",
-      balance: Number(b.balance)
-    }));
-
-    const mapCards = (bals: any[]) => bals.map(cb => ({
-      ...cb,
-      cardName: cardMap.get(cb.cardId)?.name || "Unknown",
-      balance: Number(cb.balance)
-    }));
-
-    // Fetch transactions
-    const transactions = await balanceTransactionService.getTransactions({
-      startDate: date,
-      endDate: date,
-    });
-
-    const openingBalanceAdditions = transactions
-      .filter((t: any) => (t.source || "").includes("opening_balance") || t.source === "add_opening_balance")
-      .sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-
-    // Extract IDs from transactions to fetch involved sales and purchases
-    // We use startsWith to catch both 'sale' and 'sale_payment', 'purchase' and 'purchase_payment'
-    const saleIds = transactions.filter(t => (t.source || "").startsWith("sale")).map(t => t.sourceId).filter(Boolean);
-    const purchaseIds = transactions.filter(t => (t.source || "").startsWith("purchase")).map(t => t.sourceId).filter(Boolean);
-
-    // Fetch core items for the day - include those with transactions today OR created today
-    const sales = await prisma.sale.findMany({
-        where: {
-          OR: [
-            { date: { gte: targetDate, lt: nextDate } },
-            { id: { in: saleIds as string[] } }
-          ]
-        },
-      include: { customer: true }
-    });
-
-    const purchases = await prisma.purchase.findMany({
-      where: {
-        OR: [
-          { date: { gte: targetDate, lt: nextDate } },
-          { id: { in: purchaseIds as string[] } }
-        ]
-      },
-      include: { supplier: true }
-    });
-
-    const expenses = await prisma.expense.findMany({
-      where: { date: { gte: targetDate, lt: nextDate } }
-    });
-
-    // Helper for payment breakdown
-    const getPaymentRows = (items: any[]) => {
-      const rows: any[] = [];
-      items.forEach(item => {
-        const payments = (item.payments as any[]) || [];
-        if (payments.length > 0) {
-          payments.forEach((p, idx) => {
-            const pDate = p.date ? new Date(p.date) : new Date(item.date);
-            // Robust comparison for same day
-            const isSameDay = pDate.getFullYear() === targetDate.getFullYear() &&
-              pDate.getMonth() === targetDate.getMonth() &&
-              pDate.getDate() === targetDate.getDate();
-
-            if (isSameDay) {
-              rows.push({
-                ...item,
-                paymentAmount: Number(p.amount),
-                paymentType: p.type,
-                paymentDate: p.date || item.date,
-                paymentIndex: idx
-              });
-            }
-          });
-        } else {
-          const iDate = new Date(item.date);
-          const isSameDay = iDate.getFullYear() === targetDate.getFullYear() &&
-            iDate.getMonth() === targetDate.getMonth() &&
-            iDate.getDate() === targetDate.getDate();
-
-          if (isSameDay) {
-            rows.push({
-              ...item,
-              paymentAmount: Number(item.total),
-              paymentType: item.paymentType || "cash",
-              paymentDate: item.date,
-              paymentIndex: 0
-            });
-          }
-        }
-      });
-      return rows;
-    };
-
-    const salesPaymentRows = getPaymentRows(sales);
-    const purchasesPaymentRows = getPaymentRows(purchases);
-
-    // Calculate totals for report view
-    const salesTotal = salesPaymentRows.reduce((s, r) => s + r.paymentAmount, 0);
-    const purchasesTotal = purchasesPaymentRows.reduce((s, r) => s + r.paymentAmount, 0);
-    const expensesTotal = expenses.reduce((s, e) => s + Number(e.amount), 0);
-
-    const cashSales = salesPaymentRows.filter((r: any) => r.paymentType === 'cash').reduce((s, r) => s + r.paymentAmount, 0);
-    const bankSales = salesPaymentRows.filter((r: any) => r.paymentType === 'bank_transfer').reduce((s, r) => s + r.paymentAmount, 0);
-    const cardSales = salesPaymentRows.filter((r: any) => r.paymentType === 'card').reduce((s, r) => s + r.paymentAmount, 0);
-
-    const cashPurchases = purchasesPaymentRows.filter((r: any) => r.paymentType === 'cash').reduce((s, r) => s + r.paymentAmount, 0);
-    const bankPurchases = purchasesPaymentRows.filter((r: any) => r.paymentType === 'bank_transfer').reduce((s, r) => s + r.paymentAmount, 0);
-    const cardPurchases = purchasesPaymentRows.filter((r: any) => r.paymentType === 'card').reduce((s, r) => s + r.paymentAmount, 0);
-
-    const cashExpenses = expenses.filter((e: any) => e.paymentType === 'cash').reduce((s, e) => s + Number(e.amount), 0);
-    const bankExpenses = expenses.filter((e: any) => e.paymentType === 'bank_transfer').reduce((s, e) => s + Number(e.amount), 0);
-    const cardExpenses = expenses.filter((e: any) => e.paymentType === 'card').reduce((s, e) => s + Number(e.amount), 0);
-
-    return {
-      date,
-      openingBalance: {
-        cash: openingCash,
-        banks: mapBanks(openingBankBalances),
-        cards: mapCards(openingCardBalances),
-        total: openingCash + openingBankBalances.reduce((s, b) => s + Number(b.balance), 0) + openingCardBalances.reduce((s, b) => s + Number(b.balance), 0)
-      },
-      closingBalance: {
-        cash: Number(closingBalanceRecord.cashBalance),
-        banks: mapBanks((closingBalanceRecord.bankBalances as any[]) || []),
-        cards: mapCards((closingBalanceRecord.cardBalances as any[]) || []),
-        total: Number(closingBalanceRecord.cashBalance) +
-          ((closingBalanceRecord.bankBalances as any[]) || []).reduce((s, b) => s + Number(b.balance), 0) +
-          ((closingBalanceRecord.cardBalances as any[]) || []).reduce((s, b) => s + Number(b.balance), 0)
-      },
-      openingBalanceAdditions: openingBalanceAdditions.map((t: any) => ({
-        ...t,
-        amount: Number(t.amount),
-        beforeBalance: t.beforeBalance ? Number(t.beforeBalance) : null,
-        afterBalance: t.afterBalance ? Number(t.afterBalance) : null,
-        changeAmount: t.changeAmount ? Number(t.changeAmount) : null
-      })),
-      sales: {
-        total: salesTotal,
-        cash: cashSales,
-        bank_transfer: bankSales,
-        card: cardSales,
-        count: salesPaymentRows.length,
-        items: salesPaymentRows
-      },
-      purchases: {
-        total: purchasesTotal,
-        cash: cashPurchases,
-        bank_transfer: bankPurchases,
-        card: cardPurchases,
-        count: purchasesPaymentRows.length,
-        items: purchasesPaymentRows
-      },
-      expenses: {
-        total: expensesTotal,
-        cash: cashExpenses,
-        bank_transfer: bankExpenses,
-        card: cardExpenses,
-        count: expenses.length,
-        items: expenses
-      }
-    };
-  }
-
-  /**
-   * Generate comprehensive daily report PDF with chronological order and before/after balances
-   */
-  async generateDailyReportPDF(date: string, res: Response) {
-    try {
-      const report = await this.getDailyReport(date);
-      const settings = await prisma.shopSettings.findFirst();
-      const balanceTransactionService = (await import("./balanceTransaction.service")).default;
-
-      let allBalanceTransactions: any[] = [];
-      try {
-        allBalanceTransactions = await balanceTransactionService.getTransactions({
-          startDate: date,
-          endDate: date,
-        });
-        // Sort by creation time
-        allBalanceTransactions.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-      } catch (e) {
-        logger.error("Error fetching balance transactions for PDF:", e);
-      }
-
-      // Create a map of balance transactions by source, sourceId, and paymentType
-      const balanceTxMap = new Map<string, any[]>();
-      allBalanceTransactions.forEach((tx: any) => {
-        // Keep card payments separate
-        const normalizedPaymentType = tx.paymentType || 'cash';
-
-        // Match by source and sourceId, then by paymentType
-        const key = `${tx.source || ''}_${tx.sourceId || ''}_${normalizedPaymentType}`;
-        if (!balanceTxMap.get(key)) {
-          balanceTxMap.set(key, []);
-        }
-        balanceTxMap.get(key)!.push(tx);
-      });
-
-      const doc = new PDFDocument({ margin: 50 });
-
-      doc.on('error', (err) => {
-        logger.error("PDFkit error in Daily Report:", err);
-        doc.unpipe(res);
-        if (!res.headersSent) {
-          res.status(500).json({ error: "Failed to generate PDF" });
-        }
-      });
-
-      // Set response headers only if not already sent
-      if (!res.headersSent) {
-        res.setHeader("Content-Type", "application/pdf");
-        res.setHeader(
-          "Content-Disposition",
-          `attachment; filename=daily-report-${date}.pdf`
-        );
-      }
-
-      doc.pipe(res);
-
-      // Header
-      doc.fontSize(20).text(settings?.shopName || "Isma Sports Complex", { align: "center" });
-      doc.moveDown();
-      doc.fontSize(16).text("Daily Financial Report", { align: "center" });
-      doc.fontSize(12).text(`Date: ${new Date(date).toLocaleDateString()}`, { align: "center" });
-      doc.moveDown(2);
-
-      // Opening Balance Section
-      doc.fontSize(16).text("Opening Balance", { underline: true });
-      doc.moveDown();
-
-      // Cash Balance Card
-      doc.rect(50, doc.y, 200, 40).fillColor('#dbeafe').fill();
-      doc.fillColor('black');
-      doc.fontSize(10).text("Cash Balance", 55, doc.y + 5);
-      doc.fontSize(18).font("Helvetica-Bold").fillColor('#2563eb');
-      doc.text(`Rs. ${Number(report.openingBalance.cash || 0).toFixed(2)}`, 55, doc.y + 15);
-      doc.fillColor('black');
-      doc.moveDown(0.8);
-
-      // Bank Balances
-      if (report.openingBalance.banks && report.openingBalance.banks.length > 0) {
-        doc.fontSize(11).font("Helvetica-Bold").text("Bank-wise Balances", { underline: false });
-        doc.moveDown(0.3);
-        report.openingBalance.banks.forEach((bank: any) => {
-          const bankName = bank.bankName || "Bank";
-          const accountNumber = bank.accountNumber || "";
-          doc.rect(50, doc.y, 200, 30).fillColor('#ffffff').strokeColor('#d1d5db').lineWidth(1).fillAndStroke();
-          doc.fillColor('black');
-          doc.fontSize(8).text(bankName, 55, doc.y + 3);
-          if (accountNumber) {
-            doc.fontSize(7).fillColor('#6b7280').text(accountNumber, 55, doc.y + 12);
-            doc.fillColor('black');
-          }
-          doc.fontSize(11).font("Helvetica-Bold").text(`Rs. ${Number(bank.balance || 0).toFixed(2)}`, 55, doc.y + 18);
-          doc.moveDown(0.5);
-        });
-
-        const openingBankTotal = report.openingBalance.banks.reduce((sum: number, bank: any) => sum + Number(bank.balance || 0), 0);
-        doc.moveUp(0.2);
-        doc.rect(50, doc.y, 200, 25).fillColor('#f9fafb').fill();
-        doc.fillColor('black');
-        doc.fontSize(9).font("Helvetica-Bold").text("Total Bank Balance:", 55, doc.y + 5);
-        doc.fontSize(12).text(`Rs. ${openingBankTotal.toFixed(2)}`, 55, doc.y + 15);
-        doc.moveDown(0.5);
-      }
-
-      // Grand Total
-      doc.rect(50, doc.y, 200, 35).fillColor('#f9fafb').fill().strokeColor('#9ca3af').lineWidth(2).stroke();
-      doc.fillColor('black');
-      doc.fontSize(11).font("Helvetica-Bold").text("Grand Total:", 55, doc.y + 5);
-      doc.fontSize(20).fillColor('#9333ea');
-      doc.text(`Rs. ${Number(report.openingBalance.total || 0).toFixed(2)}`, 55, doc.y + 15);
-      doc.fillColor('black');
-      doc.moveDown(1.5);
-
-      // Transactions
-      const allTransactions: any[] = [];
-
-      if (report.openingBalanceAdditions && report.openingBalanceAdditions.length > 0) {
-        report.openingBalanceAdditions.forEach((add: any) => {
-          allTransactions.push({
-            type: 'Balance Add',
-            datetime: new Date(add.time || add.date || date),
-            paymentType: add.paymentType,
-            amount: Number(add.amount || 0),
-            beforeBalance: add.beforeBalance,
-            afterBalance: add.afterBalance,
-            source: 'Manual Add',
-            description: add.description || 'Opening Balance Addition',
-            bankName: add.bankAccount?.bankName || '',
-          });
-        });
-      }
-
-      if (report.purchases?.items?.length > 0) {
-        report.purchases.items.forEach((purchaseRow: any) => {
-          const paymentDate = purchaseRow.paymentDate ? new Date(purchaseRow.paymentDate) : (purchaseRow.date ? new Date(purchaseRow.date) : new Date(purchaseRow.createdAt));
-          const paymentType = purchaseRow.paymentType === 'card' ? 'bank_transfer' : (purchaseRow.paymentType || 'cash');
-          const key = `purchase_payment_${purchaseRow.id}_${paymentType}`;
-          const balanceTxs = balanceTxMap.get(key) || balanceTxMap.get(`purchase_${purchaseRow.id}_${paymentType}`) || [];
-          const balanceTx = balanceTxs.length > 0 ? balanceTxs[0] : null;
-
-          allTransactions.push({
-            type: 'Purchase',
-            datetime: paymentDate,
-            paymentType: purchaseRow.paymentType || 'cash',
-            amount: Number(purchaseRow.paymentAmount || purchaseRow.total || 0),
-            beforeBalance: balanceTx?.beforeBalance,
-            afterBalance: balanceTx?.afterBalance,
-            source: purchaseRow.supplierName || 'N/A',
-            description: `Ref ID: ${purchaseRow.id.substring(0, 8)}`,
-            bankName: purchaseRow.bankAccount?.bankName || '',
-          });
-        });
-      }
-
-      if (report.sales?.items?.length > 0) {
-        report.sales.items.forEach((saleRow: any) => {
-          const paymentDate = saleRow.paymentDate ? new Date(saleRow.paymentDate) : (saleRow.date ? new Date(saleRow.date) : new Date(saleRow.createdAt));
-          const paymentType = saleRow.paymentType === 'card' ? 'bank_transfer' : (saleRow.paymentType || 'cash');
-          const key = `sale_payment_${saleRow.id}_${paymentType}`;
-          const balanceTxs = balanceTxMap.get(key) || balanceTxMap.get(`sale_${saleRow.id}_${paymentType}`) || [];
-          const balanceTx = balanceTxs.length > 0 ? balanceTxs[0] : null;
-
-          allTransactions.push({
-            type: 'Sale',
-            datetime: paymentDate,
-            paymentType: saleRow.paymentType || 'cash',
-            amount: Number(saleRow.paymentAmount || saleRow.total || 0),
-            beforeBalance: balanceTx?.beforeBalance,
-            afterBalance: balanceTx?.afterBalance,
-            source: saleRow.billNumber || 'N/A',
-            description: saleRow.customerName || 'Walk-in',
-            bankName: saleRow.bankAccount?.bankName || '',
-          });
-        });
-      }
-
-      if (report.expenses?.items?.length > 0) {
-        report.expenses.items.forEach((expense: any) => {
-          const key = `expense_${expense.id}_${expense.paymentType || 'cash'}`;
-          const balanceTxs = balanceTxMap.get(key) || [];
-          const balanceTx = balanceTxs.length > 0 ? balanceTxs[0] : null;
-
-          allTransactions.push({
-            type: 'Expense',
-            datetime: new Date(expense.createdAt),
-            paymentType: expense.paymentType || 'cash',
-            amount: Number(expense.amount || 0),
-            beforeBalance: balanceTx?.beforeBalance,
-            afterBalance: balanceTx?.afterBalance,
-            source: expense.category || 'N/A',
-            description: (expense.description || '').substring(0, 20),
-            bankName: expense.bankAccountId ? 'Bank Transfer' : '',
-          });
-        });
-      }
-
-      allTransactions.sort((a, b) => a.datetime.getTime() - b.datetime.getTime());
-
-      if (allTransactions.length > 0) {
-        doc.fontSize(14).text("Chronological Transaction Details", { underline: true });
-        doc.moveDown();
-
-        const rowHeight = 18;
-        const colWidths = [35, 40, 55, 85, 45, 45, 60, 65, 65];
-        let currentY = doc.y;
-
-        // Header
-        doc.rect(50, currentY - 5, 495, rowHeight).fillColor('#f3f4f6').fill();
-        doc.fillColor('black').font("Helvetica-Bold").fontSize(7);
-        doc.text("Time", 55, currentY);
-        doc.text("Type", 55 + colWidths[0], currentY);
-        doc.text("Source", 55 + colWidths[0] + colWidths[1], currentY);
-        doc.text("Description", 55 + colWidths[0] + colWidths[1] + colWidths[2], currentY);
-        doc.text("Pay Type", 55 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3], currentY);
-        doc.text("Bank", 55 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4], currentY);
-        doc.text("Before", 55 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4] + colWidths[5], currentY, { width: colWidths[6], align: "right" });
-        doc.text("Change", 55 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4] + colWidths[5] + colWidths[6], currentY, { width: colWidths[7], align: "right" });
-        doc.text("After", 55 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4] + colWidths[5] + colWidths[6] + colWidths[7], currentY, { width: colWidths[8], align: "right" });
-
-        currentY += rowHeight;
-        doc.font("Helvetica").fontSize(6.5);
-
-        allTransactions.forEach((tran, index) => {
-          if (currentY > 750) {
-            doc.addPage();
-            currentY = 50;
-            // Draw header again on new page
-            doc.rect(50, currentY - 5, 495, rowHeight).fillColor('#f3f4f6').fill();
-            doc.fillColor('black').font("Helvetica-Bold").fontSize(7);
-            doc.text("Time", 55, currentY);
-            doc.text("Type", 55 + colWidths[0], currentY);
-            doc.text("Source", 55 + colWidths[0] + colWidths[1], currentY);
-            doc.text("Description", 55 + colWidths[0] + colWidths[1] + colWidths[2], currentY);
-            doc.text("Pay Type", 55 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3], currentY);
-            doc.text("Bank", 55 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4], currentY);
-            doc.text("Before", 55 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4] + colWidths[5], currentY, { width: colWidths[6], align: "right" });
-            doc.text("Change", 55 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4] + colWidths[5] + colWidths[6], currentY, { width: colWidths[7], align: "right" });
-            doc.text("After", 55 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4] + colWidths[5] + colWidths[6] + colWidths[7], currentY, { width: colWidths[8], align: "right" });
-            currentY += rowHeight;
-            doc.font("Helvetica").fontSize(6.5);
-          }
-
-          const isIncome = tran.type === 'Sale' || tran.type === 'Balance Add';
-          if (index % 2 === 0) {
-            doc.rect(50, currentY - 3, 495, rowHeight).fillColor(isIncome ? '#f0fdf4' : '#fef2f2').fill();
-          }
-          doc.fillColor('black');
-
-          const timeStr = tran.datetime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-          doc.text(timeStr, 55, currentY, { width: colWidths[0] });
-          doc.text(tran.type, 55 + colWidths[0], currentY, { width: colWidths[1] });
-          doc.text((tran.source || '-'), 55 + colWidths[0] + colWidths[1], currentY, { width: colWidths[2] });
-          doc.text((tran.description || ''), 55 + colWidths[0] + colWidths[1] + colWidths[2], currentY, { width: colWidths[3] });
-          doc.text(tran.paymentType, 55 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3], currentY, { width: colWidths[4] });
-          doc.text(tran.bankName ? 'Bank' : '-', 55 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4], currentY, { width: colWidths[5] });
-
-          const beforeStr = tran.beforeBalance !== undefined && tran.beforeBalance !== null ? Number(tran.beforeBalance).toFixed(2) : '-';
-          const changeStr = (isIncome ? '+' : '-') + Number(tran.amount).toFixed(2);
-          const afterStr = tran.afterBalance !== undefined && tran.afterBalance !== null ? Number(tran.afterBalance).toFixed(2) : '-';
-
-          doc.text(beforeStr, 55 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4] + colWidths[5], currentY, { width: colWidths[6], align: "right" });
-          doc.fillColor(isIncome ? '#16a34a' : '#dc2626').text(changeStr, 55 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4] + colWidths[5] + colWidths[6], currentY, { width: colWidths[7], align: "right" });
-          doc.fillColor('black').text(afterStr, 55 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4] + colWidths[5] + colWidths[6] + colWidths[7], currentY, { width: colWidths[8], align: "right" });
-
-          currentY += rowHeight;
-        });
-
-        doc.moveDown(2);
-      }
-
-      // Final Summary
-      doc.fontSize(14).text("Summary", { underline: true });
-      doc.moveDown();
-      doc.fontSize(10);
-      doc.text(`Total Sales: Rs. ${Number(report.sales.total || 0).toFixed(2)}`);
-      doc.text(`Total Purchases: Rs. ${Number(report.purchases.total || 0).toFixed(2)}`);
-      doc.text(`Total Expenses: Rs. ${Number(report.expenses.total || 0).toFixed(2)}`);
-      doc.moveDown();
-      doc.fontSize(12).font("Helvetica-Bold");
-      doc.text(`Closing Balance: Rs. ${Number(report.closingBalance.total || 0).toFixed(2)}`);
-
-      doc.end();
-    } catch (error) {
-      logger.error("Error building Daily Report PDF contents:", error);
-      if (!res.headersSent) {
-        res.status(500).json({ error: "Internal server error while building PDF" });
-      }
-    }
-  }
-
-  async getDateRangeReport(startDate: string, endDate: string) {
-
-    // Parse dates properly to avoid timezone issues
-    const startParts = startDate.split("-");
-    const endParts = endDate.split("-");
-
-    // Create dates at noon UTC to avoid timezone issues, then convert to local date
-    const startUtc = new Date(Date.UTC(
-      parseInt(startParts[0]),
-      parseInt(startParts[1]) - 1,
-      parseInt(startParts[2]),
-      12, 0, 0, 0 // Noon UTC to avoid daylight saving issues
-    ));
-
-    const endUtc = new Date(Date.UTC(
-      parseInt(endParts[0]),
-      parseInt(endParts[1]) - 1,
-      parseInt(endParts[2]),
-      12, 0, 0, 0 // Noon UTC to avoid daylight saving issues
-    ));
-
-    // Convert to local date components
-    const startYear = startUtc.getFullYear();
-    const startMonth = startUtc.getMonth();
-    const startDay = startUtc.getDate();
-
-    const endYear = endUtc.getFullYear();
-    const endMonth = endUtc.getMonth();
-    const endDay = endUtc.getDate();
-
-    // Create start and end dates using local date components
-    const start = new Date(startYear, startMonth, startDay, 0, 0, 0, 0);
-    const end = new Date(endYear, endMonth, endDay, 23, 59, 59, 999);
-
-
-    // Get opening balance for start date (most recent for the date)
-    const startEndOfDay = new Date(start);
-    startEndOfDay.setHours(23, 59, 59, 999);
-
-    const openingBalance = await prisma.dailyOpeningBalance.findFirst({
-      where: {
-        date: {
-          gte: start,
-          lte: startEndOfDay,
-        },
-      },
-      orderBy: { createdAt: "desc" },
-    });
-
-    // Get all cards for mapping
-    const cards = await prisma.card.findMany();
-    const cardMap = new Map(cards.map((card) => [card.id, card]));
-
-    // Get all banks for mapping
-    const banks = await prisma.bankAccount.findMany();
-    const bankMap = new Map(banks.map((bank) => [bank.id, bank]));
-
-    // Calculate opening balance totals with bank details
-    const openingCardBalances = (openingBalance?.cardBalances as Array<{ cardId: string; balance: number }> | null) || [];
-    const openingCards = openingCardBalances.map((cb) => {
-      const card = cardMap.get(cb.cardId);
-      return {
-        cardId: cb.cardId,
-        cardName: card?.name || "Unknown",
-        balance: Number(cb.balance),
-      };
-    });
-    const openingCardTotal = openingCards.reduce((sum, card) => sum + card.balance, 0);
-    const openingCash = Number(openingBalance?.cashBalance || 0);
-
-    // Map opening bank balances with bank details (names, account numbers)
-    const openingBankBalances = ((openingBalance as any)?.bankBalances as Array<{ bankAccountId: string; balance: number }> | null) || [];
-    const openingBanksWithDetails = openingBankBalances.map((bank) => {
-      const bankAccount = bankMap.get(bank.bankAccountId);
-      return {
-        bankAccountId: bank.bankAccountId,
-        bankName: bankAccount?.bankName || "Unknown",
-        accountNumber: bankAccount?.accountNumber || "",
-        balance: Number(bank.balance || 0),
-      };
-    });
-    const openingBankTotal = openingBanksWithDetails.reduce((sum, bank) => sum + bank.balance, 0);
-
-    // Get balance transactions for opening balance additions
-    const balanceTransactionService = (await import("./balanceTransaction.service")).default;
-    const transactions = await balanceTransactionService.getTransactions({
-      startDate: startDate,
-      endDate: endDate,
-    });
-
-    // Fetch records within a broader date range to catch payments that might be on records created earlier/later
-    // We'll filter them based on payment dates later
-    const broadStart = new Date(startYear, startMonth, startDay - 30); // 30 days before
-    const broadEnd = new Date(endYear, endMonth, endDay + 30); // 30 days after
-
-    const [allSales, allPurchases, expenses] = await Promise.all([
-      prisma.sale.findMany({
-        where: {
-          date: { gte: broadStart, lte: broadEnd }
-        },
-        include: { items: true, customer: true, card: true, bankAccount: true, payments: true } as any,
-        orderBy: { createdAt: "desc" }
-      }),
-      prisma.purchase.findMany({
-        where: {
-          date: { gte: broadStart, lte: broadEnd }
-        },
-        include: { items: true, supplier: true, payments: true } as any,
-        orderBy: { createdAt: "desc" }
-      }),
-      prisma.expense.findMany({
-        where: { date: { gte: start, lte: end } },
-        orderBy: { createdAt: "desc" }
-      })
-    ]);
-
-    // For date range reports, include all records within the date range
-    // (no payment date filtering needed - show all activity for the period)
-    const sales = allSales.filter((sale) => {
-      const saleDate = new Date(sale.date);
-      const sYear = saleDate.getFullYear();
-      const sMonth = saleDate.getMonth();
-      const sDay = saleDate.getDate();
-      const saleLocalDate = new Date(sYear, sMonth, sDay);
-
-      const startYear = start.getFullYear();
-      const startMonth = start.getMonth();
-      const startDay = start.getDate();
-      const startLocalDate = new Date(startYear, startMonth, startDay);
-
-      const endYear = end.getFullYear();
-      const endMonth = end.getMonth();
-      const endDay = end.getDate();
-      const endLocalDate = new Date(endYear, endMonth, endDay);
-
-      return saleLocalDate.getTime() >= startLocalDate.getTime() && saleLocalDate.getTime() <= endLocalDate.getTime();
-    });
-
-    const purchases = allPurchases.filter((purchase) => {
-      const purchaseDate = new Date(purchase.date);
-      const pYear = purchaseDate.getFullYear();
-      const pMonth = purchaseDate.getMonth();
-      const pDay = purchaseDate.getDate();
-      const purchaseLocalDate = new Date(pYear, pMonth, pDay);
-
-      const startYear = start.getFullYear();
-      const startMonth = start.getMonth();
-      const startDay = start.getDate();
-      const startLocalDate = new Date(startYear, startMonth, startDay);
-
-      const endYear = end.getFullYear();
-      const endMonth = end.getMonth();
-      const endDay = end.getDate();
-      const endLocalDate = new Date(endYear, endMonth, endDay);
-
-      return purchaseLocalDate.getTime() >= startLocalDate.getTime() && purchaseLocalDate.getTime() <= endLocalDate.getTime();
-    });
-
-    // Calculate summary totals - only count payments that fall within date range
-    let salesTotal = 0;
-    let salesCash = 0;
-    let salesBankTransfer = 0;
-    let salesCard = 0;
-
-    sales.forEach((sale) => {
-      const payments = (sale.payments as Array<{
-        type: string;
-        amount: number;
-        date?: string;
-        cardId?: string;
-        bankAccountId?: string;
-      }> | null) || [];
-
-      if (payments.length > 0) {
-        // Only count payments that fall within date range
-        payments.forEach((payment) => {
-          const paymentDate = payment.date ? new Date(payment.date) : new Date(sale.date);
-          paymentDate.setHours(0, 0, 0, 0);
-
-          // Only count if payment is within date range
-          if (paymentDate.getTime() >= start.getTime() && paymentDate.getTime() <= end.getTime()) {
-            const amount = Number(payment.amount || 0);
-            salesTotal += amount;
-
-            if (payment.type === "cash") {
-              salesCash += amount;
-            } else if (payment.type === "bank_transfer") {
-              salesBankTransfer += amount;
-            } else if (payment.type === "card") {
-              salesCard += amount;
-            }
-          }
-        });
-      } else {
-        // No payments array - use sale.date to check if sale is in date range
-        const saleDate = new Date(sale.date);
-        saleDate.setHours(0, 0, 0, 0);
-        if (saleDate.getTime() >= start.getTime() && saleDate.getTime() <= end.getTime()) {
-          const amount = Number(sale.total || 0);
-          salesTotal += amount;
-
-          if (sale.paymentType === "cash") {
-            salesCash += amount;
-          } else if (sale.paymentType === "bank_transfer") {
-            salesBankTransfer += amount;
-          }
-        }
-      }
-    });
-
-    let purchasesTotal = 0;
-    let purchasesCash = 0;
-    let purchasesBankTransfer = 0;
-
-    purchases.forEach((purchase) => {
-      const payments = (purchase.payments as Array<{
-        type: string;
-        amount: number;
-        date?: string;
-        cardId?: string;
-        bankAccountId?: string;
-      }> | null) || [];
-
-      if (payments.length > 0) {
-        // Only count payments that fall within date range
-        payments.forEach((payment) => {
-          const paymentDate = payment.date ? new Date(payment.date) : new Date(purchase.date);
-          paymentDate.setHours(0, 0, 0, 0);
-
-          // Only count if payment is within date range
-          if (paymentDate.getTime() >= start.getTime() && paymentDate.getTime() <= end.getTime()) {
-            const amount = Number(payment.amount || 0);
-            purchasesTotal += amount;
-
-            if (payment.type === "cash") {
-              purchasesCash += amount;
-            } else if (payment.type === "bank_transfer") {
-              purchasesBankTransfer += amount;
-            }
-          }
-        });
-      } else {
-        // No payments array - use purchase.date to check if purchase is in date range
-        const purchaseDate = new Date(purchase.date);
-        purchaseDate.setHours(0, 0, 0, 0);
-        if (purchaseDate.getTime() >= start.getTime() && purchaseDate.getTime() <= end.getTime()) {
-          purchasesTotal += Number(purchase.total || 0);
-          // For purchases without payments array, we can't determine payment type breakdown
-        }
-      }
-    });
-
-    const expensesTotal = expenses.reduce((sum, exp) => sum + Number(exp.amount), 0);
-    const expensesCash = expenses.filter((e) => e.paymentType === "cash").reduce((sum, exp) => sum + Number(exp.amount), 0);
-    const expensesBankTransfer = expenses.filter((e) => e.paymentType === "bank_transfer").reduce((sum, exp) => sum + Number(exp.amount), 0);
-
-    // Calculate closing balance
-    const closingCash = openingCash + salesCash - purchasesCash - expensesCash;
-
-    // Calculate closing card balances (use payments JSON + expense cardId)
-    const getCardPayments = (payments: any, cardId: string, saleDate?: Date, purchaseDate?: Date) => {
-      const list = (payments as Array<{ type?: string; amount?: number; cardId?: string; date?: string }> | null) || [];
-      const dateToCheck = saleDate || purchaseDate;
-
-      return list
-        .filter((p) => {
-          // Check if payment type matches and cardId matches if provided
-          if (p.type !== "card" || (cardId && p.cardId !== cardId)) {
-            return false;
-          }
-
-          // Check if payment date falls within date range
-          if (p.date) {
-            const paymentDate = new Date(p.date);
-            paymentDate.setHours(0, 0, 0, 0);
-            return paymentDate.getTime() >= start.getTime() && paymentDate.getTime() <= end.getTime();
-          }
-
-          // If no payment date, use sale/purchase date
-          if (dateToCheck) {
-            const itemDate = new Date(dateToCheck);
-            itemDate.setHours(0, 0, 0, 0);
-            return itemDate.getTime() >= start.getTime() && itemDate.getTime() <= end.getTime();
-          }
-
-          return true; // If no date available, include it (fallback)
-        })
-        .reduce((sum, p) => sum + Number(p.amount || 0), 0);
-    };
-
-    const closingCardBalances = openingCardBalances.map((cb) => {
-      const card = cardMap.get(cb.cardId);
-      if (!card) return { cardId: cb.cardId, cardName: "Unknown", balance: Number(cb.balance) };
-
-      const cardSales = sales.reduce((sum, sale) => sum + getCardPayments((sale as any).payments, cb.cardId, new Date(sale.date)), 0);
-      const cardPurchases = purchases.reduce((sum, p) => sum + getCardPayments(p.payments, cb.cardId, undefined, new Date(p.date)), 0);
-      const cardExpenses = expenses.reduce(
-        (sum, exp) => {
-          const expDate = new Date(exp.date);
-          expDate.setHours(0, 0, 0, 0);
-          if (exp.cardId === cb.cardId && expDate.getTime() >= start.getTime() && expDate.getTime() <= end.getTime()) {
-            return sum + Number(exp.amount);
-          }
-          return sum;
-        },
-        0
-      );
-
-      return {
-        cardId: cb.cardId,
-        cardName: card.name,
-        balance: Number(cb.balance) + cardSales - cardPurchases - cardExpenses,
-      };
-    });
-
-    const closingCardTotal = closingCardBalances.reduce((sum, card) => sum + card.balance, 0);
-
-    // Get opening balance additions for the date range (transactions where source is "add_opening_balance")
-    let openingBalanceAdditions: any[] = [];
-    try {
-      openingBalanceAdditions = transactions
-        .filter((t: any) => (t.source || "").includes("opening_balance") || t.source === "add_opening_balance")
-        .sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-    } catch (e) {
-      logger.error("Error fetching opening balance additions for date range:", e);
-    }
-
-    // Calculate closing bank balances for date range report
-    const closingBankBalances = openingBanksWithDetails.map((bank) => {
-      const bankSales = sales.reduce((sum, sale) => {
-        const payments = (sale.payments as Array<{ type: string; amount: number; bankAccountId?: string; date?: string }> | null) || [];
-        return sum + payments
-          .filter((p) => {
-            // Check if payment is within date range
-            if (p.date) {
-              const paymentDate = new Date(p.date);
-              paymentDate.setHours(0, 0, 0, 0);
-              return paymentDate.getTime() >= start.getTime() && paymentDate.getTime() <= end.getTime();
-            }
-            // If no payment date, use sale date
-            const saleDate = new Date(sale.date);
-            saleDate.setHours(0, 0, 0, 0);
-            return saleDate.getTime() >= start.getTime() && saleDate.getTime() <= end.getTime();
-          })
-          .filter((p) => p.type === "bank_transfer" && p.bankAccountId === bank.bankAccountId)
-          .reduce((s, p) => s + Number(p.amount || 0), 0);
-      }, 0);
-
-      const bankPurchases = purchases.reduce((sum, p) => {
-        const payments = (p.payments as Array<{ type: string; amount: number; bankAccountId?: string; date?: string }> | null) || [];
-        return sum + payments
-          .filter((pay) => {
-            // Check if payment is within date range
-            if (pay.date) {
-              const paymentDate = new Date(pay.date);
-              paymentDate.setHours(0, 0, 0, 0);
-              return paymentDate.getTime() >= start.getTime() && paymentDate.getTime() <= end.getTime();
-            }
-            // If no payment date, use purchase date
-            const purchaseDate = new Date(p.date);
-            purchaseDate.setHours(0, 0, 0, 0);
-            return purchaseDate.getTime() >= start.getTime() && purchaseDate.getTime() <= end.getTime();
-          })
-          .filter((pay) => pay.type === "bank_transfer" && pay.bankAccountId === bank.bankAccountId)
-          .reduce((s, pay) => s + Number(pay.amount || 0), 0);
-      }, 0);
-
-      const bankExpenses = expenses
-        .filter((e) => {
-          const expDate = new Date(e.date);
-          expDate.setHours(0, 0, 0, 0);
-          return expDate.getTime() >= start.getTime() && expDate.getTime() <= end.getTime();
-        })
-        .filter((e) => e.paymentType === "bank_transfer" && e.bankAccountId === bank.bankAccountId)
-        .reduce((sum, e) => sum + Number(e.amount || 0), 0);
-
-      return {
-        bankAccountId: bank.bankAccountId,
-        bankName: bank.bankName,
-        accountNumber: bank.accountNumber,
-        balance: bank.balance + bankSales - bankPurchases - bankExpenses,
-      };
-    });
-
-    const closingBankTotal = closingBankBalances.reduce((sum, bank) => sum + bank.balance, 0);
-
-    // Transform purchases to payment rows - each payment becomes a separate row
-    const purchasesPaymentRows: any[] = [];
-    purchases.forEach((purchase) => {
-      const payments = (purchase.payments as Array<{
-        type: string;
-        amount: number;
-        date?: string;
-        cardId?: string;
-        bankAccountId?: string;
-      }> | null) || [];
-
-      if (payments.length > 0) {
-        // Create a row for each payment
-        payments.forEach((payment, paymentIndex) => {
-          const paymentDate = payment.date ? new Date(payment.date) : new Date(purchase.date);
-          paymentDate.setHours(0, 0, 0, 0);
-
-          // Only include payments within date range
-          if (paymentDate.getTime() >= start.getTime() && paymentDate.getTime() <= end.getTime()) {
-            purchasesPaymentRows.push({
-              ...purchase,
-              // Override with payment-specific data
-              date: payment.date || purchase.date,
-              paymentAmount: Number(payment.amount || 0),
-              paymentType: payment.type,
-              paymentIndex: paymentIndex,
-              paymentDate: payment.date || purchase.date,
-              // Keep original total for reference
-              originalTotal: Number(purchase.total || 0),
-            });
-          }
-        });
-      } else {
-        // No payments array - use purchase as single row
-        const purchaseDate = new Date(purchase.date);
-        purchaseDate.setHours(0, 0, 0, 0);
-        if (purchaseDate.getTime() >= start.getTime() && purchaseDate.getTime() <= end.getTime()) {
-          purchasesPaymentRows.push({
-            ...purchase,
-            paymentAmount: Number(purchase.total || 0),
-            paymentType: "cash", // Default if no payment type
-            paymentIndex: 0,
-            paymentDate: purchase.date,
-            originalTotal: Number(purchase.total || 0),
-          });
-        }
-      }
-    });
-
-    // Transform sales to payment rows - each payment becomes a separate row
-    const salesPaymentRows: any[] = [];
-    sales.forEach((sale) => {
-      const payments = (sale.payments as Array<{
-        type: string;
-        amount: number;
-        date?: string;
-        cardId?: string;
-        bankAccountId?: string;
-      }> | null) || [];
-
-      if (payments.length > 0) {
-        // Create a row for each payment
-        payments.forEach((payment, paymentIndex) => {
-          const paymentDate = payment.date ? new Date(payment.date) : new Date(sale.date);
-          paymentDate.setHours(0, 0, 0, 0);
-
-          // Only include payments within date range
-          if (paymentDate.getTime() >= start.getTime() && paymentDate.getTime() <= end.getTime()) {
-            salesPaymentRows.push({
-              ...sale,
-              // Override with payment-specific data
-              date: payment.date || sale.date,
-              paymentAmount: Number(payment.amount || 0),
-              paymentType: payment.type,
-              paymentIndex: paymentIndex,
-              paymentDate: payment.date || sale.date,
-              // Keep original total for reference
-              originalTotal: Number(sale.total || 0),
-            });
-          }
-        });
-      } else {
-        // No payments array - use sale as single row
-        const saleDate = new Date(sale.date);
-        saleDate.setHours(0, 0, 0, 0);
-        if (saleDate.getTime() >= start.getTime() && saleDate.getTime() <= end.getTime()) {
-          salesPaymentRows.push({
-            ...sale,
-            paymentAmount: Number(sale.total || 0),
-            paymentType: sale.paymentType || "cash",
-            paymentIndex: 0,
-            paymentDate: sale.date,
-            originalTotal: Number(sale.total || 0),
-          });
-        }
-      }
-    });
-
-    // Generate daily reports for each day in range
-    const dailyReports: any[] = [];
-    const currentDate = new Date(start);
-    while (currentDate <= end) {
-      const dateStr = currentDate.toISOString().split("T")[0];
-      try {
-        const dailyReport = await this.getDailyReport(dateStr);
-        dailyReports.push(dailyReport);
-      } catch (error) {
-        logger.error(`Error generating daily report for ${dateStr}:`, error);
-      }
-      currentDate.setDate(currentDate.getDate() + 1);
-    }
-
-    // Create combined transactions list like in daily report, sorted chronologically
-    const allTransactions: any[] = [];
-
-    // Add opening balance additions
-    if (openingBalanceAdditions && openingBalanceAdditions.length > 0) {
-      openingBalanceAdditions.forEach((add: any) => {
-        allTransactions.push({
-          type: 'Balance Add',
-          datetime: new Date(add.time || add.date || startDate),
-          paymentType: add.paymentType,
-          amount: Number(add.amount || 0),
-          beforeBalance: add.beforeBalance,
-          afterBalance: add.afterBalance,
-          source: 'Manual Add',
-          description: add.description || 'Opening Balance Addition',
-          bankName: add.bankAccount?.bankName || '',
-        });
-      });
-    }
-
-    // Add purchase payments (from all purchases in the period)
-    purchases.forEach((purchase: any) => {
-      if (purchase.payments && purchase.payments.length > 0) {
-        purchase.payments.forEach((payment: any) => {
-          allTransactions.push({
-            type: 'Purchase',
-            datetime: new Date(payment.date || purchase.date),
-            paymentType: payment.type || purchase.paymentType || 'cash',
-            amount: Number(payment.amount || 0),
-            beforeBalance: null,
-            afterBalance: null,
-            source: purchase.supplierName || 'N/A',
-            description: `Ref ID: ${purchase.id.substring(0, 8)}`,
-            bankName: purchase.bankAccount?.bankName || '',
-          });
-        });
-      } else {
-        // No payments, show the purchase total
-        allTransactions.push({
-          type: 'Purchase',
-          datetime: new Date(purchase.date),
-          paymentType: 'cash',
-          amount: Number(purchase.total || 0),
-          beforeBalance: null,
-          afterBalance: null,
-          source: purchase.supplierName || 'N/A',
-          description: `Ref ID: ${purchase.id.substring(0, 8)}`,
-          bankName: '',
-        });
-      }
-    });
-
-    // Add sales payments (from all sales in the period)
-    sales.forEach((sale: any) => {
-      if (sale.payments && sale.payments.length > 0) {
-        sale.payments.forEach((payment: any) => {
-          allTransactions.push({
-            type: 'Sale',
-            datetime: new Date(payment.date || sale.date),
-            paymentType: payment.type || sale.paymentType || 'cash',
-            amount: Number(payment.amount || 0),
-            beforeBalance: null,
-            afterBalance: null,
-            source: sale.billNumber || 'N/A',
-            description: sale.customerName || 'Walk-in',
-            bankName: sale.bankAccount?.bankName || '',
-          });
-        });
-      } else {
-        // No payments, show the sale total
-        allTransactions.push({
-          type: 'Sale',
-          datetime: new Date(sale.date),
-          paymentType: sale.paymentType || 'cash',
-          amount: Number(sale.total || 0),
-          beforeBalance: null,
-          afterBalance: null,
-          source: sale.billNumber || 'N/A',
-          description: sale.customerName || 'Walk-in',
-          bankName: sale.bankAccount?.bankName || '',
-        });
-      }
-    });
-
-    // Add expenses
-    if (expenses && expenses.length > 0) {
-      expenses.forEach((expense: any) => {
-        allTransactions.push({
-          type: 'Expense',
-          datetime: new Date(expense.createdAt),
-          paymentType: expense.paymentType || 'cash',
-          amount: Number(expense.amount || 0),
-          beforeBalance: null,
-          afterBalance: null,
-          source: expense.category || 'N/A',
-          description: (expense.description || '').substring(0, 20),
-          bankName: expense.bankAccountId ? 'Bank Transfer' : '',
-        });
-      });
-    }
-
-    // Sort all transactions by datetime (ascending - oldest first)
-    allTransactions.sort((a, b) => a.datetime.getTime() - b.datetime.getTime());
-
-    return {
-      startDate,
-      endDate,
-      summary: {
-        openingBalance: {
-          cash: openingCash,
-          banks: openingBanksWithDetails,
-          cards: openingCardTotal, // Total of all cards
-          total: openingCash + openingBankTotal + openingCardTotal,
-        },
-        sales: {
-          total: salesTotal,
-          cash: salesCash,
-          bank_transfer: salesBankTransfer,
-          count: salesPaymentRows.length, // Count of payment rows, not sales
-        },
-        purchases: {
-          total: purchasesTotal,
-          cash: purchasesCash,
-          bank_transfer: purchasesBankTransfer,
-          count: purchasesPaymentRows.length, // Count of payment rows, not purchases
-        },
-        expenses: {
-          total: expensesTotal,
-          cash: expensesCash,
-          bank_transfer: expensesBankTransfer,
-          count: expenses.length,
-        },
-        closingBalance: {
-          cash: closingCash,
-          banks: closingBankBalances,
-          cards: closingCardTotal,
-          total: closingCash + closingBankTotal + closingCardTotal,
-        },
-      },
-      openingBalanceAdditions: openingBalanceAdditions.map((t) => ({
-        id: t.id,
-        date: t.date || t.createdAt,
-        time: t.createdAt,
-        type: t.type,
-        amount: Number(t.amount),
-        paymentType: t.paymentType,
-        bankAccountId: t.bankAccountId,
-        bankAccount: t.bankAccount,
-        description: t.description,
-        userName: t.userName,
-        beforeBalance: t.beforeBalance !== null && t.beforeBalance !== undefined ? Number(t.beforeBalance) : null,
-        afterBalance: t.afterBalance !== null && t.afterBalance !== undefined ? Number(t.afterBalance) : null,
-        changeAmount: t.changeAmount !== null && t.changeAmount !== undefined ? Number(t.changeAmount) : null,
-      })),
-      dailyReports,
-      // Return combined sorted transactions instead of separate arrays
-      transactions: allTransactions,
-      // Return filtered full records for individual sections
-      sales: sales,
-      purchases: purchases,
-      expenses,
-    };
+    doc.moveDown(2);
+
+    doc.fontSize(14).text("Financial Summary", { underline: true });
+    doc.moveDown();
+    doc.fontSize(12).text(`Total Sales: Rs. ${Number(report.totalSales || 0).toFixed(2)}`);
+    doc.text(`Total Expenses: Rs. ${Number(report.totalExpenses || 0).toFixed(2)}`);
+    doc.moveDown();
+    doc.fontSize(14).text(`Profit: Rs. ${Number(report.profit || 0).toFixed(2)}`, { underline: true });
+    doc.text(`Profit Margin: ${Number(report.profitMargin || 0).toFixed(2)}%`);
+
+    doc.end();
   }
 }
 

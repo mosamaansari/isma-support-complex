@@ -30,7 +30,7 @@ export default function AddCashModal({
 }: AddCashModalProps) {
   const { showSuccess } = useAlert();
   const { currentUser, bankAccounts } = useData();
-  const [amount, setAmount] = useState<number>(0);
+  const [amount, setAmount] = useState<number | null>(0);
   const [description, setDescription] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedType, setSelectedType] = useState<"cash" | "bank">(initialType || "cash");
@@ -78,7 +78,7 @@ export default function AddCashModal({
     setErrors({});
 
     // Client-side validation
-    if (amount <= 0) {
+    if (amount === null || amount <= 0) {
       setErrors({ amount: "Amount must be greater than 0" });
       return;
     }
@@ -97,48 +97,63 @@ export default function AddCashModal({
     try {
       // Use selected date or today's date (ensure we use the correct date format)
       const dateStr = selectedDate || getTodayDate();
-      let todayBalance = await api.getOpeningBalance(dateStr).catch(() => null);
 
-      if (!todayBalance) {
-        // Create new opening balance
-        const createData = {
+      // Use the new addToOpeningBalance endpoint which handles both cases:
+      // 1. Creates opening balance if it doesn't exist (using previous day's closing balance)
+      // 2. Adds to existing opening balance if it exists
+      if (mode === "add") {
+        await api.addToOpeningBalance({
           date: dateStr,
-          cashBalance: selectedType === "cash" ? amount : 0,
-          bankBalances: selectedType === "bank" && selectedBankId
-            ? [{ bankAccountId: selectedBankId, balance: amount }]
-            : [],
-          notes: description || undefined,
-        };
-        await api.createOpeningBalanceWithBanks(createData);
+          amount: amount || 0,
+          type: selectedType,
+          bankAccountId: selectedType === "bank" ? selectedBankId : undefined,
+          description: description || undefined,
+        });
       } else {
-        // Update existing opening balance
-        const bankBalances = (todayBalance.bankBalances as any[]) || [];
-        let updatedBankBalances = [...bankBalances];
+        // For "set" mode, we still need to use the old method
+        // First get current balance
+        let todayBalance = await api.getOpeningBalance(dateStr).catch(() => null);
+        
+        if (!todayBalance) {
+          // Create new opening balance
+          const createData = {
+            date: dateStr,
+            cashBalance: selectedType === "cash" ? amount : 0,
+            bankBalances: selectedType === "bank" && selectedBankId
+              ? [{ bankAccountId: selectedBankId, balance: amount }]
+              : [],
+            notes: description || undefined,
+          };
+          await api.createOpeningBalanceWithBanks(createData);
+        } else {
+          // Update existing opening balance
+          const bankBalances = (todayBalance.bankBalances as any[]) || [];
+          let updatedBankBalances = [...bankBalances];
 
-        let newCash = Number(todayBalance.cashBalance) || 0;
+          let newCash = Number(todayBalance.cashBalance) || 0;
 
-        if (selectedType === "cash") {
-          newCash = mode === "add" ? newCash + amount : amount;
-        } else if (selectedType === "bank" && selectedBankId) {
-          const existingBankIndex = updatedBankBalances.findIndex(
-            (b: any) => b.bankAccountId === selectedBankId
-          );
+          if (selectedType === "cash") {
+            newCash = amount || 0;
+          } else if (selectedType === "bank" && selectedBankId) {
+            const existingBankIndex = updatedBankBalances.findIndex(
+              (b: any) => b.bankAccountId === selectedBankId
+            );
 
-          if (existingBankIndex >= 0) {
-            const currentBankBal = Number(updatedBankBalances[existingBankIndex].balance) || 0;
-            updatedBankBalances[existingBankIndex].balance = mode === "add" ? currentBankBal + amount : amount;
-          } else {
-            updatedBankBalances.push({ bankAccountId: selectedBankId, balance: amount });
+            if (existingBankIndex >= 0) {
+              updatedBankBalances[existingBankIndex].balance = amount;
+            } else {
+              updatedBankBalances.push({ bankAccountId: selectedBankId, balance: amount });
+            }
           }
+
+          const updateData: any = {
+            notes: description || todayBalance.notes || undefined,
+            cashBalance: selectedType === "cash" ? newCash : undefined,
+            bankBalances: selectedType === "bank" ? updatedBankBalances : undefined,
+          };
+
+          await api.updateOpeningBalanceWithBanks(todayBalance.id, updateData);
         }
-
-        const updateData: any = {
-          notes: description || todayBalance.notes || undefined,
-          cashBalance: selectedType === "cash" ? newCash : undefined,
-          bankBalances: selectedType === "bank" ? updatedBankBalances : undefined,
-        };
-
-        await api.updateOpeningBalanceWithBanks(todayBalance.id, updateData);
       }
 
       showSuccess(`${selectedType === "cash" ? "Cash" : "Bank balance"} ${mode === "add" ? "added" : "set"} successfully!`);
@@ -217,41 +232,14 @@ export default function AddCashModal({
         )}
 
         <div className="space-y-4">
-          {/* Mode Selection */}
-          <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
-            <button
-              onClick={() => {
-                setMode("add");
-                setAmount(0);
-              }}
-              className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-all ${mode === "add"
-                  ? "bg-white dark:bg-gray-700 text-brand-600 dark:text-brand-400 shadow-sm"
-                  : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-                }`}
-            >
-              Add Amount
-            </button>
-            <button
-              onClick={() => {
-                setMode("set");
-                setAmount(currentRunningBalance);
-              }}
-              className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-all ${mode === "set"
-                  ? "bg-white dark:bg-gray-700 text-brand-600 dark:text-brand-400 shadow-sm"
-                  : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-                }`}
-            >
-              Set New Balance
-            </button>
-          </div>
+   
 
           <div className="p-3 bg-brand-50 dark:bg-brand-900/10 rounded-lg border border-brand-100 dark:border-brand-900/20">
             <p className="text-xs text-brand-700 dark:text-brand-300">
               Current Running Balance: <span className="font-bold">Rs. {currentRunningBalance.toFixed(2)}</span>
             </p>
           </div>
-          {/* Type Selection - Only show if not pre-selected */}
-          {!isPreSelected && (
+       
             <div>
               <Label>
                 Add To <span className="text-error-500">*</span>
@@ -275,7 +263,7 @@ export default function AddCashModal({
                 <p className="text-sm text-red-600 dark:text-red-400 mt-1">{errors.type}</p>
               )}
             </div>
-          )}
+         
 
           {/* Show selected type if pre-selected */}
           {isPreSelected && (
@@ -329,10 +317,17 @@ export default function AddCashModal({
             <Input
               type="number"
               step={0.01}
-              value={amount || 0}
+              value={amount}
               onChange={(e) => {
-                const value = e.target.value === "" ? 0 : parseFloat(e.target.value);
-                setAmount(isNaN(value) ? 0 : value);
+                const value = e.target.value === "" ? null : parseFloat(e.target.value);
+                if(value !== null && value < 0) return; // Prevent negative input
+                if(value){
+                  setAmount(isNaN(value) ? null : value);
+                  
+                }
+                else{
+                  setAmount(null);
+                }
                 // Clear error when amount changes
                 setErrors(prev => ({ ...prev, amount: undefined }));
               }}
@@ -359,11 +354,12 @@ export default function AddCashModal({
           <div className="flex gap-3 pt-4">
             <Button
               onClick={handleSubmit}
-              disabled={isSubmitting || (mode === "add" && amount <= 0) || (selectedType === "bank" && !selectedBankId)}
+              loading={isSubmitting}
+              disabled={isSubmitting || (mode === "add" && (amount === null || amount <= 0)) || (selectedType === "bank" && !selectedBankId)}
               className="flex-1"
               size="sm"
             >
-              {isSubmitting ? "Processing..." : mode === "add" ? "Add" : "Set Balance"}
+              {mode === "add" ? "Add" : "Set Balance"}
             </Button>
             <Button
               variant="outline"

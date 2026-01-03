@@ -93,23 +93,19 @@ export default function DailyConfirmationModal({
         
         <div className="mb-6">
           <p className="text-gray-600 dark:text-gray-400 mb-4">
-            {previousCashBalance === 0 && bankBalances.length === 0
-              ? "This appears to be your first time setup. Please confirm to proceed or add opening balance."
-              : "Please confirm the previous day's closing balances before proceeding."}
+            Please confirm the current cash and bank balances before proceeding.
           </p>
 
           <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-4">
             <h3 className="font-semibold text-gray-800 dark:text-white mb-2">
-              {previousCashBalance === 0 && bankBalances.length === 0
-                ? "Current Cash Balance"
-                : "Previous Cash Balance"}
+              Current Cash Balance
             </h3>
             <p className="text-2xl font-bold text-brand-600">
               {formatCurrency(previousCashBalance)}
             </p>
           </div>
 
-          {bankBalances.length > 0 && (
+          {bankBalances.length > 0 ? (
             <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-4">
               <h3 className="font-semibold text-gray-800 dark:text-white mb-3">
                 Bank-wise Balances
@@ -135,14 +131,10 @@ export default function DailyConfirmationModal({
                 ))}
               </div>
             </div>
-          )}
-
-          {bankBalances.length === 0 && (
+          ) : (
             <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 mb-4">
               <p className="text-sm text-blue-800 dark:text-blue-200">
-                {previousCashBalance === 0 && bankBalances.length === 0
-                  ? "No previous bank balances found. You can add bank accounts and opening balances after confirming."
-                  : "No bank accounts found. Please add bank accounts in settings."}
+                No bank accounts found. Please add bank accounts in settings.
               </p>
             </div>
           )}
@@ -151,20 +143,22 @@ export default function DailyConfirmationModal({
         <div className="flex gap-3">
           <Button
             onClick={handleConfirm}
+            loading={isConfirming}
             disabled={isConfirming}
             className="flex-1"
             size="sm"
           >
-            {isConfirming ? "Confirming..." : "OK"}
+            OK
           </Button>
           <Button
             variant="outline"
             onClick={handleAddOpeningBalance}
+            loading={isConfirming}
             disabled={isConfirming}
             className="flex-1"
             size="sm"
           >
-            {isConfirming ? "Confirming..." : "Add Opening Balance / More in Account"}
+            Add Opening Balance / More in Account
           </Button>
         </div>
       </div>

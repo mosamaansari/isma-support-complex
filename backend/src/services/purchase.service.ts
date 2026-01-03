@@ -2,6 +2,7 @@ import prisma from "../config/database";
 import logger from "../utils/logger";
 import productService from "./product.service";
 import { validateTodayDate } from "../utils/dateValidation";
+import { parseLocalISO, getCurrentLocalDateTime } from "../utils/date";
 import { limitDecimalPlaces } from "../utils/numberHelpers";
 
 const splitPurchaseQuantities = (item: {
@@ -336,7 +337,9 @@ class PurchaseService {
         payments: paymentsWithDate as any,
         remainingBalance: remainingBalance,
         status: status as any,
-        date: new Date(), // Always use current date/time
+        date: data.date ? parseLocalISO(data.date) : getCurrentLocalDateTime(), // Parse local ISO date or use current date/time
+        createdAt: getCurrentLocalDateTime(),
+        updatedAt: getCurrentLocalDateTime(),
         userId: user.id,
         userName: user.name,
         createdBy: user.id,
@@ -408,13 +411,15 @@ class PurchaseService {
         continue;
       }
 
+      // Use payment date if available, otherwise use purchase date
+      const paymentDate = (payment as any).date ? parseLocalISO((payment as any).date) : purchase.date;
       const amount = Number(payment.amount);
 
       try {
         // Purchase payments can be cash, card, or bank_transfer
         if (payment.type === "cash") {
           await balanceManagementService.updateCashBalance(
-            purchase.date,
+            paymentDate,
             amount,
             "expense",
             {
@@ -430,7 +435,7 @@ class PurchaseService {
           // Bank transfer payments in purchases
           await balanceManagementService.updateBankBalance(
             payment.bankAccountId,
-            purchase.date,
+            paymentDate,
             amount,
             "expense",
             {
@@ -448,7 +453,7 @@ class PurchaseService {
           if (cardId) {
             await balanceManagementService.updateCardBalance(
               cardId,
-              purchase.date,
+              paymentDate,
               amount,
               "expense",
               {
@@ -788,7 +793,10 @@ class PurchaseService {
 
     const updatedPurchase = await prisma.purchase.update({
       where: { id },
-      data: updateData,
+      data: {
+        ...updateData,
+        updatedAt: getCurrentLocalDateTime(),
+      },
       include: {
         items: {
           include: {
@@ -881,6 +889,7 @@ class PurchaseService {
         payments: newPayments as any,
         remainingBalance: remainingBalance,
         status: newStatus as any,
+        updatedAt: getCurrentLocalDateTime(),
         updatedBy: userId,
         updatedByType: userType || null,
       },
@@ -924,7 +933,7 @@ class PurchaseService {
       if (!payment.amount || payment.amount <= 0 || isNaN(Number(payment.amount))) {
         logger.warn(`Skipping invalid payment amount: ${payment.amount} for purchase ${purchase.id}`);
       } else {
-        const paymentDate = payment.date ? new Date(payment.date) : purchase.date;
+        const paymentDate = payment.date ? parseLocalISO(payment.date) : purchase.date;
         const amount = Number(payment.amount);
 
         // Update balance for cash, bank_transfer, or card payments

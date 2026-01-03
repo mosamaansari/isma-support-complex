@@ -304,13 +304,19 @@ export default function TransactionHistorySection({
     let filteredTransactions = transactions;
     if (startDate || endDate) {
       filteredTransactions = transactions.filter((transaction) => {
-        const transactionDate = transaction.date.split('T')[0];
+        // Parse transaction date properly to avoid timezone issues
+        const txDate = new Date(transaction.date);
+        const txYear = txDate.getFullYear();
+        const txMonth = txDate.getMonth();
+        const txDay = txDate.getDate();
+        const txDateOnly = `${txYear}-${String(txMonth + 1).padStart(2, '0')}-${String(txDay).padStart(2, '0')}`;
+        
         if (startDate && endDate) {
-          return transactionDate >= startDate && transactionDate <= endDate;
+          return txDateOnly >= startDate && txDateOnly <= endDate;
         } else if (startDate) {
-          return transactionDate >= startDate;
+          return txDateOnly >= startDate;
         } else if (endDate) {
-          return transactionDate <= endDate;
+          return txDateOnly <= endDate;
         }
         return true;
       });
@@ -318,7 +324,13 @@ export default function TransactionHistorySection({
 
     const grouped: Record<string, Transaction[]> = {};
     for (const transaction of filteredTransactions) {
-      const dateStr = transaction.date.split('T')[0];
+      // Parse transaction date properly to avoid timezone issues
+      const txDate = new Date(transaction.date);
+      const txYear = txDate.getFullYear();
+      const txMonth = txDate.getMonth();
+      const txDay = txDate.getDate();
+      const dateStr = `${txYear}-${String(txMonth + 1).padStart(2, '0')}-${String(txDay).padStart(2, '0')}`;
+      
       if (!grouped[dateStr]) {
         grouped[dateStr] = [];
       }
@@ -712,6 +724,93 @@ export default function TransactionHistorySection({
                       </tr>
                     </thead>
                     <tbody>
+                      {/* Opening Balance Row - Show first if opening balance exists */}
+                      {openingBalances[dayGroup.date] && (() => {
+                        const opening = openingBalances[dayGroup.date];
+                        if (type === "cash") {
+                          const openingCash = Number(opening.cashBalance) || 0;
+                          return (
+                            <tr key={`opening-${dayGroup.date}`} className="border-b border-gray-200 dark:border-gray-700 bg-blue-50 dark:bg-blue-900/20">
+                              <td className="p-2 text-gray-700 dark:text-gray-300 whitespace-nowrap text-xs">
+                                00:00:00
+                              </td>
+                              <td className="p-2">
+                                <span className="px-2 py-0.5 rounded text-xs font-semibold bg-blue-200 dark:bg-blue-800 text-blue-800 dark:text-blue-200">
+                                  Opening
+                                </span>
+                              </td>
+                              <td className="p-2 text-gray-700 dark:text-gray-300">Opening Balance</td>
+                              <td className="p-2 text-gray-700 dark:text-gray-300">Previous Day Closing Balance</td>
+                              <td className="p-2 text-right text-gray-600 dark:text-gray-400 whitespace-nowrap">-</td>
+                              <td className="p-2 text-right text-gray-600 dark:text-gray-400 whitespace-nowrap">-</td>
+                              <td className="p-2 text-right text-blue-600 dark:text-blue-400 font-semibold whitespace-nowrap">
+                                {formatCurrency(openingCash)}
+                              </td>
+                              <td className="p-2 text-right text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                                {formatCurrency(openingCash)}
+                              </td>
+                              <td className="p-2 text-right text-gray-600 dark:text-gray-400 text-xs">System</td>
+                            </tr>
+                          );
+                        } else if (type === "bank" && bankAccountId) {
+                          const bankBalance = opening.bankBalances?.find((b: any) => b.bankAccountId === bankAccountId);
+                          const openingBank = Number(bankBalance?.balance) || 0;
+                          return (
+                            <tr key={`opening-${dayGroup.date}`} className="border-b border-gray-200 dark:border-gray-700 bg-blue-50 dark:bg-blue-900/20">
+                              <td className="p-2 text-gray-700 dark:text-gray-300 whitespace-nowrap text-xs">
+                                00:00:00
+                              </td>
+                              <td className="p-2">
+                                <span className="px-2 py-0.5 rounded text-xs font-semibold bg-blue-200 dark:bg-blue-800 text-blue-800 dark:text-blue-200">
+                                  Opening
+                                </span>
+                              </td>
+                              <td className="p-2 text-gray-700 dark:text-gray-300">Opening Balance</td>
+                              <td className="p-2 text-gray-700 dark:text-gray-300">Previous Day Closing Balance</td>
+                              <td className="p-2 text-right text-gray-600 dark:text-gray-400 whitespace-nowrap">-</td>
+                              <td className="p-2 text-right text-gray-600 dark:text-gray-400 whitespace-nowrap">-</td>
+                              <td className="p-2 text-right text-blue-600 dark:text-blue-400 font-semibold whitespace-nowrap">
+                                {formatCurrency(openingBank)}
+                              </td>
+                              <td className="p-2 text-right text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                                {formatCurrency(openingBank)}
+                              </td>
+                              <td className="p-2 text-right text-gray-600 dark:text-gray-400 text-xs">System</td>
+                            </tr>
+                          );
+                        } else if (type === "total" || type === "banks") {
+                          // For total/banks, show opening balance summary
+                          const openingCash = Number(opening.cashBalance) || 0;
+                          const openingBanks = opening.bankBalances || [];
+                          const totalOpening = openingCash + openingBanks.reduce((sum: number, b: any) => sum + (Number(b.balance) || 0), 0);
+                          return (
+                            <tr key={`opening-${dayGroup.date}`} className="border-b border-gray-200 dark:border-gray-700 bg-blue-50 dark:bg-blue-900/20">
+                              <td className="p-2 text-gray-700 dark:text-gray-300 whitespace-nowrap text-xs">
+                                00:00:00
+                              </td>
+                              <td className="p-2">
+                                <span className="px-2 py-0.5 rounded text-xs font-semibold bg-blue-200 dark:bg-blue-800 text-blue-800 dark:text-blue-200">
+                                  Opening
+                                </span>
+                              </td>
+                              <td className="p-2 text-gray-700 dark:text-gray-300">Opening Balance</td>
+                              <td className="p-2 text-gray-700 dark:text-gray-300">Previous Day Closing Balance</td>
+                              <td className="p-2 text-right text-gray-600 dark:text-gray-400 whitespace-nowrap">-</td>
+                              <td className="p-2 text-right text-gray-600 dark:text-gray-400 whitespace-nowrap">-</td>
+                              <td className="p-2 text-right text-gray-600 dark:text-gray-400 whitespace-nowrap">-</td>
+                              <td className="p-2 text-right text-gray-600 dark:text-gray-400 whitespace-nowrap">-</td>
+                              <td className="p-2 text-right text-blue-600 dark:text-blue-400 font-semibold whitespace-nowrap">
+                                {formatCurrency(totalOpening)}
+                              </td>
+                              <td className="p-2 text-right text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                                {formatCurrency(totalOpening)}
+                              </td>
+                              <td className="p-2 text-right text-gray-600 dark:text-gray-400 text-xs">System</td>
+                            </tr>
+                          );
+                        }
+                        return null;
+                      })()}
                       {dayGroup.transactions
                         .filter((t) => {
                           if (type === "cash") return t.paymentType === "cash";
@@ -777,10 +876,14 @@ export default function TransactionHistorySection({
                                 )}
                               </td>
                             )}
-                            <td className="p-2 text-right text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                            <td className="p-2 text-right text-gray-600 dark:text-gray-400 whitespace-nowrap font-medium">
                               {transaction.beforeBalance !== null && transaction.beforeBalance !== undefined
                                 ? formatCurrency(Number(transaction.beforeBalance))
-                                : "-"}
+                                : openingBalances[dayGroup.date] && type === "cash" 
+                                  ? formatCurrency(Number(openingBalances[dayGroup.date].cashBalance) || 0)
+                                  : openingBalances[dayGroup.date] && type === "bank" && bankAccountId
+                                    ? formatCurrency(Number(openingBalances[dayGroup.date].bankBalances?.find((b: any) => b.bankAccountId === bankAccountId)?.balance) || 0)
+                                    : "-"}
                             </td>
                             <td className={`p-2 text-right font-semibold whitespace-nowrap ${
                               transaction.type === "income"
@@ -790,10 +893,12 @@ export default function TransactionHistorySection({
                               {transaction.type === "income" ? "+" : "-"}
                               {formatCurrency(Number(transaction.amount))}
                             </td>
-                            <td className="p-2 text-right text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                            <td className="p-2 text-right text-gray-600 dark:text-gray-400 whitespace-nowrap font-medium">
                               {transaction.afterBalance !== null && transaction.afterBalance !== undefined
                                 ? formatCurrency(Number(transaction.afterBalance))
-                                : "-"}
+                                : transaction.beforeBalance !== null && transaction.beforeBalance !== undefined
+                                  ? formatCurrency(Number(transaction.beforeBalance) + (transaction.type === "income" ? Number(transaction.amount) : -Number(transaction.amount)))
+                                  : "-"}
                             </td>
                             <td className="p-2 text-right text-gray-600 dark:text-gray-400 text-xs">
                               {transaction.userName || "-"}

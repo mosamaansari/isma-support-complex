@@ -26,6 +26,14 @@ router.get(
   reportsController.getDateRangeReport.bind(reportsController)
 );
 
+// Get monthly report
+router.get(
+  "/monthly",
+  authenticate,
+  requirePermission(PERMISSIONS.REPORTS_VIEW),
+  reportsController.getMonthlyReport.bind(reportsController)
+);
+
 // Generate daily report PDF
 router.get(
   "/daily/pdf",

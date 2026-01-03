@@ -338,10 +338,11 @@ export default function RoleSelect({
                 <Button
                   type="button"
                   size="sm"
+                  loading={isSubmitting}
                   disabled={isSubmitting}
                   onClick={() => handleFormSubmit(handleAddRole)()}
                 >
-                  {isSubmitting ? "Adding..." : "Add Role"}
+                  Add Role
                 </Button>
                 <Button
                   type="button"

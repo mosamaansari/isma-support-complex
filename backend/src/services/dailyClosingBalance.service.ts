@@ -76,22 +76,71 @@ class DailyClosingBalanceService {
       endDate: dateStr,
     });
 
+    logger.info(`Calculating closing balance for ${dateStr}: startingCash=${startingCash}, transactions=${transactions.length}`);
+
     // Calculate closing balances starting from the determined baseline
     let closingCash = startingCash;
     const closingBankBalances: Record<string, number> = { ...startingBankBalances };
 
     const closingCardBalances: Record<string, number> = { ...startingCardBalances };
 
+    // Get opening balance creation time to determine which additions to skip
+    const openingBalanceCreatedAt = openingBalance?.createdAt 
+      ? new Date(openingBalance.createdAt).getTime() 
+      : null;
+    
+    logger.info(`Opening balance exists: ${!!openingBalance}, createdAt: ${openingBalanceCreatedAt ? new Date(openingBalanceCreatedAt).toISOString() : 'N/A'}`);
+
     // Process balance transactions
+    let skippedCount = 0;
+    let processedCount = 0;
     for (const transaction of transactions) {
-      // IMPORTANT: Skip 'opening_balance' transactions if we are starting from 
-      // today's opening balance record, to avoid double counting.
-      // These transactions represent the initial baseline setting.
-      if (openingBalance && transaction.source === "opening_balance") {
+      // IMPORTANT: Filter transactions by actual date to ensure only transactions for the selected date are included
+      const txDate = transaction.date ? new Date(transaction.date) : new Date(transaction.createdAt);
+      const txYear = txDate.getFullYear();
+      const txMonth = txDate.getMonth();
+      const txDay = txDate.getDate();
+      const txDateOnly = new Date(txYear, txMonth, txDay);
+      
+      const targetYear = dateObj.getFullYear();
+      const targetMonth = dateObj.getMonth();
+      const targetDay = dateObj.getDate();
+      const targetDateOnly = new Date(targetYear, targetMonth, targetDay);
+      
+      // Skip transactions that don't match the target date
+      if (txDateOnly.getTime() !== targetDateOnly.getTime()) {
+        logger.info(`Skipping transaction ${transaction.id} - date mismatch in closing balance: txDate=${txYear}-${String(txMonth + 1).padStart(2, '0')}-${String(txDay).padStart(2, '0')}, targetDate=${targetYear}-${String(targetMonth + 1).padStart(2, '0')}-${String(targetDay).padStart(2, '0')}`);
         continue;
       }
 
-      const amount = Number(transaction.amount);
+      // IMPORTANT: Skip 'opening_balance' transactions if we are starting from today's opening balance record,
+      // to avoid double counting. These transactions represent the initial baseline setting.
+      if (openingBalance && transaction.source === "opening_balance") {
+        skippedCount++;
+        logger.info(`Skipping opening_balance transaction: ${transaction.id}, amount=${transaction.amount}`);
+        continue;
+      }
+
+      // For 'add_opening_balance' transactions: Only skip if they happened BEFORE or AT THE SAME TIME
+      // as the opening balance was created. If they happened AFTER, they are real additions during the day.
+      if (openingBalance && (
+        transaction.source === "add_opening_balance" ||
+        (transaction.source && transaction.source.includes("opening_balance") && transaction.source !== "opening_balance")
+      )) {
+        const txCreatedAt = new Date(transaction.createdAt || transaction.date).getTime();
+        // If opening balance exists and this transaction was created before/at opening balance creation,
+        // skip it (it's already included in opening balance)
+        if (openingBalanceCreatedAt !== null && txCreatedAt <= openingBalanceCreatedAt) {
+          skippedCount++;
+          logger.info(`Skipping add_opening_balance transaction (before opening balance): ${transaction.id}, amount=${transaction.amount}, txCreated=${new Date(txCreatedAt).toISOString()}, openingBalanceCreated=${new Date(openingBalanceCreatedAt).toISOString()}`);
+          continue;
+        }
+        // Otherwise, include it (it's a real addition during the day)
+        logger.info(`Including add_opening_balance transaction (after opening balance): ${transaction.id}, amount=${transaction.amount}, txCreated=${new Date(txCreatedAt).toISOString()}, openingBalanceCreated=${new Date(openingBalanceCreatedAt!).toISOString()}`);
+      }
+
+      processedCount++;
+      const amount = Number(transaction.amount || 0);
       if (transaction.paymentType === "cash") {
         if (transaction.type === "income") {
           closingCash += amount;
@@ -120,6 +169,8 @@ class DailyClosingBalanceService {
         }
       }
     }
+
+    logger.info(`Closing balance calculation: processed=${processedCount}, skipped=${skippedCount}, finalCash=${closingCash}, finalBankTotal=${Object.values(closingBankBalances).reduce((sum, b) => sum + b, 0)}`);
 
     // Convert to array format
     const bankBalancesArray: BankBalance[] = Object.entries(closingBankBalances)

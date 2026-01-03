@@ -38,6 +38,8 @@ export default function Settings() {
     branchName: "",
     isDefault: false,
   });
+  const [isSubmittingSettings, setIsSubmittingSettings] = useState(false);
+  const [isSubmittingBankAccount, setIsSubmittingBankAccount] = useState(false);
 
   useEffect(() => {
     if (settings && Object.keys(settings).length > 0) {
@@ -88,6 +90,7 @@ export default function Settings() {
       return;
     }
     
+    setIsSubmittingSettings(true);
     try {
       // Exclude id, createdAt, updatedAt, and bank fields from the data being sent
       const { id, createdAt, updatedAt, bankName, bankAccountNumber, ifscCode, ...settingsToUpdate } = formData as any;
@@ -121,6 +124,8 @@ export default function Settings() {
       } else {
         showError(errorData?.message || errorData?.error || "Failed to update settings");
       }
+    } finally {
+      setIsSubmittingSettings(false);
     }
   };
 
@@ -234,6 +239,7 @@ export default function Settings() {
 
   const handleBankAccountSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmittingBankAccount(true);
     try {
       // Ensure accountHolder is set to accountName if not provided
       const formDataToSubmit = {
@@ -262,6 +268,8 @@ export default function Settings() {
     } catch (err: any) {
       const errorMessage = err.response?.data?.error || err.response?.data?.message || "Failed to save bank account";
       showError(errorMessage);
+    } finally {
+      setIsSubmittingBankAccount(false);
     }
   };
 
@@ -425,7 +433,7 @@ export default function Settings() {
                 />
               </div>
 
-              <Button type="submit" size="sm">
+              <Button type="submit" size="sm" loading={isSubmittingSettings} disabled={isSubmittingSettings}>
                 Save Shop Information
               </Button>
             </form>
@@ -559,7 +567,7 @@ export default function Settings() {
                   </div>
 
                   <div className="flex gap-2">
-                    <Button type="submit" size="sm">
+                    <Button type="submit" size="sm" loading={isSubmittingBankAccount} disabled={isSubmittingBankAccount}>
                       {editingAccount ? "Update" : "Add"} Account
                     </Button>
                     <Button

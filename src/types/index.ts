@@ -252,9 +252,27 @@ export interface DateRangeReport {
     };
   };
   dailyReports: DailyReport[];
-  sales: Sale[];
-  purchases: Purchase[];
-  expenses: Expense[];
+  sales: {
+    items: Sale[];
+    total: number;
+    cash: number;
+    bank_transfer: number;
+    card: number;
+  };
+  purchases: {
+    items: Purchase[];
+    total: number;
+    cash: number;
+    bank_transfer: number;
+    card: number;
+  };
+  expenses: {
+    items: Expense[];
+    total: number;
+    cash: number;
+    bank_transfer: number;
+    card: number;
+  };
   transactions?: Array<{
     type: string;
     datetime: Date;

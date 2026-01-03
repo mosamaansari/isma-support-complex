@@ -2,6 +2,7 @@ import { Response } from "express";
 import dailyClosingBalanceService from "../services/dailyClosingBalance.service";
 import logger from "../utils/logger";
 import { AuthRequest } from "../middleware/auth";
+import { parseLocalYMD } from "../utils/date";
 
 class DailyClosingBalanceController {
   async getClosingBalance(req: AuthRequest, res: Response) {
@@ -52,7 +53,8 @@ class DailyClosingBalanceController {
       if (!date || typeof date !== "string") {
         return res.status(400).json({ error: "Date is required" });
       }
-      const dateObj = new Date(date);
+      // Parse date string (YYYY-MM-DD) to avoid timezone issues
+      const dateObj = parseLocalYMD(date);
       const closingBalance = await dailyClosingBalanceService.calculateAndStoreClosingBalance(dateObj);
       res.json(closingBalance);
     } catch (error: any) {
@@ -63,6 +65,7 @@ class DailyClosingBalanceController {
 }
 
 export default new DailyClosingBalanceController();
+
 
 
 

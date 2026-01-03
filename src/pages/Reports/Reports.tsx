@@ -11,7 +11,7 @@ import api from "../../services/api";
 import { DailyReport, DateRangeReport } from "../../types";
 import { getDateRangeFromType, getTodayDate } from "../../utils/dateHelpers";
 import { extractErrorMessage } from "../../utils/errorHandler";
-import { formatPrice, formatPriceWithCurrency } from "../../utils/priceHelpers";
+import { formatCompleteAmount } from "../../utils/priceHelpers";
 
 export default function Reports() {
   const {
@@ -51,9 +51,13 @@ export default function Reports() {
       if (!dateRange || !currentUser) return;
 
       setLoading(true);
+      let loadedDailyReport: DailyReport | null = null;
+      let loadedDateRangeReport: DateRangeReport | null = null;
+
       try {
         if (reportType === "daily") {
           const report = await api.getDailyReport(dateRange.start);
+          loadedDailyReport = report;
           setDailyReport(report);
           setDateRangeReport(null);
 
@@ -79,6 +83,7 @@ export default function Reports() {
             dateRange.start,
             dateRange.end
           );
+          loadedDateRangeReport = report;
           setDateRangeReport(report);
           setDailyReport(null);
           setPreviousDayBalance(null); // For date range, we'll show per-day in the report
@@ -94,18 +99,21 @@ export default function Reports() {
         setLoading(false);
       }
 
-      // Compute chronological transactions
-      const computeTransactions = () => {
+      // Compute chronological transactions using loaded data directly
+      const computeTransactions = (
+        dailyReportData: DailyReport | null,
+        dateRangeReportData: DateRangeReport | null
+      ) => {
         const transactions: any[] = [];
 
-        if (reportType === "daily" && dailyReport) {
+        if (reportType === "daily" && dailyReportData) {
           // For daily reports, create transactions from sales, purchases, expenses, and opening balance additions
           // Add opening balance additions
           if (
-            dailyReport.openingBalanceAdditions &&
-            dailyReport.openingBalanceAdditions.length > 0
+            dailyReportData.openingBalanceAdditions &&
+            dailyReportData.openingBalanceAdditions.length > 0
           ) {
-            dailyReport.openingBalanceAdditions.forEach((add: any) => {
+            dailyReportData.openingBalanceAdditions.forEach((add: any) => {
               transactions.push({
                 type: "Balance Add",
                 datetime: new Date(
@@ -120,8 +128,8 @@ export default function Reports() {
           }
 
           // Add sales payments
-          if (dailyReport.sales?.items?.length > 0) {
-            dailyReport.sales.items.forEach((sale: any) => {
+          if (dailyReportData.sales?.items?.length > 0) {
+            dailyReportData.sales.items.forEach((sale: any) => {
               if (sale.payments?.length > 0) {
                 sale.payments.forEach((payment: any) => {
                   transactions.push({
@@ -147,8 +155,8 @@ export default function Reports() {
           }
 
           // Add purchase payments
-          if (dailyReport.purchases?.items?.length > 0) {
-            dailyReport.purchases.items.forEach((purchase: any) => {
+          if (dailyReportData.purchases?.items?.length > 0) {
+            dailyReportData.purchases.items.forEach((purchase: any) => {
               if (purchase.payments?.length > 0) {
                 purchase.payments.forEach((payment: any) => {
                   transactions.push({
@@ -174,8 +182,8 @@ export default function Reports() {
           }
 
           // Add expenses
-          if (dailyReport.expenses?.items?.length > 0) {
-            dailyReport.expenses.items.forEach((expense: any) => {
+          if (dailyReportData.expenses?.items?.length > 0) {
+            dailyReportData.expenses.items.forEach((expense: any) => {
               transactions.push({
                 type: "Expense",
                 datetime: new Date(expense.createdAt || expense.date),
@@ -186,9 +194,23 @@ export default function Reports() {
               });
             });
           }
-        } else if (dateRangeReport?.transactions) {
-          // Date range report has transactions array
-          return dateRangeReport.transactions;
+        } else if (dateRangeReportData?.transactions) {
+          // Date range report has transactions array - use them directly
+          // Convert datetime strings to Date objects if needed, then sort
+          const sortedTransactions = [...dateRangeReportData.transactions]
+            .map((t: any) => ({
+              ...t,
+              datetime: t.datetime instanceof Date 
+                ? t.datetime 
+                : new Date(t.datetime || t.date || 0)
+            }))
+            .sort((a, b) => {
+              const dateA = a.datetime instanceof Date ? a.datetime : new Date(a.datetime);
+              const dateB = b.datetime instanceof Date ? b.datetime : new Date(b.datetime);
+              return dateA.getTime() - dateB.getTime();
+            });
+          setChronologicalTransactions(sortedTransactions);
+          return;
         }
 
         // Sort transactions by datetime
@@ -198,8 +220,8 @@ export default function Reports() {
         setChronologicalTransactions(transactions);
       };
 
-      // Compute transactions after loading
-      computeTransactions();
+      // Compute transactions after loading using the directly loaded data
+      computeTransactions(loadedDailyReport, loadedDateRangeReport);
     };
 
     loadReport();
@@ -242,23 +264,40 @@ export default function Reports() {
     balance: number;
   }> = [];
 
+  // Create date objects for filtering (must be declared before use)
+  const startDateObj = new Date(startDate);
+  startDateObj.setHours(0, 0, 0, 0);
+  const endDateObj = new Date(endDate);
+  endDateObj.setHours(23, 59, 59, 999);
+
   // Get opening balance additions from daily or date range report
-  const openingBalanceAdditions =
+  let openingBalanceAdditions =
     reportType === "daily" && dailyReport?.openingBalanceAdditions
       ? dailyReport.openingBalanceAdditions
       : dateRangeReport?.openingBalanceAdditions || [];
+
+  // Filter opening balance additions by date range to ensure only selected dates are shown
+  if (openingBalanceAdditions.length > 0) {
+    openingBalanceAdditions = openingBalanceAdditions.filter((add: any) => {
+      const addDate = add.time || add.date || add.createdAt;
+      if (!addDate) return false;
+      
+      const addDateObj = new Date(addDate);
+      const addYear = addDateObj.getFullYear();
+      const addMonth = addDateObj.getMonth();
+      const addDay = addDateObj.getDate();
+      const addLocalDate = new Date(addYear, addMonth, addDay);
+      
+      return addLocalDate.getTime() >= startDateObj.getTime() && 
+             addLocalDate.getTime() <= endDateObj.getTime();
+    });
+  }
 
   // Calculate total additional balance (opening balance additions)
   const totalAdditionalBalance = openingBalanceAdditions.reduce(
     (sum: number, add: any) => sum + Number(add.amount || 0),
     0
   );
-
-  // Create date objects for filtering
-  const startDateObj = new Date(startDate);
-  startDateObj.setHours(0, 0, 0, 0);
-  const endDateObj = new Date(endDate);
-  endDateObj.setHours(23, 59, 59, 999);
 
   if (isUsingBackendData && reportType === "daily" && dailyReport) {
     // For daily reports, backend already filters by creation date, no additional filtering needed
@@ -318,9 +357,10 @@ export default function Reports() {
     profit = totalSales - totalExpenses - totalPurchases;
   } else if (isUsingBackendData && dateRangeReport) {
     // Backend now returns filtered records based on payment dates
-    filteredSales = dateRangeReport.sales || [];
-    filteredPurchases = dateRangeReport.purchases || [];
-    filteredExpenses = dateRangeReport.expenses || [];
+    // Backend returns sales, purchases, expenses as objects with items array
+    filteredSales = dateRangeReport.sales?.items || [];
+    filteredPurchases = dateRangeReport.purchases?.items || [];
+    filteredExpenses = dateRangeReport.expenses?.items || [];
 
     // Calculate totals from aggregated data (use dailyReports totals which are more accurate)
     // First try to sum from dailyReports, then fallback to summary or calculate from items
@@ -510,27 +550,31 @@ export default function Reports() {
     string,
     { customerName: string; total: number; bills: string[]; count: number }
   >();
-  filteredSales.forEach((sale) => {
-    if (!sale || !sale.id) return;
-    const customerName = sale.customerName || "Walk-in";
-    const saleTotal = Number(sale.total || 0);
+  // Ensure filteredSales is an array before calling forEach
+  if (Array.isArray(filteredSales)) {
+    filteredSales.forEach((sale) => {
+      if (!sale || !sale.id) return;
+      const customerName = sale.customerName || "Walk-in";
+      // For expanded payment rows, use paymentAmount if available, otherwise total
+      const saleTotal = Number(sale.paymentAmount || sale.total || 0);
 
-    if (customerSalesMap.has(customerName)) {
-      const existing = customerSalesMap.get(customerName)!;
-      existing.total += saleTotal;
-      existing.count += 1;
-      if (sale.billNumber) {
-        existing.bills.push(sale.billNumber);
+      if (customerSalesMap.has(customerName)) {
+        const existing = customerSalesMap.get(customerName)!;
+        existing.total += saleTotal;
+        existing.count += 1;
+        if (sale.billNumber) {
+          existing.bills.push(sale.billNumber);
+        }
+      } else {
+        customerSalesMap.set(customerName, {
+          customerName,
+          total: saleTotal,
+          bills: sale.billNumber ? [sale.billNumber] : [],
+          count: 1,
+        });
       }
-    } else {
-      customerSalesMap.set(customerName, {
-        customerName,
-        total: saleTotal,
-        bills: sale.billNumber ? [sale.billNumber] : [],
-        count: 1,
-      });
-    }
-  });
+    });
+  }
 
   // Customer totals calculation (kept for potential future use)
   // const customerTotals = Array.from(customerSalesMap.values())
@@ -615,6 +659,12 @@ export default function Reports() {
         ? [dailyReport]
         : dateRangeReport?.dailyReports || [];
 
+    // If no reports to process, show error
+    if (!reportsToProcess || reportsToProcess.length === 0) {
+      showError("No report data available to print. Please ensure the report is loaded.");
+      return;
+    }
+
     let printContent = "";
 
     reportsToProcess.forEach((report: any, reportIdx: number) => {
@@ -640,11 +690,11 @@ export default function Reports() {
 
       // Opening Balance - Simple header before transaction table
       printContent += `<div style="margin-bottom: 15px;">
-        <p style="font-size: 12px; color: #6b7280; margin: 5px 0;"><strong>Opening Balance:</strong> Cash: Rs. ${(
+        <p style="font-size: 12px; color: #6b7280; margin: 5px 0;"><strong>Opening Balance:</strong> Cash: ${formatCompleteAmount(
           report.openingBalance?.cash || 0
-        ).toFixed(2)}, Bank: Rs. ${openingBankTotal.toFixed(2)}, Total: Rs. ${(
+        )}, Bank: ${formatCompleteAmount(openingBankTotal)}, Total: ${formatCompleteAmount(
         report.openingBalance?.total || 0
-      ).toFixed(2)}</p>
+      )}</p>
       </div>`;
 
       // Build chronological transaction table
@@ -896,9 +946,9 @@ export default function Reports() {
           return labels[type] || type;
         };
 
-        // Helper function to format currency
+        // Helper function to format currency - use complete amount with commas
         const formatCurrency = (amount: number) => {
-          return `Rs. ${amount.toFixed(2)}`;
+          return formatCompleteAmount(amount);
         };
 
         allTransactions.forEach((tran) => {
@@ -993,21 +1043,21 @@ export default function Reports() {
         <tbody>
           <tr style="background-color: #dbeafe; border-bottom: 1px solid #e5e7eb;">
             <td style="border: 1px solid #e5e7eb; padding: 8px; font-weight: 600;">Opening Balance</td>
-            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #2563eb;">${(
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #2563eb;">${formatCompleteAmount(
               report.openingBalance?.cash || 0
-            ).toFixed(2)}</td>
-            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #2563eb;">${openingBankTotal.toFixed(
-              2
             )}</td>
-            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #2563eb;">${(
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #2563eb;">${formatCompleteAmount(
+              openingBankTotal
+            )}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #2563eb;">${formatCompleteAmount(
               report.openingBalance?.cards?.reduce(
                 (s: number, c: any) => s + (c.balance || 0),
                 0
               ) || 0
-            ).toFixed(2)}</td>
-            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #2563eb;">${(
+            )}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #2563eb;">${formatCompleteAmount(
               report.openingBalance?.total || 0
-            ).toFixed(2)}</td>
+            )}</td>
           </tr>`;
 
       if (additionalTotal !== 0) {
@@ -1026,15 +1076,15 @@ export default function Reports() {
         printContent += `
           <tr style="background-color: #f3e8ff; border-bottom: 1px solid #e5e7eb;">
             <td style="border: 1px solid #e5e7eb; padding: 8px; font-weight: 600;">Opening Balance Additions</td>
-            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #9333ea;">${additionalCash.toFixed(
-              2
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #9333ea;">${formatCompleteAmount(
+              additionalCash
             )}</td>
-            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #9333ea;">${additionalBank.toFixed(
-              2
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #9333ea;">${formatCompleteAmount(
+              additionalBank
             )}</td>
-            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #9333ea;">0.00</td>
-            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #9333ea;">${additionalTotal.toFixed(
-              2
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #9333ea;">0</td>
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #9333ea;">${formatCompleteAmount(
+              additionalTotal
             )}</td>
           </tr>`;
       }
@@ -1042,63 +1092,63 @@ export default function Reports() {
       printContent += `
           <tr style="background-color: #d1fae5; border-bottom: 1px solid #e5e7eb;">
             <td style="border: 1px solid #e5e7eb; padding: 8px; font-weight: 600;">Sales</td>
-            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #16a34a;">${(
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #16a34a;">${formatCompleteAmount(
               report.sales?.cash || 0
-            ).toFixed(2)}</td>
-            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #16a34a;">${(
+            )}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #16a34a;">${formatCompleteAmount(
               report.sales?.bank_transfer || 0
-            ).toFixed(2)}</td>
-            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #16a34a;">${(
+            )}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #16a34a;">${formatCompleteAmount(
               report.sales?.card || 0
-            ).toFixed(2)}</td>
-            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #16a34a;">${(
+            )}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #16a34a;">${formatCompleteAmount(
               report.sales?.total || 0
-            ).toFixed(2)}</td>
+            )}</td>
           </tr>
           <tr style="background-color: #fed7aa; border-bottom: 1px solid #e5e7eb;">
             <td style="border: 1px solid #e5e7eb; padding: 8px; font-weight: 600;">Purchases</td>
-            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #ea580c;">-${(
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #ea580c;">-${formatCompleteAmount(
               report.purchases?.cash || 0
-            ).toFixed(2)}</td>
-            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #ea580c;">-${(
+            )}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #ea580c;">-${formatCompleteAmount(
               report.purchases?.bank_transfer || 0
-            ).toFixed(2)}</td>
-            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #ea580c;">-${(
+            )}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #ea580c;">-${formatCompleteAmount(
               report.purchases?.card || 0
-            ).toFixed(2)}</td>
-            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #ea580c;">-${(
+            )}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #ea580c;">-${formatCompleteAmount(
               report.purchases?.total || 0
-            ).toFixed(2)}</td>
+            )}</td>
           </tr>
           <tr style="background-color: #fee2e2; border-bottom: 1px solid #e5e7eb;">
             <td style="border: 1px solid #e5e7eb; padding: 8px; font-weight: 600;">Expenses</td>
-            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #dc2626;">-${(
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #dc2626;">-${formatCompleteAmount(
               report.expenses?.cash || 0
-            ).toFixed(2)}</td>
-            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #dc2626;">-${(
+            )}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #dc2626;">-${formatCompleteAmount(
               report.expenses?.bank_transfer || 0
-            ).toFixed(2)}</td>
-            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #dc2626;">-${(
+            )}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #dc2626;">-${formatCompleteAmount(
               report.expenses?.card || 0
-            ).toFixed(2)}</td>
-            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #dc2626;">-${(
+            )}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: 600; color: #dc2626;">-${formatCompleteAmount(
               report.expenses?.total || 0
-            ).toFixed(2)}</td>
+            )}</td>
           </tr>
           <tr style="background-color: #e0e7ff; border-top: 2px solid #6366f1; border-bottom: 2px solid #6366f1;">
             <td style="border: 1px solid #e5e7eb; padding: 8px; font-weight: bold; font-size: 12px;">Closing Balance</td>
-            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: bold; font-size: 12px; color: #4f46e5;">${(
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: bold; font-size: 12px; color: #4f46e5;">${formatCompleteAmount(
               report.closingBalance?.cash || 0
-            ).toFixed(2)}</td>
-            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: bold; font-size: 12px; color: #4f46e5;">${closingBankTotal.toFixed(
-              2
             )}</td>
-            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: bold; font-size: 12px; color: #4f46e5;">${closingCardTotal.toFixed(
-              2
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: bold; font-size: 12px; color: #4f46e5;">${formatCompleteAmount(
+              closingBankTotal
             )}</td>
-            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: bold; font-size: 12px; color: #4f46e5;">${(
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: bold; font-size: 12px; color: #4f46e5;">${formatCompleteAmount(
+              closingCardTotal
+            )}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; font-weight: bold; font-size: 12px; color: #4f46e5;">${formatCompleteAmount(
               report.closingBalance?.total || 0
-            ).toFixed(2)}</td>
+            )}</td>
           </tr>
         </tbody>
       </table>`;
@@ -1256,6 +1306,7 @@ export default function Reports() {
                   setStartDate(e.target.value);
                   setEndDate(e.target.value);
                 }}
+                max={getTodayDate()}
               />
             </div>
           )}
@@ -1268,6 +1319,7 @@ export default function Reports() {
                   setStartDate(e.target.value);
                   setEndDate(e.target.value);
                 }}
+                max={getTodayDate()}
               />
             </div>
           )}
@@ -1280,6 +1332,7 @@ export default function Reports() {
                   setStartDate(e.target.value);
                   setEndDate(e.target.value);
                 }}
+                max={getTodayDate()}
               />
             </div>
           )}
@@ -1290,6 +1343,7 @@ export default function Reports() {
                 <DatePicker
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
+                  max={getTodayDate()}
                 />
               </div>
               <div>
@@ -1297,6 +1351,7 @@ export default function Reports() {
                 <DatePicker
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
+                  max={getTodayDate()}
                 />
               </div>
             </>
@@ -1321,7 +1376,7 @@ export default function Reports() {
                       Cash Balance
                     </p>
                     <p className="text-lg sm:text-xl lg:text-2xl font-bold text-blue-600 price-responsive">
-                      {formatPriceWithCurrency(
+                      {formatCompleteAmount(
                         Number(previousDayBalance.cashBalance || 0)
                       )}
                     </p>
@@ -1331,7 +1386,7 @@ export default function Reports() {
                       Total Bank Balance
                     </p>
                     <p className="text-lg sm:text-xl lg:text-2xl font-bold text-green-600 price-responsive">
-                      {formatPriceWithCurrency(
+                      {formatCompleteAmount(
                         Number(
                           previousDayBalance.bankBalances?.reduce(
                             (sum, b) => sum + Number(b.balance || 0),
@@ -1360,7 +1415,7 @@ export default function Reports() {
                             {bank.accountNumber}
                           </p>
                           <p className="text-xs sm:text-sm font-bold text-gray-800 dark:text-white price-responsive">
-                            {formatPriceWithCurrency(Number(bank.balance || 0))}
+                            {formatCompleteAmount(Number(bank.balance || 0))}
                           </p>
                         </div>
                       ))}
@@ -1378,13 +1433,13 @@ export default function Reports() {
                     Opening Balance
                   </p>
                   <p className="text-lg sm:text-xl lg:text-2xl font-bold text-blue-600 dark:text-blue-400 price-responsive">
-                    {formatPriceWithCurrency(openingBalance)}
+                    {formatCompleteAmount(openingBalance)}
                   </p>
                   {(openingCash > 0 || openingBankTotal > 0) && (
                     <div className="mt-2 text-xs text-gray-500">
-                      <div>Cash: Rs. {openingCash.toFixed(2)}</div>
+                      <div>Cash: {formatCompleteAmount(openingCash)}</div>
                       {openingBankTotal > 0 && (
-                        <div>Bank: Rs. {openingBankTotal.toFixed(2)}</div>
+                        <div>Bank: {formatCompleteAmount(openingBankTotal)}</div>
                       )}
                     </div>
                   )}
@@ -1392,7 +1447,7 @@ export default function Reports() {
                     <div className="mt-2 text-xs text-gray-500 space-y-1">
                       {openingBankBalances.map((bank) => (
                         <div key={bank.bankAccountId}>
-                          {bank.bankName}: Rs. {bank.balance.toFixed(2)}
+                          {bank.bankName}: {formatCompleteAmount(bank.balance)}
                         </div>
                       ))}
                     </div>
@@ -1404,7 +1459,7 @@ export default function Reports() {
                   Total Sales
                 </p>
                 <p className="text-lg sm:text-xl lg:text-2xl font-bold text-green-600 dark:text-green-400 price-responsive">
-                  {formatPriceWithCurrency(totalSales)}
+                  {formatCompleteAmount(totalSales)}
                 </p>
               </div>
               <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
@@ -1412,7 +1467,7 @@ export default function Reports() {
                   Total Purchases
                 </p>
                 <p className="text-lg sm:text-xl lg:text-2xl font-bold text-orange-600 dark:text-orange-400 price-responsive">
-                  {formatPriceWithCurrency(totalPurchases)}
+                  {formatCompleteAmount(totalPurchases)}
                 </p>
               </div>
               {isUsingBackendData && totalAdditionalBalance > 0 && (
@@ -1421,7 +1476,7 @@ export default function Reports() {
                     Total Additional Balance
                   </p>
                   <p className="text-lg sm:text-xl lg:text-2xl font-bold text-purple-600 dark:text-purple-400 price-responsive">
-                    {formatPriceWithCurrency(totalAdditionalBalance)}
+                    {formatCompleteAmount(totalAdditionalBalance)}
                   </p>
                 </div>
               )}
@@ -1430,7 +1485,7 @@ export default function Reports() {
                   Total Expenses
                 </p>
                 <p className="text-lg sm:text-xl lg:text-2xl font-bold text-red-600 dark:text-red-400 price-responsive">
-                  {formatPriceWithCurrency(totalExpenses)}
+                  {formatCompleteAmount(totalExpenses)}
                 </p>
               </div>
               <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
@@ -1444,16 +1499,16 @@ export default function Reports() {
                       : "text-red-600 dark:text-red-400"
                   }`}
                 >
-                  {formatPriceWithCurrency(
+                  {formatCompleteAmount(
                     isUsingBackendData ? closingBalance : profit
                   )}
                 </p>
                 {isUsingBackendData &&
                 (closingCash > 0 || closingBankTotal > 0) ? (
                   <div className="mt-2 text-xs text-gray-500">
-                    <div>Cash: Rs. {closingCash.toFixed(2)}</div>
+                    <div>Cash: {formatCompleteAmount(closingCash)}</div>
                     {closingBankTotal > 0 && (
-                      <div>Bank: Rs. {closingBankTotal.toFixed(2)}</div>
+                      <div>Bank: {formatCompleteAmount(closingBankTotal)}</div>
                     )}
                   </div>
                 ) : null}
@@ -1563,7 +1618,7 @@ export default function Reports() {
                               }`}
                             >
                               {isIncome ? "+" : "-"}
-                              {formatPrice(Math.abs(transaction.amount || 0))}
+                              {formatCompleteAmount(Math.abs(transaction.amount || 0))}
                             </td>
                           </tr>
                         );
@@ -1677,7 +1732,7 @@ export default function Reports() {
                                   Previous Day Cash:{" "}
                                 </span>
                                 <span className="font-semibold text-blue-600 price-responsive">
-                                  {formatPriceWithCurrency(prevDayCash)}
+                                  {formatCompleteAmount(prevDayCash)}
                                 </span>
                               </div>
                               {prevDayBank > 0 && (
@@ -1686,7 +1741,7 @@ export default function Reports() {
                                     Previous Day Bank:{" "}
                                   </span>
                                   <span className="font-semibold text-green-600 price-responsive">
-                                    {formatPriceWithCurrency(prevDayBank)}
+                                    {formatCompleteAmount(prevDayBank)}
                                   </span>
                                 </div>
                               )}
@@ -1714,98 +1769,113 @@ export default function Reports() {
                             <tbody>
                               <tr className="border-b border-gray-100 dark:border-gray-700 bg-blue-50 dark:bg-blue-900/10">
                                 <td className="p-2 font-semibold text-gray-800 dark:text-white text-xs sm:text-sm">
-                                  Opening Balance
+                                  {idx === 0 ? "Opening Balance" : "Brought Forward"}
                                 </td>
                                 <td className="p-2 text-right font-semibold text-blue-600 dark:text-blue-400 price-responsive whitespace-nowrap">
-                                  {formatPrice(
-                                    reportToUse.openingBalance?.cash || 0
+                                  {formatCompleteAmount(
+                                    idx === 0
+                                      ? reportToUse.openingBalance?.cash || 0
+                                      : prevDayCash
                                   )}
                                 </td>
                                 <td className="p-2 text-right font-semibold text-blue-600 dark:text-blue-400 price-responsive whitespace-nowrap">
-                                  {formatPrice(
-                                    reportToUse.openingBalance?.banks?.reduce(
-                                      (sum: number, bank: any) =>
-                                        sum + Number(bank.balance || 0),
-                                      0
-                                    ) || 0
+                                  {formatCompleteAmount(
+                                    idx === 0
+                                      ? (reportToUse.openingBalance?.banks?.reduce(
+                                          (sum: number, bank: any) =>
+                                            sum + Number(bank.balance || 0),
+                                          0
+                                        ) || 0)
+                                      : prevDayBank
                                   )}
                                 </td>
                                 <td className="p-2 text-right font-semibold text-blue-600 dark:text-blue-400 price-responsive whitespace-nowrap">
-                                  {formatPrice(
-                                    reportToUse.openingBalance?.total || 0
+                                  {formatCompleteAmount(
+                                    idx === 0
+                                      ? reportToUse.openingBalance?.total || 0
+                                      : (prevDayCash + prevDayBank)
                                   )}
                                 </td>
                               </tr>
-                              {/* Opening Balance Additions */}
-                              {reportToUse.openingBalanceAdditions &&
-                                reportToUse.openingBalanceAdditions.length >
-                                  0 && (
-                                  <tr className="border-b border-gray-100 dark:border-gray-700 bg-purple-50 dark:bg-purple-900/10">
-                                    <td className="p-2 font-semibold text-gray-800 dark:text-white text-xs sm:text-sm">
-                                      Opening Balance Additions
-                                    </td>
-                                    <td className="p-2 text-right font-semibold text-purple-600 dark:text-purple-400 price-responsive whitespace-nowrap">
-                                      {formatPrice(
-                                        reportToUse.openingBalanceAdditions
-                                          .filter(
-                                            (add: any) =>
-                                              add.paymentType === "cash"
-                                          )
-                                          .reduce(
-                                            (sum: number, add: any) =>
-                                              sum +
-                                              (add.type === "expense"
-                                                ? -Number(add.amount || 0)
-                                                : Number(add.amount || 0)),
-                                            0
-                                          )
-                                      )}
-                                    </td>
-                                    <td className="p-2 text-right font-semibold text-purple-600 dark:text-purple-400 price-responsive whitespace-nowrap">
-                                      {formatPrice(
-                                        reportToUse.openingBalanceAdditions
-                                          .filter(
-                                            (add: any) =>
-                                              add.paymentType !== "cash"
-                                          )
-                                          .reduce(
-                                            (sum: number, add: any) =>
-                                              sum +
-                                              (add.type === "expense"
-                                                ? -Number(add.amount || 0)
-                                                : Number(add.amount || 0)),
-                                            0
-                                          )
-                                      )}
-                                    </td>
-                                    <td className="p-2 text-right font-semibold text-purple-600 dark:text-purple-400 price-responsive whitespace-nowrap">
-                                      {formatPrice(
-                                        reportToUse.openingBalanceAdditions.reduce(
-                                          (sum: number, add: any) =>
-                                            sum +
-                                            (add.type === "expense"
-                                              ? -Number(add.amount || 0)
-                                              : Number(add.amount || 0)),
-                                          0
-                                        )
-                                      )}
-                                    </td>
-                                  </tr>
-                                )}
+                              {/* Opening Balance Additions - Always show to display daily additions breakdown */}
+                              <tr className="border-b border-gray-100 dark:border-gray-700 bg-purple-50 dark:bg-purple-900/10">
+                                <td className="p-2 font-semibold text-gray-800 dark:text-white text-xs sm:text-sm">
+                                  Opening Balance Additions
+                                  {reportToUse.openingBalanceAdditions &&
+                                    reportToUse.openingBalanceAdditions.length >
+                                      0 && (
+                                      <span className="ml-2 text-xs font-normal text-gray-500">
+                                        ({reportToUse.openingBalanceAdditions.length}{" "}
+                                        {reportToUse.openingBalanceAdditions.length === 1
+                                          ? "addition"
+                                          : "additions"})
+                                      </span>
+                                    )}
+                                </td>
+                                <td className="p-2 text-right font-semibold text-purple-600 dark:text-purple-400 price-responsive whitespace-nowrap">
+                                  {formatCompleteAmount(
+                                    (reportToUse.openingBalanceAdditions || [])
+                                      .filter(
+                                        (add: any) =>
+                                          (add.paymentType || "").toLowerCase() === "cash" ||
+                                          !add.paymentType ||
+                                          (add.paymentType || "").toLowerCase() !== "bank_transfer"
+                                      )
+                                      .reduce(
+                                        (sum: number, add: any) =>
+                                          sum +
+                                          (add.type === "expense"
+                                            ? -Number(add.amount || 0)
+                                            : Number(add.amount || 0)),
+                                        0
+                                      )
+                                  )}
+                                </td>
+                                <td className="p-2 text-right font-semibold text-purple-600 dark:text-purple-400 price-responsive whitespace-nowrap">
+                                  {formatCompleteAmount(
+                                    (reportToUse.openingBalanceAdditions || [])
+                                      .filter(
+                                        (add: any) =>
+                                          (add.paymentType || "").toLowerCase() === "bank_transfer" ||
+                                          (add.paymentType || "").includes("bank")
+                                      )
+                                      .reduce(
+                                        (sum: number, add: any) =>
+                                          sum +
+                                          (add.type === "expense"
+                                            ? -Number(add.amount || 0)
+                                            : Number(add.amount || 0)),
+                                        0
+                                      )
+                                  )}
+                                </td>
+                                <td className="p-2 text-right font-semibold text-purple-600 dark:text-purple-400 price-responsive whitespace-nowrap">
+                                  {formatCompleteAmount(
+                                    (reportToUse.openingBalanceAdditions || []).reduce(
+                                      (sum: number, add: any) =>
+                                        sum +
+                                        (add.type === "expense"
+                                          ? -Number(add.amount || 0)
+                                          : Number(add.amount || 0)),
+                                      0
+                                    )
+                                  )}
+                                </td>
+                              </tr>
                               <tr className="border-b border-gray-100 dark:border-gray-700 bg-green-50 dark:bg-green-900/10">
                                 <td className="p-2 font-semibold text-gray-800 dark:text-white text-xs sm:text-sm">
                                   Sales
                                 </td>
                                 <td className="p-2 text-right font-semibold text-green-600 dark:text-green-400 price-responsive whitespace-nowrap">
-                                  {formatPrice(reportToUse.sales?.cash || 0)}
+                                  {formatCompleteAmount(reportToUse.sales?.cash || 0)}
                                 </td>
                                 <td className="p-2 text-right font-semibold text-green-600 dark:text-green-400 price-responsive whitespace-nowrap">
-                                  {formatPrice(
+                                  {formatCompleteAmount(
                                     reportToUse.sales?.bank_transfer || 0
                                   )}
                                 </td>
                                 <td className="p-2 text-right font-semibold text-green-600 dark:text-green-400 price-responsive whitespace-nowrap">
-                                  {formatPrice(reportToUse.sales?.total || 0)}
+                                  {formatCompleteAmount(reportToUse.sales?.total || 0)}
                                 </td>
                               </tr>
                               <tr className="border-b border-gray-100 dark:border-gray-700 bg-orange-50 dark:bg-orange-900/10">
@@ -1814,19 +1884,19 @@ export default function Reports() {
                                 </td>
                                 <td className="p-2 text-right font-semibold text-orange-600 dark:text-orange-400 price-responsive whitespace-nowrap">
                                   -
-                                  {formatPrice(
+                                  {formatCompleteAmount(
                                     reportToUse.purchases?.cash || 0
                                   )}
                                 </td>
                                 <td className="p-2 text-right font-semibold text-orange-600 dark:text-orange-400 price-responsive whitespace-nowrap">
                                   -
-                                  {formatPrice(
+                                  {formatCompleteAmount(
                                     reportToUse.purchases?.bank_transfer || 0
                                   )}
                                 </td>
                                 <td className="p-2 text-right font-semibold text-orange-600 dark:text-orange-400 price-responsive whitespace-nowrap">
                                   -
-                                  {formatPrice(
+                                  {formatCompleteAmount(
                                     reportToUse.purchases?.total || 0
                                   )}
                                 </td>
@@ -1837,17 +1907,17 @@ export default function Reports() {
                                 </td>
                                 <td className="p-2 text-right font-semibold text-red-600 dark:text-red-400 price-responsive whitespace-nowrap">
                                   -
-                                  {formatPrice(reportToUse.expenses?.cash || 0)}
+                                  {formatCompleteAmount(reportToUse.expenses?.cash || 0)}
                                 </td>
                                 <td className="p-2 text-right font-semibold text-red-600 dark:text-red-400 price-responsive whitespace-nowrap">
                                   -
-                                  {formatPrice(
+                                  {formatCompleteAmount(
                                     reportToUse.expenses?.bank_transfer || 0
                                   )}
                                 </td>
                                 <td className="p-2 text-right font-semibold text-red-600 dark:text-red-400 price-responsive whitespace-nowrap">
                                   -
-                                  {formatPrice(
+                                  {formatCompleteAmount(
                                     reportToUse.expenses?.total || 0
                                   )}
                                 </td>
@@ -1857,12 +1927,12 @@ export default function Reports() {
                                   Closing Balance
                                 </td>
                                 <td className="p-2 text-right font-bold text-green-600 dark:text-green-400 price-responsive whitespace-nowrap">
-                                  {formatPrice(
+                                  {formatCompleteAmount(
                                     reportToUse.closingBalance?.cash || 0
                                   )}
                                 </td>
                                 <td className="p-2 text-right font-bold text-green-600 dark:text-green-400 price-responsive whitespace-nowrap">
-                                  {formatPrice(
+                                  {formatCompleteAmount(
                                     reportToUse.closingBalance?.banks?.reduce(
                                       (sum: number, bank: any) =>
                                         sum + Number(bank.balance || 0),
@@ -1877,7 +1947,7 @@ export default function Reports() {
                                   )}
                                 </td>
                                 <td className="p-2 text-right font-bold text-green-600 dark:text-green-400 price-responsive whitespace-nowrap">
-                                  {formatPrice(
+                                  {formatCompleteAmount(
                                     reportToUse.closingBalance?.total || 0
                                   )}
                                 </td>
@@ -1892,6 +1962,134 @@ export default function Reports() {
               </div>
             </div>
           )}
+
+        {/* Opening Balance Additions Report Table */}
+        {openingBalanceAdditions && openingBalanceAdditions.length > 0 && (
+          <div className="mb-6 p-3 sm:p-4 md:p-6 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+            <h2 className="mb-4 text-lg sm:text-xl font-semibold text-gray-800 dark:text-white">
+              Opening Balance Additions Report
+            </h2>
+            <div className="table-container">
+              <table className="responsive-table">
+                <thead>
+                  <tr className="border-b border-gray-200 dark:border-gray-700">
+                    <th className="p-2 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[120px]">
+                      Date & Time
+                    </th>
+                    <th className="p-2 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
+                      Payment Type
+                    </th>
+                    <th className="p-2 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[150px]">
+                      Bank Account
+                    </th>
+                    <th className="p-2 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[200px]">
+                      Description
+                    </th>
+                    <th className="p-2 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
+                      Added By
+                    </th>
+                    <th className="p-2 text-right text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
+                      Amount
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {openingBalanceAdditions.map((add: any, index: number) => {
+                    if (!add || !add.id) return null;
+
+                    const addDate = add.time || add.date || add.createdAt;
+                    const addDateTime = addDate ? new Date(addDate) : new Date();
+                    
+                    return (
+                      <tr
+                        key={add.id || index}
+                        className="border-b border-gray-100 dark:border-gray-700"
+                      >
+                        <td className="p-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                          {addDateTime.toLocaleString("en-US", {
+                            year: "numeric",
+                            month: "short",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </td>
+                        <td className="p-2 text-gray-700 dark:text-gray-300 whitespace-nowrap capitalize">
+                          {add.paymentType === "bank_transfer" 
+                            ? "Bank Transfer" 
+                            : add.paymentType || "Cash"}
+                        </td>
+                        <td className="p-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                          {add.bankAccount?.bankName || 
+                           (add.bankAccountId ? "Bank Account" : "N/A")}
+                          {add.bankAccount?.accountNumber && (
+                            <div className="text-xs text-gray-500">
+                              {add.bankAccount.accountNumber}
+                            </div>
+                          )}
+                        </td>
+                        <td className="p-2 text-gray-700 dark:text-gray-300 max-w-[200px]">
+                          <div className="line-clamp-2 truncate">
+                            {add.description || "Opening Balance Addition"}
+                          </div>
+                        </td>
+                        <td className="p-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                          {add.userName || "N/A"}
+                        </td>
+                        <td className="p-2 text-right font-semibold text-purple-600 dark:text-purple-400 whitespace-nowrap price-responsive">
+                          {formatCompleteAmount(Number(add.amount || 0))}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {/* Summary Row with Cash and Bank Breakdown */}
+                  <tr className="border-t-2 border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900">
+                    <td
+                      colSpan={5}
+                      className="p-2 font-bold text-gray-800 dark:text-white"
+                    >
+                      Total Opening Balance Additions
+                    </td>
+                    <td className="p-2 text-right font-bold text-purple-600 dark:text-purple-400">
+                      {formatCompleteAmount(totalAdditionalBalance)}
+                    </td>
+                  </tr>
+                  {/* Breakdown Row */}
+                  <tr className="border-b border-gray-200 dark:border-gray-700 bg-purple-50 dark:bg-purple-900/20">
+                    <td colSpan={5} className="p-2 pl-4 text-sm text-gray-700 dark:text-gray-300">
+                      Breakdown:
+                    </td>
+                    <td className="p-2 text-right text-sm">
+                      <div className="space-y-1">
+                        <div className="text-blue-600 dark:text-blue-400">
+                          Cash: {formatCompleteAmount(
+                            openingBalanceAdditions
+                              .filter((add: any) => 
+                                (add.paymentType || "").toLowerCase() === "cash" || 
+                                !add.paymentType ||
+                                (add.paymentType || "").toLowerCase() !== "bank_transfer"
+                              )
+                              .reduce((sum: number, add: any) => sum + Number(add.amount || 0), 0)
+                          )}
+                        </div>
+                        <div className="text-green-600 dark:text-green-400">
+                          Bank: {formatCompleteAmount(
+                            openingBalanceAdditions
+                              .filter((add: any) => 
+                                (add.paymentType || "").toLowerCase() === "bank_transfer" ||
+                                (add.paymentType || "").includes("bank")
+                              )
+                              .reduce((sum: number, add: any) => sum + Number(add.amount || 0), 0)
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
         {/* Purchases Report Table - Full Width */}
         {filteredPurchases.length > 0 ? (
@@ -1997,7 +2195,7 @@ export default function Reports() {
                         </td>
                         <td className="p-2 text-right font-semibold text-gray-800 dark:text-white whitespace-nowrap">
                           <div className="price-responsive">
-                            Rs. {Number(displayAmount || 0).toFixed(2)}
+                            {formatCompleteAmount(Number(displayAmount || 0))}
                           </div>
                           <div className="text-xs text-gray-500 mt-1">
                             {paymentType.toUpperCase()}
@@ -2014,7 +2212,7 @@ export default function Reports() {
                       Total Purchases
                     </td>
                     <td className="p-2 text-right font-bold text-orange-600 dark:text-orange-400">
-                      Rs. {totalPurchases.toFixed(2)}
+                      {formatCompleteAmount(totalPurchases)}
                     </td>
                   </tr>
                 </tbody>
@@ -2134,7 +2332,7 @@ export default function Reports() {
                               </td>
                               <td className="p-2 text-right font-semibold text-gray-800 dark:text-white whitespace-nowrap">
                                 <div>
-                                  Rs. {Number(displayAmount || 0).toFixed(2)}
+                                  {formatCompleteAmount(Number(displayAmount || 0))}
                                 </div>
                                 <div className="text-xs text-gray-500 mt-1">
                                   {paymentType.toUpperCase()}
@@ -2213,7 +2411,7 @@ export default function Reports() {
                               </div>
                             </td>
                             <td className="p-2 text-right font-semibold text-gray-800 dark:text-white whitespace-nowrap price-responsive">
-                              Rs. {Number(expense.amount || 0).toFixed(2)}
+                              {formatCompleteAmount(Number(expense.amount || 0))}
                             </td>
                           </tr>
                         );

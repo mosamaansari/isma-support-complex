@@ -28,7 +28,7 @@ class OpeningBalanceService {
     const endOfDay = new Date(targetDate);
     endOfDay.setHours(23, 59, 59, 999);
 
-    const openingBalance = await prisma.dailyOpeningBalance.findFirst({
+    let openingBalance = await prisma.dailyOpeningBalance.findFirst({
       where: {
         date: {
           gte: startOfDay,
@@ -38,7 +38,35 @@ class OpeningBalanceService {
       orderBy: { createdAt: "desc" },
     });
 
+    // If no opening balance exists, automatically get previous day's closing balance
     if (!openingBalance) {
+      const dailyClosingBalanceService = (await import("./dailyClosingBalance.service")).default;
+      try {
+        const previousClosing = await dailyClosingBalanceService.getPreviousDayClosingBalance(date);
+        if (previousClosing) {
+          // Create a virtual opening balance from previous closing balance
+          const bankBalancesArray = (previousClosing.bankBalances as Array<{ bankAccountId: string; balance: number }>) || [];
+          const cardBalancesArray = (previousClosing.cardBalances as Array<{ cardId: string; balance: number }>) || [];
+          
+          // Return previous closing balance as opening balance (without creating a record)
+          return {
+            id: `auto-${date}`,
+            date: targetDate,
+            cashBalance: Number(previousClosing.cashBalance) || 0,
+            bankBalances: bankBalancesArray,
+            cardBalances: cardBalancesArray,
+            notes: "Auto-loaded from previous day's closing balance",
+            userId: null,
+            userName: "System",
+            createdAt: targetDate,
+            updatedAt: targetDate,
+          };
+        }
+      } catch (error) {
+        logger.error("Error getting previous day closing balance:", error);
+      }
+      
+      // If no previous closing balance found either, return null
       return null;
     }
 
@@ -47,12 +75,35 @@ class OpeningBalanceService {
 
     const currentCash = await balanceManagementService.getCurrentCashBalance(targetDate);
 
-    // Calculate bank balances for each stored bank account
+    // Get all active bank accounts to ensure we show all banks
+    const allBanks = await prisma.bankAccount.findMany({
+      where: { isActive: true },
+      select: { id: true },
+    });
+
+    // Calculate bank balances for each stored bank account in opening balance
+    const bankBalancesMap = new Map<string, number>();
     const bankBalances = (openingBalance.bankBalances as Array<{ bankAccountId: string; balance: number }>) || [];
-    const runningBankBalances = await Promise.all(bankBalances.map(async (b) => ({
-      bankAccountId: b.bankAccountId,
-      balance: await balanceManagementService.getCurrentBankBalance(b.bankAccountId, targetDate)
-    })));
+    
+    // First, get balances from opening balance record
+    for (const b of bankBalances) {
+      bankBalancesMap.set(b.bankAccountId, await balanceManagementService.getCurrentBankBalance(b.bankAccountId, targetDate));
+    }
+
+    // Also check all active banks - if they have transactions, include them even if not in opening balance
+    for (const bank of allBanks) {
+      if (!bankBalancesMap.has(bank.id)) {
+        const balance = await balanceManagementService.getCurrentBankBalance(bank.id, targetDate);
+        if (balance > 0) {
+          bankBalancesMap.set(bank.id, balance);
+        }
+      }
+    }
+
+    const runningBankBalances = Array.from(bankBalancesMap.entries()).map(([bankAccountId, balance]) => ({
+      bankAccountId,
+      balance,
+    }));
 
     return {
       ...openingBalance,
@@ -165,48 +216,15 @@ class OpeningBalanceService {
       data: createData,
     });
 
-    // Create transaction record for opening balance
-    // Use current date and time for transactions
-    try {
-      const transactionDate = new Date(); // Always use current date and time
+    // IMPORTANT: Do NOT create balance transactions when creating opening balance
+    // Opening balance is just the baseline. Transactions will be created only when:
+    // 1. Users manually add to opening balance (via addToOpeningBalance)
+    // 2. Sales, purchases, expenses occur (handled by their respective services)
+    // 
+    // This prevents double-counting and ensures accurate balance calculations.
+    // The opening balance record itself represents the starting point for the day.
 
-      if (data.cashBalance > 0) {
-        await balanceTransactionService.createTransaction({
-          date: transactionDate,
-          type: "income",
-          amount: data.cashBalance,
-          paymentType: "cash",
-          description: data.notes || "Opening balance - Cash",
-          source: "opening_balance",
-          sourceId: openingBalance.id,
-          userId: userId,
-          userName: userName,
-        });
-      }
-
-      // Create transaction records for bank balances
-      if (data.bankBalances && data.bankBalances.length > 0) {
-        for (const bankBalance of data.bankBalances) {
-          if (bankBalance.balance > 0) {
-            await balanceTransactionService.createTransaction({
-              date: transactionDate,
-              type: "income",
-              amount: bankBalance.balance,
-              paymentType: "bank_transfer",
-              bankAccountId: bankBalance.bankAccountId,
-              description: data.notes || "Opening balance - Bank",
-              source: "opening_balance",
-              sourceId: openingBalance.id,
-              userId: userId,
-              userName: userName,
-            });
-          }
-        }
-      }
-    } catch (error) {
-      logger.error("Error creating transaction records:", error);
-      // Don't fail the opening balance creation if transaction record fails
-    }
+    logger.info(`Opening balance created for ${data.date}: Cash=${data.cashBalance}, Banks=${data.bankBalances?.length || 0}`);
 
     return openingBalance;
   }

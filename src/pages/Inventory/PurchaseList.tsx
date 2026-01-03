@@ -15,6 +15,7 @@ import Select from "../../components/form/Select";
 import Label from "../../components/form/Label";
 import { extractErrorMessage, extractValidationErrors } from "../../utils/errorHandler";
 import { formatPriceWithCurrency } from "../../utils/priceHelpers";
+import { formatDateToLocalISO, getTodayDate } from "../../utils/dateHelpers";
 
 export default function PurchaseList() {
   const { purchases, purchasesPagination, refreshPurchases, cards, refreshCards, bankAccounts, refreshBankAccounts, addPaymentToPurchase, loading, error } = useData();
@@ -27,7 +28,7 @@ export default function PurchaseList() {
   const [paymentData, setPaymentData] = useState<PurchasePayment & { date?: string }>({
     type: "cash",
     amount: 0,
-    date: new Date().toISOString(), // Current date and time
+    date: formatDateToLocalISO(new Date()), // Current date and time (local timezone)
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [backendErrors, setBackendErrors] = useState<Record<string, string>>({});
@@ -110,7 +111,7 @@ export default function PurchaseList() {
     setPaymentData({
       type: "cash",
       amount: 0,
-      date: new Date().toISOString(), // Current date and time
+      date: getTodayDate(), // Today's date (YYYY-MM-DD format)
     });
     setBackendErrors({});
     setShowAddPaymentModal(true);
@@ -153,14 +154,14 @@ export default function PurchaseList() {
       // Always use current date and time for payment
       const paymentPayload = {
         ...paymentData,
-        date: new Date().toISOString() // Current date and time
+        date: formatDateToLocalISO(new Date()) // Current date and time (local timezone)
       };
       await addPaymentToPurchase(selectedPurchase.id, paymentPayload);
       showSuccess("Payment added successfully!");
       setShowAddPaymentModal(false);
       setSelectedPurchase(null);
       setBackendErrors({});
-      setPaymentData({ type: "cash", amount: 0, date: new Date().toISOString() });
+      setPaymentData({ type: "cash", amount: 0, date: getTodayDate() });
       await refreshPurchases(purchasesPagination?.page || 1, purchasesPagination?.pageSize || 10);
     } catch (error: any) {
       // Handle backend validation errors
@@ -558,7 +559,7 @@ export default function PurchaseList() {
                   Payment Date <span className="text-error-500">*</span>
                 </Label>
                 <DatePicker
-                  value={paymentData.date}
+                  value={paymentData.date || getTodayDate()}
                   onChange={(e) => {
                     setPaymentData({ ...paymentData, date: e.target.value });
                     // Clear error when user changes value
@@ -567,6 +568,7 @@ export default function PurchaseList() {
                     }
                   }}
                   required
+                  disabled={true}
                   error={!!backendErrors.date}
                   hint={backendErrors.date || undefined}
                 />
@@ -606,10 +608,11 @@ export default function PurchaseList() {
                 <Button
                   onClick={handleSubmitPayment}
                   size="sm"
+                  loading={isSubmitting}
                   disabled={isSubmitting || !paymentData.amount || paymentData.amount <= 0 || (paymentData.type === "bank_transfer" && !paymentData.bankAccountId)}
                   className="flex-1"
                 >
-                  {isSubmitting ? "Adding..." : "Add Payment"}
+                  Add Payment
                 </Button>
                 <Button
                   onClick={() => {

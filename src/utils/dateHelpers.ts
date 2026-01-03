@@ -32,6 +32,21 @@ export const getLocalDate = (dateInput: string | Date): Date => {
 };
 
 /**
+ * Format a Date object to ISO-like string but in local timezone (not UTC)
+ * This prevents timezone shifts when storing dates
+ */
+export const formatDateToLocalISO = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const seconds = String(date.getSeconds()).padStart(2, "0");
+  const milliseconds = String(date.getMilliseconds()).padStart(3, "0");
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.${milliseconds}Z`;
+};
+
+/**
  * Get date range for reports
  */
 export const getDateRangeFromType = (reportType: "daily" | "weekly" | "monthly" | "custom", startDate?: string, endDate?: string) => {
@@ -47,8 +62,9 @@ export const getDateRangeFromType = (reportType: "daily" | "weekly" | "monthly" 
     }
     case "weekly": {
       const baseDate = startDate ? getLocalDate(startDate) : today;
+      // Weekly: 7 days ending on the base date (6 days before + base date = 7 days)
       start = new Date(baseDate);
-      start.setDate(baseDate.getDate() - 7);
+      start.setDate(baseDate.getDate() - 6); // 6 days before + today = 7 days total
       start = new Date(start.getFullYear(), start.getMonth(), start.getDate());
       end = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate());
       break;

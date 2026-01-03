@@ -815,6 +815,17 @@ class ApiClient {
     return response.data?.response?.data || response.data;
   }
 
+  async addToOpeningBalance(data: {
+    date: string;
+    amount: number;
+    type: "cash" | "bank";
+    bankAccountId?: string;
+    description?: string;
+  }) {
+    const response = await this.client.post("/opening-balances/add", data);
+    return response.data?.response?.data || response.data;
+  }
+
   // Balance Transaction endpoints
   async getCashTransactions(startDate?: string, endDate?: string) {
     const response = await this.client.get("/balance-transactions/cash", {

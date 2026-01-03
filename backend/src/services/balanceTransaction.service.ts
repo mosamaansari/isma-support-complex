@@ -17,16 +17,40 @@ class BalanceTransactionService {
     const where: any = {};
 
     if (filters.startDate && filters.endDate) {
-      const start = new Date(filters.startDate);
-      console.log("date", start)
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(filters.endDate);
-      end.setHours(23, 59, 59, 999);
+      // Parse date strings (YYYY-MM-DD) properly using local timezone (Pakistan)
+      const startParts = filters.startDate.split("-");
+      const endParts = filters.endDate.split("-");
+      
+      if (startParts.length === 3 && endParts.length === 3) {
+        // Create dates in local timezone (Pakistan) to match how dates are stored
+        const startYear = parseInt(startParts[0]);
+        const startMonth = parseInt(startParts[1]) - 1; // Month is 0-indexed
+        const startDay = parseInt(startParts[2]);
+        
+        const endYear = parseInt(endParts[0]);
+        const endMonth = parseInt(endParts[1]) - 1; // Month is 0-indexed
+        const endDay = parseInt(endParts[2]);
 
-      where.date = {
-        gte: start,
-        lte: end,
-      };
+        // Create start and end dates using local date components (Pakistan timezone)
+        const start = new Date(startYear, startMonth, startDay, 0, 0, 0, 0);
+        const end = new Date(endYear, endMonth, endDay, 23, 59, 59, 999);
+
+        where.date = {
+          gte: start,
+          lte: end,
+        };
+      } else {
+        // Fallback to old method if date format is invalid
+        const start = new Date(filters.startDate);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(filters.endDate);
+        end.setHours(23, 59, 59, 999);
+
+        where.date = {
+          gte: start,
+          lte: end,
+        };
+      }
     }
 
     if (filters.paymentType) {
@@ -61,16 +85,40 @@ class BalanceTransactionService {
     };
 
     if (startDate && endDate) {
-      // Parse dates properly to avoid timezone issues
-      const start = new Date(startDate);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(endDate);
-      end.setHours(23, 59, 59, 999);
+      // Parse date strings (YYYY-MM-DD) properly using local timezone (Pakistan)
+      const startParts = startDate.split("-");
+      const endParts = endDate.split("-");
+      
+      if (startParts.length === 3 && endParts.length === 3) {
+        // Create dates in local timezone (Pakistan) to match how dates are stored
+        const startYear = parseInt(startParts[0]);
+        const startMonth = parseInt(startParts[1]) - 1; // Month is 0-indexed
+        const startDay = parseInt(startParts[2]);
+        
+        const endYear = parseInt(endParts[0]);
+        const endMonth = parseInt(endParts[1]) - 1; // Month is 0-indexed
+        const endDay = parseInt(endParts[2]);
 
-      where.date = {
-        gte: start,
-        lte: end,
-      };
+        // Create start and end dates using local date components (Pakistan timezone)
+        const start = new Date(startYear, startMonth, startDay, 0, 0, 0, 0);
+        const end = new Date(endYear, endMonth, endDay, 23, 59, 59, 999);
+
+        where.date = {
+          gte: start,
+          lte: end,
+        };
+      } else {
+        // Fallback to old method if date format is invalid
+        const start = new Date(startDate);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+
+        where.date = {
+          gte: start,
+          lte: end,
+        };
+      }
     }
 
     const transactions = await prisma.balanceTransaction.findMany({
@@ -94,16 +142,40 @@ class BalanceTransactionService {
     };
 
     if (startDate && endDate) {
-      // Parse dates properly to avoid timezone issues
-      const start = new Date(startDate);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(endDate);
-      end.setHours(23, 59, 59, 999);
+      // Parse date strings (YYYY-MM-DD) properly using local timezone (Pakistan)
+      const startParts = startDate.split("-");
+      const endParts = endDate.split("-");
+      
+      if (startParts.length === 3 && endParts.length === 3) {
+        // Create dates in local timezone (Pakistan) to match how dates are stored
+        const startYear = parseInt(startParts[0]);
+        const startMonth = parseInt(startParts[1]) - 1; // Month is 0-indexed
+        const startDay = parseInt(startParts[2]);
+        
+        const endYear = parseInt(endParts[0]);
+        const endMonth = parseInt(endParts[1]) - 1; // Month is 0-indexed
+        const endDay = parseInt(endParts[2]);
 
-      where.date = {
-        gte: start,
-        lte: end,
-      };
+        // Create start and end dates using local date components (Pakistan timezone)
+        const start = new Date(startYear, startMonth, startDay, 0, 0, 0, 0);
+        const end = new Date(endYear, endMonth, endDay, 23, 59, 59, 999);
+
+        where.date = {
+          gte: start,
+          lte: end,
+        };
+      } else {
+        // Fallback to old method if date format is invalid
+        const start = new Date(startDate);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+
+        where.date = {
+          gte: start,
+          lte: end,
+        };
+      }
     }
 
     const transactions = await prisma.balanceTransaction.findMany({

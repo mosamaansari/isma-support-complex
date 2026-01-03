@@ -54,8 +54,17 @@ export function formatPriceWithCurrency(amount: number): string {
   return `Rs. ${formatPrice(amount)}`;
 }
 
-
-
-
-
+/**
+ * Format a number as complete amount with commas and two decimal places (no abbreviations)
+ * Examples:
+ * - 1030 -> "1,030.00"
+ * - 1030000 -> "1,030,000.00"
+ * - 50000 -> "50,000.00"
+ */
+export function formatCompleteAmount(amount: number): string {
+  return new Intl.NumberFormat("en-PK", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount);
+}
 

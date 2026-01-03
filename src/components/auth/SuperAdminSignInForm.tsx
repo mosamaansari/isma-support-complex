@@ -154,8 +154,8 @@ export default function SuperAdminSignInForm() {
                   </span>
                 </div>
                 <div>
-                  <Button type="submit" className="w-full" size="sm" disabled={isLoading}>
-                    {isLoading ? "Signing in..." : "Sign in as Admin"}
+                  <Button type="submit" className="w-full" size="sm" loading={isLoading} disabled={isLoading}>
+                    Sign in as Admin
                   </Button>
                 </div>
               </div>

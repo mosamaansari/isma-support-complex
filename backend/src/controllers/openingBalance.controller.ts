@@ -2,6 +2,7 @@ import { Response } from "express";
 import openingBalanceService from "../services/openingBalance.service";
 import logger from "../utils/logger";
 import { AuthRequest } from "../middleware/auth";
+import balanceManagementService from "../services/balanceManagement.service";
 
 class OpeningBalanceController {
   async getOpeningBalance(req: AuthRequest, res: Response) {
@@ -96,6 +97,52 @@ class OpeningBalanceController {
         res.status(404).json({ error: error.message });
       } else {
         res.status(500).json({ error: "Internal server error" });
+      }
+    }
+  }
+
+  async addToOpeningBalance(req: AuthRequest, res: Response) {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const { date, amount, type, bankAccountId, description } = req.body;
+
+      // Get user name
+      let userName = req.user.name || req.user.username || "Unknown User";
+
+      // Use balanceManagementService.addToOpeningBalance which handles creating opening balance if it doesn't exist
+      const result = await balanceManagementService.addToOpeningBalance(
+        new Date(date),
+        Number(amount),
+        type,
+        {
+          description: description || "Add Opening Balance",
+          userId: req.user.id,
+          userName: userName,
+          bankAccountId: type === "bank" ? bankAccountId : undefined,
+        }
+      );
+
+      logger.info(`Opening balance addition: ${type} ${amount} added on ${date} by ${userName}`);
+      
+      // Return the updated opening balance for the date
+      const openingBalance = await openingBalanceService.getOpeningBalance(date);
+      
+      res.json({
+        message: "Opening balance added successfully",
+        result: result,
+        openingBalance: openingBalance,
+      });
+    } catch (error: any) {
+      logger.error("Add to opening balance error:", error);
+      if (error.message.includes("required")) {
+        res.status(400).json({ error: error.message });
+      } else if (error.message.includes("Insufficient")) {
+        res.status(400).json({ error: error.message });
+      } else {
+        res.status(500).json({ error: error.message || "Internal server error" });
       }
     }
   }

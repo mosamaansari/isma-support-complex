@@ -11,6 +11,29 @@ import {
 import { PERMISSIONS } from "../utils/permissions";
 import Joi from "joi";
 
+const addToOpeningBalanceSchema = Joi.object({
+  date: Joi.string().required().isoDate().messages({
+    "string.isoDate": "Date must be a valid ISO date",
+    "any.required": "Date is required",
+  }),
+  amount: Joi.number().required().positive().messages({
+    "number.positive": "Amount must be greater than 0",
+    "any.required": "Amount is required",
+  }),
+  type: Joi.string().required().valid("cash", "bank").messages({
+    "any.only": "Type must be either 'cash' or 'bank'",
+    "any.required": "Type is required",
+  }),
+  bankAccountId: Joi.string().when("type", {
+    is: "bank",
+    then: Joi.required().messages({
+      "any.required": "Bank account ID is required when type is 'bank'",
+    }),
+    otherwise: Joi.optional(),
+  }),
+  description: Joi.string().optional().allow("", null),
+});
+
 const router = Router();
 
 // Get opening balance for a specific date
@@ -78,6 +101,15 @@ router.delete(
     })
   ),
   openingBalanceController.deleteOpeningBalance.bind(openingBalanceController)
+);
+
+// Add to opening balance (creates opening balance if doesn't exist)
+router.post(
+  "/add",
+  authenticate,
+  requirePermission(PERMISSIONS.OPENING_BALANCE_UPDATE),
+  bodyValidator(addToOpeningBalanceSchema),
+  openingBalanceController.addToOpeningBalance.bind(openingBalanceController)
 );
 
 export default router;

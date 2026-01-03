@@ -40,6 +40,33 @@ class ReportsController {
     }
   }
 
+  async getMonthlyReport(req: AuthRequest, res: Response) {
+    try {
+      const { year, month } = req.query;
+
+      if (!year || typeof year !== "string") {
+        return res.status(400).json({ error: "Year parameter is required" });
+      }
+
+      if (!month || typeof month !== "string") {
+        return res.status(400).json({ error: "Month parameter is required" });
+      }
+
+      const yearNum = parseInt(year, 10);
+      const monthNum = parseInt(month, 10);
+
+      if (isNaN(yearNum) || isNaN(monthNum) || monthNum < 1 || monthNum > 12) {
+        return res.status(400).json({ error: "Invalid year or month" });
+      }
+
+      const report = await reportService.getMonthlyReport(yearNum, monthNum);
+      res.json(report);
+    } catch (error: any) {
+      logger.error("Get monthly report error:", error);
+      res.status(500).json({ error: error.message || "Internal server error" });
+    }
+  }
+
   async generateDailyReportPDF(req: AuthRequest, res: Response) {
     try {
       const { date } = req.query;

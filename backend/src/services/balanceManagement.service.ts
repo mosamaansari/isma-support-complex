@@ -245,8 +245,10 @@ class BalanceManagementService {
       // Running balance is tracked via BalanceTransactions and latest transaction afterBalance.
 
       // Create balance transaction record with detailed tracking
-      // Use current date and time for transaction
-      const transactionDate = new Date(); // Always use current date and time
+      // Use the provided date but with current time to preserve exact transaction time
+      const now = new Date();
+      const transactionDate = new Date(date);
+      transactionDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
 
       const transaction = await balanceTransactionService.createTransaction({
         date: transactionDate,
@@ -394,8 +396,10 @@ class BalanceManagementService {
       // It stays as the initial opening balance for the day.
 
       // Create balance transaction record with detailed tracking
-      // Use current date and time for transaction
-      const transactionDate = new Date(); // Always use current date and time
+      // Use the provided date but with current time to preserve exact transaction time
+      const now = new Date();
+      const transactionDate = new Date(date);
+      transactionDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
 
       const transaction = await balanceTransactionService.createTransaction({
         date: transactionDate,
@@ -603,7 +607,11 @@ class BalanceManagementService {
       }
 
       // Create balance transaction record
-      const transactionDate = new Date();
+      // Use the provided date but with current time to preserve exact transaction time
+      const now = new Date();
+      const transactionDate = new Date(date);
+      transactionDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+      
       const transaction = await balanceTransactionService.createTransaction({
         date: transactionDate,
         type: type,

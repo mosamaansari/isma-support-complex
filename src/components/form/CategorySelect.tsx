@@ -125,9 +125,10 @@ export default function CategorySelect({
                 type="button"
                 size="sm"
                 onClick={handleAddCategory}
+                loading={isSubmitting}
                 disabled={isSubmitting || !newCategoryName.trim()}
               >
-                {isSubmitting ? "Adding..." : "Add Category"}
+                Add Category
               </Button>
               <Button
                 type="button"

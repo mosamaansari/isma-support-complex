@@ -53,6 +53,7 @@ export default function SalesList() {
     type: "cash",
     amount: 0,
   });
+  const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
 
   const filteredSales = (sales || []).filter((sale) => {
     if (!sale || !sale.billNumber) return false;
@@ -111,7 +112,7 @@ export default function SalesList() {
     setPaymentData({
       type: "cash",
       amount: 0,
-      date: new Date().toISOString(), // Current date and time
+      date: getTodayDate(), // Today's date (YYYY-MM-DD format)
     });
     openPaymentModal();
   };
@@ -149,6 +150,7 @@ export default function SalesList() {
       return;
     }
 
+    setIsSubmittingPayment(true);
     try {
       // Always use current date and time for payment
       const paymentPayload = {
@@ -159,10 +161,12 @@ export default function SalesList() {
       await refreshSales(salesPagination?.page || 1, salesPagination?.pageSize || 10);
       closePaymentModal();
       setSelectedSale(null);
-      setPaymentData({ type: "cash", amount: 0, date: new Date().toISOString(), bankAccountId: undefined });
+      setPaymentData({ type: "cash", amount: 0, date: getTodayDate(), bankAccountId: undefined });
       showSuccess("Payment added successfully!");
     } catch (err: any) {
       showError(extractErrorMessage(err) || "Failed to add payment");
+    } finally {
+      setIsSubmittingPayment(false);
     }
   };
 
@@ -521,6 +525,7 @@ export default function SalesList() {
               <DatePicker
                 value={paymentData.date || getTodayDate()}
                 onChange={(e) => setPaymentData({ ...paymentData, date: e.target.value })}
+                disabled={true}
               />
             </div>
           </div>
@@ -528,7 +533,13 @@ export default function SalesList() {
             <Button variant="outline" size="sm" onClick={closePaymentModal} className="flex-1">
               Cancel
             </Button>
-            <Button size="sm" onClick={handleSubmitPayment} className="flex-1">
+            <Button 
+              size="sm" 
+              onClick={handleSubmitPayment} 
+              className="flex-1"
+              loading={isSubmittingPayment}
+              disabled={isSubmittingPayment || !paymentData.amount || paymentData.amount <= 0 || (paymentData.type === "bank_transfer" && !paymentData.bankAccountId)}
+            >
               Add Payment
             </Button>
           </div>

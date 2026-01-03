@@ -14,7 +14,7 @@ import Select from "../../components/form/Select";
 import TaxDiscountInput from "../../components/form/TaxDiscountInput";
 import Button from "../../components/ui/button/Button";
 import { TrashBinIcon, PlusIcon } from "../../icons";
-import { getTodayDate, formatDateToString } from "../../utils/dateHelpers";
+import { getTodayDate, formatDateToString, formatDateToLocalISO } from "../../utils/dateHelpers";
 import { extractErrorMessage, extractValidationErrors } from "../../utils/errorHandler";
 import { restrictDecimalInput } from "../../utils/numberHelpers";
 
@@ -594,11 +594,16 @@ export default function SalesEntry() {
 
       const billNumber = generateBillNumber();
 
-      // Combine selected date with current time
-      const dateTime = new Date(data.date);
+      // Combine selected date with current time (using local timezone)
+      const dateParts = data.date.split("-");
+      const year = parseInt(dateParts[0]);
+      const month = parseInt(dateParts[1]) - 1; // Month is 0-indexed
+      const day = parseInt(dateParts[2]);
       const now = new Date();
-      dateTime.setHours(now.getHours(), now.getMinutes(), now.getSeconds());
-      const dateIsoString = dateTime.toISOString();
+      // Create date in local timezone with current time
+      const dateTime = new Date(year, month, day, now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+      // Use local ISO format to avoid timezone conversion
+      const dateIsoString = formatDateToLocalISO(dateTime);
 
       const createdSale = await addSale({
         billNumber,
@@ -952,6 +957,7 @@ export default function SalesEntry() {
                   }}
                   onBlur={register("date").onBlur}
                   required
+                  disabled={true}
                   error={!!errors.date}
                   hint={errors.date?.message}
                 />
@@ -1132,9 +1138,10 @@ export default function SalesEntry() {
               onClick={handleFormSubmit(onSubmit)}
               className="w-full mt-6"
               size="sm"
+              loading={isSubmitting}
               disabled={selectedProducts.length === 0 || isSubmitting}
             >
-              {isSubmitting ? "Generating Bill..." : "Generate Bill"}
+              Generate Bill
             </Button>
           </div>
         </div>

@@ -18,7 +18,7 @@ import api from "../../services/api";
 import { hasPermission } from "../../utils/permissions";
 import { AVAILABLE_PERMISSIONS } from "../../utils/availablePermissions";
 import { extractErrorMessage } from "../../utils/errorHandler";
-import { getTodayDate, formatDateToString } from "../../utils/dateHelpers";
+import { getTodayDate, formatDateToLocalISO } from "../../utils/dateHelpers";
 
 const purchaseEntrySchema = yup.object().shape({
   supplierName: yup
@@ -104,9 +104,10 @@ export default function PurchaseEntry() {
         .then((purchase: any) => {
           setValue("supplierName", purchase.supplierName);
           setValue("supplierPhone", purchase.supplierPhone || "");
-          // Format date to YYYY-MM-DD (accurate, no timezone issues)
-          const purchaseDate = new Date(purchase.date);
-          setDate(formatDateToString(purchaseDate));
+          // Use the purchase's actual date, not today's date
+          const purchaseDate = purchase.date ? new Date(purchase.date).toISOString().split('T')[0] : getTodayDate();
+          setDate(purchaseDate);
+          setValue("date", purchaseDate);
           setTaxType((purchase.taxType as "percent" | "value") || "percent");
           setTax(purchase.tax ? Number(purchase.tax) : null);
           setPayments((purchase.payments || []) as PurchasePayment[]);
@@ -474,11 +475,17 @@ export default function PurchaseEntry() {
         };
       });
 
-      // Combine selected date with current time
-      const dateTime = new Date(data.date);
+      // Combine selected date with current time (using local timezone)
+      // Parse date string (YYYY-MM-DD) to avoid timezone issues
+      const dateParts = data.date.split("-");
+      const year = parseInt(dateParts[0]);
+      const month = parseInt(dateParts[1]) - 1; // Month is 0-indexed
+      const day = parseInt(dateParts[2]);
       const now = new Date();
-      dateTime.setHours(now.getHours(), now.getMinutes(), now.getSeconds());
-      const dateIsoString = dateTime.toISOString();
+      // Create date in local timezone with current time
+      const dateTime = new Date(year, month, day, now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+      // Use local ISO format to avoid timezone conversion
+      const dateIsoString = formatDateToLocalISO(dateTime);
 
       const purchaseData = {
         supplierName: data.supplierName.trim(),
@@ -819,6 +826,7 @@ export default function PurchaseEntry() {
                       }}
                       onBlur={register("date").onBlur}
                       required
+                      disabled={true}
                       error={!!errors.date}
                       hint={errors.date?.message}
                     />
@@ -883,7 +891,7 @@ export default function PurchaseEntry() {
                       </div>
                       <div className="space-y-2">
                         <div>
-                          <Label>Payment Type</Label>
+                          <Label>Payment Type <span className="text-error-500">*</span></Label>
                           <Select
                             value={payment.type}
                             onChange={(value) => updatePayment(index, "type", value)}
@@ -932,7 +940,7 @@ export default function PurchaseEntry() {
                           </div>
                         )}
                         <div>
-                          <Label>Amount</Label>
+                          <Label>Amount <span className="text-error-500">*</span></Label>
                           <Input
                             type="number"
                             step={0.01}
@@ -984,9 +992,10 @@ export default function PurchaseEntry() {
                   onClick={handleFormSubmit(onSubmit)}
                   className="w-full mt-6"
                   size="sm"
+                  loading={isSubmitting}
                   disabled={selectedProducts.length === 0 || !supplierName || payments.length === 0 || isSubmitting}
                 >
-                  {isSubmitting ? (isEdit ? "Updating..." : "Saving...") : (isEdit ? "Update Purchase" : "Save Purchase")}
+                  {isEdit ? "Update Purchase" : "Save Purchase"}
                 </Button>
               </div>
             </div>

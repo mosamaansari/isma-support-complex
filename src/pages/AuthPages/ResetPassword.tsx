@@ -189,8 +189,8 @@ export default function ResetPassword() {
                     </div>
 
                     <div>
-                      <Button type="submit" className="w-full" size="sm" disabled={isLoading || !token}>
-                        {isLoading ? "Resetting Password..." : "Reset Password"}
+                      <Button type="submit" className="w-full" size="sm" loading={isLoading} disabled={isLoading || !token}>
+                        Reset Password
                       </Button>
                     </div>
                   </div>

@@ -15,6 +15,7 @@ import {
 } from "../types";
 import api from "../services/api";
 import { extractErrorMessage } from "../utils/errorHandler";
+import { formatDateToLocalISO } from "../utils/dateHelpers";
 
 interface DataContextType {
   // Users
@@ -756,7 +757,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       id: Date.now().toString(),
       totalPurchases: 0,
       dueAmount: 0,
-      createdAt: new Date().toISOString(),
+      createdAt: formatDateToLocalISO(new Date()),
     };
     setCustomers([...customers, newCustomer]);
   };
@@ -776,7 +777,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       id: Date.now().toString(),
       totalPurchases: 0,
       dueAmount: 0,
-      createdAt: new Date().toISOString(),
+      createdAt: formatDateToLocalISO(new Date()),
     };
     setSuppliers([...suppliers, newSupplier]);
   };

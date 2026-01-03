@@ -2,7 +2,8 @@ import prisma from "../config/database";
 import logger from "../utils/logger";
 import { Decimal } from "@prisma/client/runtime/library";
 import dailyClosingBalanceService from "./dailyClosingBalance.service";
-import { formatLocalYMD } from "../utils/date";
+import balanceManagementService from "./balanceManagement.service";
+import { formatLocalYMD, getTodayInPakistan } from "../utils/date";
 
 interface DailyConfirmationStatus {
   needsConfirmation: boolean;
@@ -18,8 +19,8 @@ class DailyConfirmationService {
    * Returns true if no confirmation exists for today or it's not confirmed
    */
   async checkConfirmationNeeded(): Promise<boolean> {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // Use Pakistan timezone to get today's date
+    const today = getTodayInPakistan();
 
     // Check if confirmation already exists for today
     const confirmation = await prisma.dailyConfirmation.findUnique({
@@ -30,21 +31,35 @@ class DailyConfirmationService {
   }
 
   /**
-   * Get daily confirmation status with balances
+   * Get daily confirmation status with balances for a specific user
    */
-  async getConfirmationStatus(): Promise<DailyConfirmationStatus> {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+  async getConfirmationStatus(userId?: string): Promise<DailyConfirmationStatus> {
+    // Use Pakistan timezone to get current time and today's date
+    const now = new Date();
+    const pakistanTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Karachi" }));
+    const today = getTodayInPakistan();
+
+    // Check if it's after 12:10 AM or 12:30 AM in Pakistan timezone (cron runs at 12:00 AM)
+    // Show popup after 12:10 AM (10 minutes after cron)
+    const showAfterHour = 0; // 12:00 AM
+    const showAfterMinute = 10; // 10 minutes past midnight
+    
+    const currentHour = pakistanTime.getHours();
+    const currentMinute = pakistanTime.getMinutes();
+    const shouldShow = currentHour > showAfterHour || (currentHour === showAfterHour && currentMinute >= showAfterMinute);
 
     // Get confirmation status for today
     const confirmation = await prisma.dailyConfirmation.findUnique({
       where: { date: today },
     });
 
+    // Check if this specific user has confirmed (for per-user tracking)
+    // Note: This is a simple check - for full per-user support, we'd need a separate table
+    const userConfirmed = userId && confirmation?.confirmedBy === userId;
     const confirmed = confirmation?.confirmed || false;
 
-    // If already confirmed, don't need confirmation
-    if (confirmed) {
+    // If user has already confirmed, don't show popup
+    if (userConfirmed) {
       return {
         needsConfirmation: false,
         confirmed: true,
@@ -54,22 +69,15 @@ class DailyConfirmationService {
       };
     }
 
-    // Check if there's no opening balance for today (first time setup)
-    const hasTodayOpeningBalance = await prisma.dailyOpeningBalance.findUnique({
-      where: { date: today },
-    });
-
-    // Show modal if: not confirmed (anytime, no time restriction)
+    // Show modal if: not confirmed
+    // Always calculate and return balances when not confirmed (even if before 12:10 AM for user convenience)
     const needsConfirmation = !confirmed;
 
-    // Calculate previous day's closing balances using the same ledger-based logic
-    // as Daily Closing Balance (includes opening balance + all balance transactions)
-    const todayStr = formatLocalYMD(today);
-    const previousClosing = await dailyClosingBalanceService.getPreviousDayClosingBalance(todayStr);
-
-    const previousCashBalance = Number((previousClosing as any)?.cashBalance || 0);
-
-    // Enrich bank balances with bank metadata and include all active banks
+    // Get CURRENT running balance for today (includes opening + additional amounts)
+    // This uses balanceManagementService which correctly includes all transactions including "add_opening_balance"
+    const currentCashBalance = await balanceManagementService.getCurrentCashBalance(today);
+    
+    // Get all active bank accounts
     const bankAccounts = await prisma.bankAccount.findMany({
       where: { isActive: true },
       select: {
@@ -79,25 +87,26 @@ class DailyConfirmationService {
       },
     });
 
-    const closingBankBalances = ((previousClosing as any)?.bankBalances as any[]) || [];
-    const closingBankMap = new Map<string, number>();
-    for (const b of closingBankBalances) {
-      if (b?.bankAccountId) closingBankMap.set(String(b.bankAccountId), Number(b.balance || 0));
+    // Get current balance for each bank account (includes opening + additional amounts)
+    const currentBankBalances: Array<{ bankAccountId: string; bankName: string; accountNumber: string; balance: number }> = [];
+    for (const account of bankAccounts) {
+      const balance = await balanceManagementService.getCurrentBankBalance(account.id, today);
+      currentBankBalances.push({
+        bankAccountId: account.id,
+        bankName: account.bankName,
+        accountNumber: account.accountNumber,
+        balance: balance,
+      });
     }
 
-    const previousBankBalances = bankAccounts.map((acc) => ({
-      bankAccountId: acc.id,
-      bankName: acc.bankName,
-      accountNumber: acc.accountNumber,
-      balance: closingBankMap.get(acc.id) || 0,
-    }));
-
     return {
-      needsConfirmation,
-      confirmed,
+      // Show modal if not confirmed AND (after 12:10 AM OR we allow anytime for convenience)
+      // For now, allow showing anytime if not confirmed (remove time restriction for user convenience)
+      needsConfirmation: needsConfirmation, // && shouldShow, // Removed time restriction
+      confirmed: userConfirmed || false,
       date: formatLocalYMD(today),
-      previousCashBalance,
-      bankBalances: previousBankBalances,
+      previousCashBalance: currentCashBalance, // Current day's running balance (includes opening + additional)
+      bankBalances: currentBankBalances, // All active banks with their current balances (including 0 balance)
     };
   }
 
@@ -307,18 +316,23 @@ class DailyConfirmationService {
   }
 
   /**
-   * Confirm daily opening balance
+   * Confirm daily opening balance for a specific user
+   * Note: Current implementation uses single confirmation per day.
+   * For full per-user support, we'd need a separate UserDailyConfirmation table.
+   * For now, we track the user who confirmed, and check if current user matches.
    */
   async confirmDaily(userInfo: { id: string; userType?: "user" | "admin" }): Promise<void> {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // Use Pakistan timezone to get today's date
+    const today = getTodayInPakistan();
 
-    // Upsert confirmation
+    // Upsert confirmation - store which user confirmed
+    // Note: This is a simplified per-user tracking. For true per-user support,
+    // we'd need a separate table with userId + date as unique constraint.
     await prisma.dailyConfirmation.upsert({
       where: { date: today },
       update: {
         confirmed: true,
-        confirmedBy: userInfo.id,
+        confirmedBy: userInfo.id, // Store the user who confirmed
         confirmedByType: userInfo.userType || "user",
         confirmedAt: new Date(),
       },

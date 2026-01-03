@@ -418,8 +418,8 @@ export default function Profile() {
           </div>
 
           <div className="flex gap-4 pt-6 border-t border-gray-200 dark:border-gray-700">
-            <Button type="submit" size="sm" disabled={isSubmittingProfile}>
-              {isSubmittingProfile ? "Updating..." : "Update Profile Information"}
+            <Button type="submit" size="sm" loading={isSubmittingProfile} disabled={isSubmittingProfile}>
+              Update Profile Information
             </Button>
             <Button
               type="button"
@@ -496,8 +496,8 @@ export default function Profile() {
           </div>
 
           <div className="flex gap-4 pt-4">
-            <Button type="submit" size="sm" disabled={isSubmittingPassword}>
-              {isSubmittingPassword ? "Updating..." : "Update Password"}
+            <Button type="submit" size="sm" loading={isSubmittingPassword} disabled={isSubmittingPassword}>
+              Update Password
             </Button>
             <Button
               type="button"

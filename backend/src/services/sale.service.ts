@@ -3,6 +3,7 @@ import logger from "../utils/logger";
 import whatsappService from "./whatsapp.service";
 import productService from "./product.service";
 import { validateTodayDate } from "../utils/dateValidation";
+import { parseLocalISO, getCurrentLocalDateTime } from "../utils/date";
 import { limitDecimalPlaces } from "../utils/numberHelpers";
 
 const splitSaleQuantities = (item: {
@@ -554,11 +555,11 @@ class SaleService {
     let remainingBalance = total;
 
     if (data.payments && data.payments.length > 0) {
-      // New multiple payments format - add current date and time to all payments
-      const currentDateTime = new Date().toISOString();
+      // New multiple payments format - use payment date if provided, otherwise use sale date
+      const saleDate = data.date ? parseLocalISO(data.date).toISOString() : new Date().toISOString();
       payments = data.payments.map((payment: any) => ({
         ...payment,
-        date: currentDateTime // Always use current date and time
+        date: payment.date || saleDate // Use payment date if provided, otherwise use sale date
       }));
       const totalPaid = payments.reduce((sum, payment) => sum + payment.amount, 0);
       remainingBalance = total - totalPaid;
@@ -571,12 +572,13 @@ class SaleService {
       const paymentType = (data.paymentType || "cash") as "cash" | "bank_transfer";
       const paymentAmount = total;
       remainingBalance = 0;
+      const saleDate = data.date ? parseLocalISO(data.date).toISOString() : new Date().toISOString();
 
       payments = [{
         type: paymentType,
         amount: paymentAmount,
         bankAccountId: data.bankAccountId || undefined,
-        date: new Date().toISOString(), // Always use current date and time
+        date: saleDate, // Use sale date
       }];
     }
 
@@ -602,7 +604,9 @@ class SaleService {
         customerName: customerName || null,
         customerPhone: customerPhone || null,
         customerCity: customerCity || null,
-        date: data.date ? new Date(data.date) : new Date(),
+        date: data.date ? parseLocalISO(data.date) : getCurrentLocalDateTime(),
+        createdAt: getCurrentLocalDateTime(),
+        updatedAt: getCurrentLocalDateTime(),
         userId: user.id,
         userName: user.name,
         createdBy: user.id,
@@ -697,10 +701,13 @@ class SaleService {
           continue;
         }
 
+        // Use payment date if available, otherwise use sale date
+        const paymentDate = (payment as any).date ? parseLocalISO((payment as any).date) : sale.date;
+
         // Handle cash, bank_transfer, and card payments
         if (payment.type === "cash") {
           await balanceManagementService.updateCashBalance(
-            sale.date,
+            paymentDate,
             Number(payment.amount),
             "income",
             {
@@ -717,7 +724,7 @@ class SaleService {
           if (bankAccountId) {
             await balanceManagementService.updateBankBalance(
               bankAccountId,
-              sale.date,
+              paymentDate,
               Number(payment.amount),
               "income",
               {
@@ -735,7 +742,7 @@ class SaleService {
           if (cardId) {
             await balanceManagementService.updateCardBalance(
               cardId,
-              sale.date,
+              paymentDate,
               Number(payment.amount),
               "income",
               {
@@ -836,7 +843,10 @@ class SaleService {
     // Update sale status
     const updatedSale = await prisma.sale.update({
       where: { id },
-      data: { status: "cancelled" },
+      data: { 
+        status: "cancelled",
+        updatedAt: getCurrentLocalDateTime(),
+      },
     });
 
     return updatedSale;
@@ -908,6 +918,7 @@ class SaleService {
         payments: newPayments as any,
         remainingBalance: newRemainingBalance,
         status: newStatus as any,
+        updatedAt: getCurrentLocalDateTime(),
         // Update paymentType to the latest payment type for backward compatibility
         paymentType: payment.type as any,
         bankAccountId: payment.type === "bank_transfer" ? payment.bankAccountId || sale.bankAccountId : sale.bankAccountId,
@@ -956,7 +967,7 @@ class SaleService {
       if (!payment.amount || payment.amount <= 0 || isNaN(Number(payment.amount))) {
         logger.warn(`Skipping invalid payment amount: ${payment.amount} for sale ${sale.id}`);
       } else {
-        const paymentDate = payment.date ? new Date(payment.date) : sale.date;
+        const paymentDate = payment.date ? parseLocalISO(payment.date) : sale.date;
         const amount = Number(payment.amount);
 
         // Update balance only for cash, bank_transfer, or card payments (not credit)

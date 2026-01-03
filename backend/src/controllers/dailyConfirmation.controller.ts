@@ -6,7 +6,8 @@ import { AuthRequest } from "../middleware/auth";
 class DailyConfirmationController {
   async checkConfirmation(req: AuthRequest, res: Response) {
     try {
-      const status = await dailyConfirmationService.getConfirmationStatus();
+      const userId = req.user?.id;
+      const status = await dailyConfirmationService.getConfirmationStatus(userId);
       return res.status(200).json({
         message: "Confirmation status retrieved successfully",
         response: status,
@@ -58,6 +59,7 @@ class DailyConfirmationController {
 }
 
 export default new DailyConfirmationController();
+
 
 
 
