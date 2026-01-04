@@ -29,7 +29,8 @@ export default function BrandSelect({
     if (brands.length === 0) {
       refreshBrands().catch(console.error);
     }
-  }, [brands.length, refreshBrands]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [brands.length]); // Only depend on brands.length, not refreshBrands
 
   const handleAddBrand = async () => {
     if (!newBrandName.trim()) {

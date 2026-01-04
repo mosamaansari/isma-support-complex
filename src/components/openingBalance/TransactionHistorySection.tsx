@@ -742,7 +742,6 @@ export default function TransactionHistorySection({
                               <td className="p-2 text-gray-700 dark:text-gray-300">Opening Balance</td>
                               <td className="p-2 text-gray-700 dark:text-gray-300">Previous Day Closing Balance</td>
                               <td className="p-2 text-right text-gray-600 dark:text-gray-400 whitespace-nowrap">-</td>
-                              <td className="p-2 text-right text-gray-600 dark:text-gray-400 whitespace-nowrap">-</td>
                               <td className="p-2 text-right text-blue-600 dark:text-blue-400 font-semibold whitespace-nowrap">
                                 {formatCurrency(openingCash)}
                               </td>
@@ -767,7 +766,7 @@ export default function TransactionHistorySection({
                               </td>
                               <td className="p-2 text-gray-700 dark:text-gray-300">Opening Balance</td>
                               <td className="p-2 text-gray-700 dark:text-gray-300">Previous Day Closing Balance</td>
-                              <td className="p-2 text-right text-gray-600 dark:text-gray-400 whitespace-nowrap">-</td>
+                              
                               <td className="p-2 text-right text-gray-600 dark:text-gray-400 whitespace-nowrap">-</td>
                               <td className="p-2 text-right text-blue-600 dark:text-blue-400 font-semibold whitespace-nowrap">
                                 {formatCurrency(openingBank)}
@@ -796,7 +795,7 @@ export default function TransactionHistorySection({
                               <td className="p-2 text-gray-700 dark:text-gray-300">Opening Balance</td>
                               <td className="p-2 text-gray-700 dark:text-gray-300">Previous Day Closing Balance</td>
                               <td className="p-2 text-right text-gray-600 dark:text-gray-400 whitespace-nowrap">-</td>
-                              <td className="p-2 text-right text-gray-600 dark:text-gray-400 whitespace-nowrap">-</td>
+                             
                               <td className="p-2 text-right text-gray-600 dark:text-gray-400 whitespace-nowrap">-</td>
                               <td className="p-2 text-right text-gray-600 dark:text-gray-400 whitespace-nowrap">-</td>
                               <td className="p-2 text-right text-blue-600 dark:text-blue-400 font-semibold whitespace-nowrap">

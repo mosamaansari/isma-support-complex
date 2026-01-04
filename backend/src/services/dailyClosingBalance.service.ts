@@ -19,7 +19,14 @@ class DailyClosingBalanceService {
    */
   async calculateAndStoreClosingBalance(date: Date) {
     const dateStr = formatLocalYMD(date);
-    const dateObj = parseLocalYMD(dateStr);
+    // Parse date string to get components
+    const [year, month, day] = dateStr.split("-").map(v => parseInt(v, 10));
+    
+    // Create date at noon (12:00:00) to avoid timezone conversion issues
+    // When Prisma stores as DATE type, it extracts the date part
+    // Using noon ensures that even if converted to UTC, the date part remains correct
+    // Pakistan is UTC+5, so 12:00 PKT = 07:00 UTC (same date)
+    const dateObj = new Date(year, month - 1, day, 12, 0, 0, 0);
 
     // Get opening balance for this date
     const openingBalance = await prisma.dailyOpeningBalance.findUnique({
@@ -47,8 +54,10 @@ class DailyClosingBalanceService {
       }
     } else {
       // If no opening balance, get previous day's closing balance
+      // Use noon (12:00:00) for date comparison to avoid timezone conversion issues
       const previousDate = new Date(dateObj);
       previousDate.setDate(previousDate.getDate() - 1);
+      previousDate.setHours(12, 0, 0, 0); // Set to noon for consistent comparison
       const previousClosing = await prisma.dailyClosingBalance.findUnique({
         where: { date: previousDate },
       });
@@ -270,8 +279,10 @@ class DailyClosingBalanceService {
       }
     } else {
       // Get from previous day's closing
+      // Use noon (12:00:00) for date comparison to avoid timezone conversion issues
       const previousDate = new Date(dateObj);
       previousDate.setDate(previousDate.getDate() - 1);
+      previousDate.setHours(12, 0, 0, 0); // Set to noon for consistent comparison
       const previousClosing = await prisma.dailyClosingBalance.findUnique({
         where: { date: previousDate },
       });
@@ -366,8 +377,12 @@ class DailyClosingBalanceService {
    * Get previous day's closing balance (which becomes next day's opening balance)
    */
   async getPreviousDayClosingBalance(date: string) {
-    const dateObj = parseLocalYMD(date);
-    dateObj.setDate(dateObj.getDate() - 1);
+    // Parse date string to get components
+    const [year, month, day] = date.split("-").map(v => parseInt(v, 10));
+    
+    // Create date at noon (12:00:00) to avoid timezone conversion issues
+    const dateObj = new Date(year, month - 1, day, 12, 0, 0, 0);
+    dateObj.setDate(dateObj.getDate() - 1); // Get previous day
 
     const previousClosing = await prisma.dailyClosingBalance.findUnique({
       where: { date: dateObj },
@@ -383,6 +398,7 @@ class DailyClosingBalanceService {
     }
 
     // If not found, calculate it
+    // dateObj is already at noon, so we can use it directly
     return await this.calculateAndStoreClosingBalance(dateObj);
   }
 
@@ -390,9 +406,11 @@ class DailyClosingBalanceService {
    * Get closing balances for a date range
    */
   async getClosingBalances(startDate: string, endDate: string) {
-    const start = parseLocalYMD(startDate);
-    const end = parseLocalYMD(endDate);
-    end.setHours(23, 59, 59, 999);
+    // Parse date strings to get components and create at noon (12:00:00)
+    const [startYear, startMonth, startDay] = startDate.split("-").map(v => parseInt(v, 10));
+    const [endYear, endMonth, endDay] = endDate.split("-").map(v => parseInt(v, 10));
+    const start = new Date(startYear, startMonth - 1, startDay, 12, 0, 0, 0);
+    const end = new Date(endYear, endMonth - 1, endDay, 12, 59, 59, 999);
 
     const closingBalances = await prisma.dailyClosingBalance.findMany({
       where: {

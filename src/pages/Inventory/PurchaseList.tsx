@@ -151,10 +151,10 @@ export default function PurchaseList() {
     setIsSubmitting(true);
     try {
       setBackendErrors({});
-      // Always use current date and time for payment
+      // Always use current date and time for payment (same as sales list)
       const paymentPayload = {
         ...paymentData,
-        date: formatDateToLocalISO(new Date()) // Current date and time (local timezone)
+        date: new Date().toISOString() // Current date and time
       };
       await addPaymentToPurchase(selectedPurchase.id, paymentPayload);
       showSuccess("Payment added successfully!");
@@ -708,17 +708,13 @@ export default function PurchaseList() {
                           <tr key={index} className="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
                             <td className="p-3 text-gray-700 dark:text-gray-300 font-medium">{index + 1}</td>
                             <td className="p-3 text-gray-700 dark:text-gray-300">
-                              <div className="flex flex-col">
-                                <span className="font-medium">{paymentDate.toLocaleDateString('en-GB', { 
-                                  day: '2-digit', 
-                                  month: 'short', 
-                                  year: 'numeric' 
-                                })}</span>
-                                <span className="text-xs text-gray-500">{paymentDate.toLocaleTimeString('en-GB', { 
-                                  hour: '2-digit', 
-                                  minute: '2-digit' 
-                                })}</span>
-                              </div>
+                              <span className="font-medium">{paymentDate.toLocaleString('en-US', {
+                                year: 'numeric', 
+                                month: 'short', 
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}</span>
                             </td>
                             <td className="p-3">
                               <span className="px-2 py-1 text-xs font-medium rounded bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400 uppercase">

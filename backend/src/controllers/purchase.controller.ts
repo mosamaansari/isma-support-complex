@@ -126,6 +126,7 @@ class PurchaseController {
   async addPayment(req: AuthRequest, res: Response) {
     try {
       const { id } = req.params;
+      console.log("req.body", req.body)
       const purchase = await purchaseService.addPaymentToPurchase(id, req.body, req.user!.id, req.user?.userType);
       logger.info(`Payment added to purchase: ${purchase.id} by ${req.user?.username}`);
       return res.status(200).json({

@@ -3,7 +3,7 @@ import logger from "../utils/logger";
 import { Decimal } from "@prisma/client/runtime/library";
 import dailyClosingBalanceService from "./dailyClosingBalance.service";
 import balanceManagementService from "./balanceManagement.service";
-import { formatLocalYMD, getTodayInPakistan } from "../utils/date";
+import { formatLocalYMD, parseLocalYMD, getTodayInPakistan } from "../utils/date";
 
 interface DailyConfirmationStatus {
   needsConfirmation: boolean;
@@ -21,10 +21,13 @@ class DailyConfirmationService {
   async checkConfirmationNeeded(): Promise<boolean> {
     // Use Pakistan timezone to get today's date
     const today = getTodayInPakistan();
+    // Convert to string format to avoid timezone conversion issues
+    const todayStr = formatLocalYMD(today);
+    const todayDate = parseLocalYMD(todayStr);
 
     // Check if confirmation already exists for today
     const confirmation = await prisma.dailyConfirmation.findUnique({
-      where: { date: today },
+      where: { date: todayDate },
     });
 
     return !confirmation || !confirmation.confirmed;
@@ -38,6 +41,10 @@ class DailyConfirmationService {
     const now = new Date();
     const pakistanTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Karachi" }));
     const today = getTodayInPakistan();
+    console.log(today);
+    // Convert to string format to avoid timezone conversion issues
+    const todayStr = formatLocalYMD(today);
+    const todayDate = parseLocalYMD(todayStr);
 
     // Check if it's after 12:10 AM or 12:30 AM in Pakistan timezone (cron runs at 12:00 AM)
     // Show popup after 12:10 AM (10 minutes after cron)
@@ -50,7 +57,7 @@ class DailyConfirmationService {
 
     // Get confirmation status for today
     const confirmation = await prisma.dailyConfirmation.findUnique({
-      where: { date: today },
+      where: { date: todayDate },
     });
 
     // Check if this specific user has confirmed (for per-user tracking)
@@ -63,7 +70,7 @@ class DailyConfirmationService {
       return {
         needsConfirmation: false,
         confirmed: true,
-        date: formatLocalYMD(today),
+        date: todayStr,
         previousCashBalance: 0,
         bankBalances: [],
       };
@@ -104,7 +111,7 @@ class DailyConfirmationService {
       // For now, allow showing anytime if not confirmed (remove time restriction for user convenience)
       needsConfirmation: needsConfirmation, // && shouldShow, // Removed time restriction
       confirmed: userConfirmed || false,
-      date: formatLocalYMD(today),
+      date: todayStr,
       previousCashBalance: currentCashBalance, // Current day's running balance (includes opening + additional)
       bankBalances: currentBankBalances, // All active banks with their current balances (including 0 balance)
     };
@@ -324,12 +331,23 @@ class DailyConfirmationService {
   async confirmDaily(userInfo: { id: string; userType?: "user" | "admin" }): Promise<void> {
     // Use Pakistan timezone to get today's date
     const today = getTodayInPakistan();
+    // Convert to string format to avoid timezone conversion issues
+    const todayStr = formatLocalYMD(today);
+    
+    // Parse the date string to get components
+    const [year, month, day] = todayStr.split("-").map(v => parseInt(v, 10));
+    
+    // Create date at noon (12:00:00) to avoid timezone conversion issues
+    // When Prisma stores as DATE type, it extracts the date part
+    // Using noon ensures that even if converted to UTC, the date part remains correct
+    // Pakistan is UTC+5, so 12:00 PKT = 07:00 UTC (same date)
+    const todayDate = new Date(year, month - 1, day, 12, 0, 0, 0);
 
     // Upsert confirmation - store which user confirmed
     // Note: This is a simplified per-user tracking. For true per-user support,
     // we'd need a separate table with userId + date as unique constraint.
     await prisma.dailyConfirmation.upsert({
-      where: { date: today },
+      where: { date: todayDate },
       update: {
         confirmed: true,
         confirmedBy: userInfo.id, // Store the user who confirmed
@@ -337,7 +355,7 @@ class DailyConfirmationService {
         confirmedAt: new Date(),
       },
       create: {
-        date: today,
+        date: todayDate,
         confirmed: true,
         confirmedBy: userInfo.id,
         confirmedByType: userInfo.userType || "user",
@@ -345,7 +363,7 @@ class DailyConfirmationService {
       },
     });
 
-    logger.info(`Daily confirmation completed for ${formatLocalYMD(today)} by ${userInfo.id}`);
+    logger.info(`Daily confirmation completed for ${todayStr} by ${userInfo.id}`);
   }
 }
 

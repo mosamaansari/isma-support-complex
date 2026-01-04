@@ -28,10 +28,11 @@ class CronService {
         // Step 1: Calculate and store previous day's closing balance
         // Use Pakistan timezone to get yesterday's date
         const today = getTodayInPakistan();
-        const yesterday = new Date(today);
-        yesterday.setDate(yesterday.getDate() - 1);
-        yesterday.setHours(0, 0, 0, 0);
-        const yesterdayStr = formatLocalYMD(yesterday);
+        const yesterdayStr = formatLocalYMD(today);
+        // Parse date string to get components and create at noon (12:00:00)
+        const [year, month, day] = yesterdayStr.split("-").map(v => parseInt(v, 10));
+        const yesterday = new Date(year, month - 1, day, 12, 0, 0, 0);
+        yesterday.setDate(yesterday.getDate() - 1); // Get previous day
         
         try {
           await dailyClosingBalanceService.calculateAndStoreClosingBalance(yesterday);
@@ -72,7 +73,9 @@ class CronService {
       // Use Pakistan timezone to get today's date
       const today = getTodayInPakistan();
       const todayStr = formatLocalYMD(today);
-      const todayDateObj = parseLocalYMD(todayStr);
+      // Parse date string to get components and create at noon (12:00:00)
+      const [year, month, day] = todayStr.split("-").map(v => parseInt(v, 10));
+      const todayDateObj = new Date(year, month - 1, day, 12, 0, 0, 0);
 
       // Check if opening balance already exists for today
       const existingOpening = await prisma.dailyOpeningBalance.findUnique({
@@ -85,9 +88,9 @@ class CronService {
       }
 
       // Get previous day's closing balance
-      const previousDay = new Date(today);
-      previousDay.setDate(previousDay.getDate() - 1);
-      previousDay.setHours(0, 0, 0, 0);
+      // Reuse todayStr, year, month, day from above
+      const previousDay = new Date(year, month - 1, day, 12, 0, 0, 0);
+      previousDay.setDate(previousDay.getDate() - 1); // Get previous day
       const previousDayStr = formatLocalYMD(previousDay);
       
       // First, ensure previous day's closing balance is calculated

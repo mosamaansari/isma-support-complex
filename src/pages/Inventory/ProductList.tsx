@@ -210,9 +210,6 @@ export default function ProductList() {
                 Brand
               </th>
               <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
-                Brand
-              </th>
-              <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
                 Sale Price
               </th>
               <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[110px]">
@@ -235,7 +232,7 @@ export default function ProductList() {
           <tbody>
             {filteredProducts.length === 0 ? (
               <tr>
-                <td colSpan={10} className="p-4 sm:p-6 md:p-8 text-center text-gray-500 text-sm sm:text-base">
+                <td colSpan={9} className="p-4 sm:p-6 md:p-8 text-center text-gray-500 text-sm sm:text-base">
                   {products.length === 0
                     ? "No products available. Add your first product!"
                     : "No products match your search criteria"}
@@ -269,9 +266,6 @@ export default function ProductList() {
                     </td>
                     <td className="p-2 sm:p-3 md:p-4 font-medium text-gray-800 dark:text-white max-w-[150px] sm:max-w-[250px]">
                       <div className="line-clamp-2 sm:line-clamp-3 text-xs sm:text-sm">{product.name}</div>
-                    </td>
-                    <td className="p-2 sm:p-3 md:p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap text-xs sm:text-sm">
-                      {product.brand || "-"}
                     </td>
                     <td className="p-2 sm:p-3 md:p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap text-xs sm:text-sm">
                       {product.brand || "-"}

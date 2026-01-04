@@ -93,6 +93,7 @@ class SaleController {
 
   async createSale(req: AuthRequest, res: Response) {
     try {
+      console.log(req.body) 
       const sale = await saleService.createSale(
         req.body,
         req.user!.id,

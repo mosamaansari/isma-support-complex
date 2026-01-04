@@ -3,7 +3,7 @@ import logger from "../utils/logger";
 import whatsappService from "./whatsapp.service";
 import productService from "./product.service";
 import { validateTodayDate } from "../utils/dateValidation";
-import { parseLocalISO, getCurrentLocalDateTime } from "../utils/date";
+import { parseLocalISO, getCurrentLocalDateTime, formatDateToLocalISO } from "../utils/date";
 import { limitDecimalPlaces } from "../utils/numberHelpers";
 
 const splitSaleQuantities = (item: {
@@ -321,7 +321,7 @@ class SaleService {
   ) {
     // Validate that date is today (if provided)
     validateTodayDate(data.date, 'sale date');
-
+    console.log(data)
     // Generate bill number based on target date to stay consistent with client
     const targetDateForBill = data.date ? new Date(data.date) : new Date();
     const yearOutput = targetDateForBill.getFullYear();
@@ -550,16 +550,17 @@ class SaleService {
       amount: number;
       cardId?: string;
       bankAccountId?: string;
-      date?: string;
+      date?: Date;
     }> = [];
     let remainingBalance = total;
 
     if (data.payments && data.payments.length > 0) {
       // New multiple payments format - use payment date if provided, otherwise use sale date
-      const saleDate = data.date ? parseLocalISO(data.date).toISOString() : new Date().toISOString();
+      // Store dates as-is without parsing (no timezone conversion)
+      const saleDate = data.date || formatDateToLocalISO(getCurrentLocalDateTime());
       payments = data.payments.map((payment: any) => ({
         ...payment,
-        date: payment.date || saleDate // Use payment date if provided, otherwise use sale date
+        date: data.date ? parseLocalISO(data.date) : getCurrentLocalDateTime(), // Use payment date if provided, otherwise use sale date (no parsing)
       }));
       const totalPaid = payments.reduce((sum, payment) => sum + payment.amount, 0);
       remainingBalance = total - totalPaid;
@@ -572,13 +573,14 @@ class SaleService {
       const paymentType = (data.paymentType || "cash") as "cash" | "bank_transfer";
       const paymentAmount = total;
       remainingBalance = 0;
-      const saleDate = data.date ? parseLocalISO(data.date).toISOString() : new Date().toISOString();
+      // Store date as-is without parsing (no timezone conversion)
+      const saleDate = data.date || formatDateToLocalISO(getCurrentLocalDateTime());
 
       payments = [{
         type: paymentType,
         amount: paymentAmount,
         bankAccountId: data.bankAccountId || undefined,
-        date: saleDate, // Use sale date
+        date: data.date ? parseLocalISO(data.date) : getCurrentLocalDateTime(), // Use sale date as-is (no parsing)
       }];
     }
 
@@ -700,14 +702,11 @@ class SaleService {
           logger.warn(`Skipping invalid payment amount: ${payment.amount} for sale ${sale.id}`);
           continue;
         }
-
-        // Use payment date if available, otherwise use sale date
-        const paymentDate = (payment as any).date ? parseLocalISO((payment as any).date) : sale.date;
-
+        // Use sale date for balance updates (not payment date)
         // Handle cash, bank_transfer, and card payments
         if (payment.type === "cash") {
           await balanceManagementService.updateCashBalance(
-            paymentDate,
+            sale.date,
             Number(payment.amount),
             "income",
             {
@@ -724,7 +723,7 @@ class SaleService {
           if (bankAccountId) {
             await balanceManagementService.updateBankBalance(
               bankAccountId,
-              paymentDate,
+              sale.date,
               Number(payment.amount),
               "income",
               {
@@ -742,7 +741,7 @@ class SaleService {
           if (cardId) {
             await balanceManagementService.updateCardBalance(
               cardId,
-              paymentDate,
+              sale.date,
               Number(payment.amount),
               "income",
               {
@@ -865,6 +864,7 @@ class SaleService {
     userType?: "user" | "admin"
   ) {
     // Validate that date is today (if provided)
+    console.log("aaa", payment.date)
     validateTodayDate(payment.date, 'payment date');
 
     const sale = await prisma.sale.findUnique({
@@ -899,10 +899,18 @@ class SaleService {
       throw new Error("Total payment amount cannot exceed sale total");
     }
 
-    // Add current date and time to payment (always use current timestamp)
+    // Add current date and time to payment (use local timezone, not UTC)
+    // If payment.date is provided, use it (already validated as today)
+    // Otherwise, use current local date and time
+    const paymentDate = payment.date 
+      ? payment.date 
+      : formatDateToLocalISO(getCurrentLocalDateTime());
+    console.log("paymentDate", paymentDate)
+    console.log("payment.date", payment.date)
+
     const paymentWithDate = {
       ...payment,
-      date: new Date().toISOString() // Always use current date and time
+      date: paymentDate
     };
 
     const newPayments = [...currentPayments, paymentWithDate];
@@ -911,7 +919,7 @@ class SaleService {
 
     // Update status: if remaining balance is 0 or less, mark as completed
     const newStatus = newRemainingBalance <= 0 ? "completed" : "pending";
-
+    console.log("newPayments", newPayments)
     const updatedSale = await prisma.sale.update({
       where: { id: saleId },
       data: {
@@ -967,13 +975,13 @@ class SaleService {
       if (!payment.amount || payment.amount <= 0 || isNaN(Number(payment.amount))) {
         logger.warn(`Skipping invalid payment amount: ${payment.amount} for sale ${sale.id}`);
       } else {
-        const paymentDate = payment.date ? parseLocalISO(payment.date) : sale.date;
+        // Use sale date for balance updates (not payment date)
         const amount = Number(payment.amount);
 
         // Update balance only for cash, bank_transfer, or card payments (not credit)
         if (payment.type === "cash") {
           await balanceManagementService.updateCashBalance(
-            paymentDate,
+            sale.date,
             amount,
             "income",
             {
@@ -990,7 +998,7 @@ class SaleService {
           if (bankAccountId) {
             await balanceManagementService.updateBankBalance(
               bankAccountId,
-              paymentDate,
+              sale.date,
               amount,
               "income",
               {
@@ -1008,7 +1016,7 @@ class SaleService {
           if (cardId) {
             await balanceManagementService.updateCardBalance(
               cardId,
-              paymentDate,
+              sale.date,
               amount,
               "income",
               {

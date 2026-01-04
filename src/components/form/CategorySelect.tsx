@@ -29,7 +29,8 @@ export default function CategorySelect({
     if (categories.length === 0) {
       refreshCategories().catch(console.error);
     }
-  }, [categories.length, refreshCategories]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categories.length]); // Only depend on categories.length, not refreshCategories
 
   const handleAddCategory = async () => {
     if (!newCategoryName.trim()) {

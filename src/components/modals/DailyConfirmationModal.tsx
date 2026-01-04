@@ -1,10 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router";
 import { Modal } from "../ui/modal";
 import Button from "../ui/button/Button";
 import api from "../../services/api";
 import { useAlert } from "../../context/AlertContext";
-import { useData } from "../../context/DataContext";
 import { setCookie } from "../../utils/cookies";
 
 interface DailyConfirmationModalProps {
@@ -27,14 +26,7 @@ export default function DailyConfirmationModal({
 }: DailyConfirmationModalProps) {
   const navigate = useNavigate();
   const { showError } = useAlert();
-  const { refreshBankAccounts, bankAccounts } = useData();
   const [isConfirming, setIsConfirming] = useState(false);
-
-  useEffect(() => {
-    if (isOpen && bankAccounts.length === 0) {
-      refreshBankAccounts();
-    }
-  }, [isOpen, bankAccounts.length, refreshBankAccounts]);
 
   const handleConfirm = async () => {
     setIsConfirming(true);

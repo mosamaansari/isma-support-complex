@@ -2,7 +2,7 @@ import prisma from "../config/database";
 import logger from "../utils/logger";
 import productService from "./product.service";
 import { validateTodayDate } from "../utils/dateValidation";
-import { parseLocalISO, getCurrentLocalDateTime } from "../utils/date";
+import { parseLocalISO, getCurrentLocalDateTime, formatDateToLocalISO } from "../utils/date";
 import { limitDecimalPlaces } from "../utils/numberHelpers";
 
 const splitPurchaseQuantities = (item: {
@@ -843,14 +843,14 @@ class PurchaseService {
       amount: number;
       cardId?: string;
       bankAccountId?: string;
-      date?: string;
+      date?: Date;
     },
     userId: string,
     userType?: "user" | "admin"
   ) {
     // Validate that date is today (if provided)
     validateTodayDate(payment.date, 'payment date');
-
+    console.log(payment.date, "payment")
     const purchase = await prisma.purchase.findUnique({
       where: { id: purchaseId },
     });
@@ -867,8 +867,16 @@ class PurchaseService {
     }
 
     const currentPayments = (purchase.payments as any) || [];
-    // Always use current date and time for new payment
-    const newPayments = [...currentPayments, { ...payment, date: new Date().toISOString() }];
+    // Use local timezone for payment date (not UTC)
+    // If payment.date is provided, use it (already validated as today)
+    // Otherwise, use current local date and time
+    const paymentDate = payment.date 
+      ? payment.date 
+      : formatDateToLocalISO(getCurrentLocalDateTime());
+      console.log("payment.date", payment.date)
+      console.log("paymentDate", paymentDate)
+
+    const newPayments = [...currentPayments, { ...payment, date: paymentDate }];
     const totalPaid = newPayments.reduce((sum, p: any) => sum + Number(p.amount), 0);
     const remainingBalance = Number(purchase.total) - totalPaid;
 
@@ -933,7 +941,7 @@ class PurchaseService {
       if (!payment.amount || payment.amount <= 0 || isNaN(Number(payment.amount))) {
         logger.warn(`Skipping invalid payment amount: ${payment.amount} for purchase ${purchase.id}`);
       } else {
-        const paymentDate = payment.date ? parseLocalISO(payment.date) : purchase.date;
+        const paymentDate = payment.date ? payment.date : purchase.date;
         const amount = Number(payment.amount);
 
         // Update balance for cash, bank_transfer, or card payments

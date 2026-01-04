@@ -53,17 +53,26 @@ export function parseLocalISO(dateStr: string): Date {
  */
 export function getTodayInPakistan(): Date {
   const now = new Date();
-  // Get current date/time in Pakistan timezone
-  const pakistanTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Karachi" }));
   
-  // Create a new date with just the date components (no time)
-  const today = new Date(
-    pakistanTime.getFullYear(),
-    pakistanTime.getMonth(),
-    pakistanTime.getDate(),
-    0, 0, 0, 0
-  );
+  // Get date components directly from Pakistan timezone using Intl.DateTimeFormat
+  // This avoids timezone conversion issues
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Karachi",
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+  });
   
+  // Format the date to get components
+  const parts = formatter.formatToParts(now);
+  const year = parseInt(parts.find(p => p.type === "year")?.value || "0", 10);
+  const month = parseInt(parts.find(p => p.type === "month")?.value || "0", 10) - 1; // Month is 0-indexed
+  const day = parseInt(parts.find(p => p.type === "day")?.value || "0", 10);
+  
+  // Create a date using local date components (not UTC)
+  // This ensures the date represents the Pakistan date without timezone conversion
+  const today = new Date(year, month, day, 0, 0, 0, 0);
+  console.log("today", today);
   return today;
 }
 
@@ -84,6 +93,23 @@ export function getCurrentLocalDateTime(): Date {
   
   // Create a new date using local components (this avoids UTC conversion)
   return new Date(year, month, day, hours, minutes, seconds, milliseconds);
+}
+
+/**
+ * Format a Date object to local ISO string without UTC conversion
+ * Similar to frontend formatDateToLocalISO function
+ * Note: Does NOT add "Z" suffix to avoid UTC interpretation
+ */
+export function formatDateToLocalISO(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const seconds = String(date.getSeconds()).padStart(2, '0');
+  const milliseconds = String(date.getMilliseconds()).padStart(3, '0');
+  // Do NOT add "Z" suffix - it causes UTC interpretation
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.${milliseconds}`;
 }
 
 

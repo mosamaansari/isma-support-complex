@@ -686,7 +686,7 @@ export default function PurchaseEntry() {
                                 value={((item as any).priceType || "single") as any}
                                 onChange={(value) => updateItemPriceType(item.productId, value as any)}
                                 options={[
-                                  { value: "single", label: "Single" },
+                                  { value: "single", label: "Per Qty" },
                                   { value: "dozen", label: "Dozen" },
                                 ]}
                               />

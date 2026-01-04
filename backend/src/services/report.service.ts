@@ -7,38 +7,76 @@ import balanceTransactionService from "./balanceTransaction.service";
 import dailyClosingBalanceService from "./dailyClosingBalance.service";
 
 /**
+ * Normalize a date to noon (12:00:00) for consistent date comparison
+ * This avoids timezone conversion issues when comparing dates
+ */
+function normalizeDateToNoon(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0, 0);
+}
+
+/**
+ * Extract date components from a Date object, accounting for UTC storage
+ * When dates are stored in UTC in the database, we need to extract UTC components
+ * to get the correct date in Pakistan timezone
+ */
+function extractDateComponents(date: Date): { year: number; month: number; day: number } {
+  // When dates are stored in the database, they're stored in UTC
+  // When Prisma returns them, they come as Date objects
+  // We need to extract the date components that represent the actual date in Pakistan timezone
+  // Since dates stored with -5 hours offset represent the correct Pakistan date,
+  // we should use local date components (which JavaScript correctly interprets)
+  // However, to be safe, we'll check both UTC and local and use the one that makes sense
+  
+  // Try UTC first (for dates stored as UTC ISO strings)
+  const utcYear = date.getUTCFullYear();
+  const utcMonth = date.getUTCMonth();
+  const utcDay = date.getUTCDate();
+  
+  // Also get local components
+  const localYear = date.getFullYear();
+  const localMonth = date.getMonth();
+  const localDay = date.getDate();
+  
+  // If UTC and local are different, it means the date crosses a day boundary
+  // In that case, we should use the date that represents the actual intended date
+  // For Pakistan timezone (UTC+5), if UTC date is different, use local (which is correct for Pakistan)
+  if (utcYear !== localYear || utcMonth !== localMonth || utcDay !== localDay) {
+    // Date crosses day boundary - use local date components (Pakistan timezone)
+    return { year: localYear, month: localMonth, day: localDay };
+  }
+  
+  // If they're the same, use UTC (more reliable for stored dates)
+  return { year: utcYear, month: utcMonth, day: utcDay };
+}
+
+/**
  * Parse payment date from UTC ISO string to local date for comparison
  * Payment dates are stored in UTC format (e.g., "2026-01-03T08:59:16.870Z")
- * We need to extract the date components and create a local date for comparison
+ * We extract UTC date components and create a local date for comparison
  */
 function parsePaymentDate(dateStr: string | undefined | null): Date | null {
   if (!dateStr) return null;
   
-  // If it's a UTC ISO string (ends with Z), parse it properly
-  if (typeof dateStr === 'string' && dateStr.endsWith('Z')) {
-    const date = new Date(dateStr);
-    // Extract UTC date components to avoid timezone shift
-    const year = date.getUTCFullYear();
-    const month = date.getUTCMonth();
-    const day = date.getUTCDate();
-    // Create local date using UTC components (this represents the actual date in Pakistan)
-    return new Date(year, month, day, 0, 0, 0, 0);
-  }
+  let date: Date;
   
-  // Try parseLocalISO for local ISO strings
-  try {
-    const date = parseLocalISO(dateStr);
-    const year = date.getFullYear();
-    const month = date.getMonth();
-    const day = date.getDate();
-    return new Date(year, month, day, 0, 0, 0, 0);
-  } catch {
-    // Fallback to regular Date parsing
-    const date = new Date(dateStr);
-    const year = date.getFullYear();
-    const month = date.getMonth();
-    const day = date.getDate();
-    return new Date(year, month, day, 0, 0, 0, 0);
+  // If it's a UTC ISO string (ends with Z), extract UTC components
+  if (typeof dateStr === 'string' && dateStr.endsWith('Z')) {
+    date = new Date(dateStr);
+    // Extract UTC date components to get the correct date in Pakistan timezone
+    const { year, month, day } = extractDateComponents(date);
+    // Create a local date with UTC components at noon for comparison
+    return new Date(year, month, day, 12, 0, 0, 0);
+  } else {
+    // Try parseLocalISO for local ISO strings
+    try {
+      date = parseLocalISO(dateStr);
+    } catch {
+      // Fallback to regular Date parsing
+      date = new Date(dateStr);
+    }
+    // Extract date components and normalize to noon
+    const { year, month, day } = extractDateComponents(date);
+    return new Date(year, month, day, 12, 0, 0, 0);
   }
 }
 
@@ -64,10 +102,12 @@ class ReportService {
    */
   async getDailyReport(date: string) {
     const dateObj = parseLocalYMD(date);
+    // Use noon (12:00:00) for date comparisons to avoid timezone conversion issues
+    // Pakistan is UTC+5, so 12:00 PKT = 07:00 UTC (same date)
     const startOfDay = new Date(dateObj);
-    startOfDay.setHours(0, 0, 0, 0);
+    startOfDay.setHours(12, 0, 0, 0); // Use noon instead of midnight
     const endOfDay = new Date(dateObj);
-    endOfDay.setHours(23, 59, 59, 999);
+    endOfDay.setHours(23, 59, 59, 999); // Use end of day for full day coverage
 
     // IMPORTANT: Opening Balance = Previous day's closing balance (baseline only)
     // It should NOT include manual additions made today
@@ -180,18 +220,17 @@ class ReportService {
 
       // IMPORTANT: Filter transactions by actual date to ensure only transactions for the selected date are included
       // Use the transaction's date field (not createdAt) as it represents the actual transaction date
+      // Database stores dates in UTC, so we extract UTC date components for correct comparison
       const txDate = tx.date ? new Date(tx.date) : new Date(tx.createdAt);
       
-      // Normalize dates to compare only date part (ignore time)
-      const txYear = txDate.getFullYear();
-      const txMonth = txDate.getMonth();
-      const txDay = txDate.getDate();
-      const txDateOnly = new Date(txYear, txMonth, txDay);
+      // Extract date components (accounting for UTC storage)
+      const { year: txYear, month: txMonth, day: txDay } = extractDateComponents(txDate);
+      const txDateOnly = new Date(txYear, txMonth, txDay, 12, 0, 0, 0);
       
       const reportYear = dateObj.getFullYear();
       const reportMonth = dateObj.getMonth();
       const reportDay = dateObj.getDate();
-      const reportDateOnly = new Date(reportYear, reportMonth, reportDay);
+      const reportDateOnly = new Date(reportYear, reportMonth, reportDay, 12, 0, 0, 0);
       
       // Skip transactions that don't match the report date
       if (txDateOnly.getTime() !== reportDateOnly.getTime()) {
@@ -264,9 +303,11 @@ class ReportService {
       }));
 
       // Double-check: Only add to steps if date matches (extra safety check for daily report)
+      // Database stores dates in UTC, so we extract UTC date components for correct comparison
       const finalTxDate = new Date(tx.date || tx.createdAt);
-      const finalTxDateOnly = new Date(finalTxDate.getFullYear(), finalTxDate.getMonth(), finalTxDate.getDate());
-      const reportDateOnlyCheck = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate());
+      const { year, month, day } = extractDateComponents(finalTxDate);
+      const finalTxDateOnly = new Date(year, month, day, 12, 0, 0, 0);
+      const reportDateOnlyCheck = normalizeDateToNoon(dateObj);
       
       if (finalTxDateOnly.getTime() === reportDateOnlyCheck.getTime()) {
         steps.push({
@@ -327,22 +368,21 @@ class ReportService {
       const payments = (sale.payments as Array<{ type?: string; amount?: number; date?: string; cardId?: string; bankAccountId?: string }> | null) || [];
       if (payments.length === 0) {
         // If no payments array, check if sale date matches
+        // Database stores dates in UTC, so we extract UTC date components for correct comparison
         const saleDate = new Date(sale.date);
-        const saleYear = saleDate.getFullYear();
-        const saleMonth = saleDate.getMonth();
-        const saleDay = saleDate.getDate();
-        const saleDateOnly = new Date(saleYear, saleMonth, saleDay, 0, 0, 0, 0);
+        const { year: saleYear, month: saleMonth, day: saleDay } = extractDateComponents(saleDate);
+        const saleDateOnly = new Date(saleYear, saleMonth, saleDay, 12, 0, 0, 0);
         return saleDateOnly.getTime() === startOfDay.getTime();
       }
       // Check if any payment has a date matching the target date
       return payments.some((payment) => {
         if (!payment.date) {
           // If payment has no date, use sale date
+          // Database stores dates in UTC, so we extract UTC date components for correct comparison
           const saleDate = new Date(sale.date);
-          const saleYear = saleDate.getFullYear();
-          const saleMonth = saleDate.getMonth();
-          const saleDay = saleDate.getDate();
-          const saleDateOnly = new Date(saleYear, saleMonth, saleDay, 0, 0, 0, 0);
+          const { year: saleYear, month: saleMonth, day: saleDay } = extractDateComponents(saleDate);
+          // Normalize to noon (12:00:00) for consistent date comparison
+          const saleDateOnly = new Date(saleYear, saleMonth, saleDay, 12, 0, 0, 0);
           return saleDateOnly.getTime() === startOfDay.getTime();
         }
         const paymentDateOnly = parsePaymentDate(payment.date);
@@ -356,22 +396,22 @@ class ReportService {
       const payments = (purchase.payments as Array<{ type?: string; amount?: number; date?: string; cardId?: string; bankAccountId?: string }> | null) || [];
       if (payments.length === 0) {
         // If no payments array, check if purchase date matches
+        // Database stores dates in UTC, so we extract UTC date components for correct comparison
         const purchaseDate = new Date(purchase.date);
-        const purchaseYear = purchaseDate.getFullYear();
-        const purchaseMonth = purchaseDate.getMonth();
-        const purchaseDay = purchaseDate.getDate();
-        const purchaseDateOnly = new Date(purchaseYear, purchaseMonth, purchaseDay, 0, 0, 0, 0);
+        const { year: purchaseYear, month: purchaseMonth, day: purchaseDay } = extractDateComponents(purchaseDate);
+        // Normalize to noon (12:00:00) for consistent date comparison
+        const purchaseDateOnly = new Date(purchaseYear, purchaseMonth, purchaseDay, 12, 0, 0, 0);
         return purchaseDateOnly.getTime() === startOfDay.getTime();
       }
       // Check if any payment has a date matching the target date
       return payments.some((payment) => {
         if (!payment.date) {
           // If payment has no date, use purchase date
+          // Database stores dates in UTC, so we extract UTC date components for correct comparison
           const purchaseDate = new Date(purchase.date);
-          const purchaseYear = purchaseDate.getFullYear();
-          const purchaseMonth = purchaseDate.getMonth();
-          const purchaseDay = purchaseDate.getDate();
-          const purchaseDateOnly = new Date(purchaseYear, purchaseMonth, purchaseDay, 0, 0, 0, 0);
+          const { year: purchaseYear, month: purchaseMonth, day: purchaseDay } = extractDateComponents(purchaseDate);
+          // Normalize to noon (12:00:00) for consistent date comparison
+          const purchaseDateOnly = new Date(purchaseYear, purchaseMonth, purchaseDay, 12, 0, 0, 0);
           return purchaseDateOnly.getTime() === startOfDay.getTime();
         }
         const paymentDateOnly = parsePaymentDate(payment.date);
@@ -381,9 +421,24 @@ class ReportService {
     });
 
     // Expenses use the date field directly (not payment dates)
+    // Normalize expense dates to noon for consistent comparison
     const expenses = await prisma.expense.findMany({
-      where: { date: { gte: startOfDay, lte: endOfDay } },
+      where: {
+        date: {
+          gte: new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate(), 0, 0, 0, 0),
+          lte: new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate(), 23, 59, 59, 999),
+        },
+      },
       orderBy: { createdAt: "asc" },
+    });
+    
+    // Filter expenses by normalizing their dates to noon and comparing with startOfDay
+    // Database stores dates in UTC, so we extract UTC date components for correct comparison
+    const filteredExpenses = expenses.filter((expense) => {
+      const expenseDate = new Date(expense.date);
+      const { year: expenseYear, month: expenseMonth, day: expenseDay } = extractDateComponents(expenseDate);
+      const expenseDateOnly = new Date(expenseYear, expenseMonth, expenseDay, 12, 0, 0, 0);
+      return expenseDateOnly.getTime() === startOfDay.getTime();
     });
 
     // Extract opening balance additions from transactions
@@ -396,16 +451,15 @@ class ReportService {
         if (!isAddition) return false;
         
         // IMPORTANT: Filter by date to ensure only additions for the selected date are included
+        // Database stores dates in UTC, so we extract UTC date components for correct comparison
         const txDate = new Date(tx.date || tx.createdAt);
-        const txYear = txDate.getFullYear();
-        const txMonth = txDate.getMonth();
-        const txDay = txDate.getDate();
-        const txDateOnly = new Date(txYear, txMonth, txDay);
+        const { year: txYear, month: txMonth, day: txDay } = extractDateComponents(txDate);
+        const txDateOnly = new Date(txYear, txMonth, txDay, 12, 0, 0, 0);
         
         const reportYear = dateObj.getFullYear();
         const reportMonth = dateObj.getMonth();
         const reportDay = dateObj.getDate();
-        const reportDateOnly = new Date(reportYear, reportMonth, reportDay);
+        const reportDateOnly = new Date(reportYear, reportMonth, reportDay, 12, 0, 0, 0);
         
         // Only include if transaction date matches report date
         return txDateOnly.getTime() === reportDateOnly.getTime();
@@ -458,15 +512,18 @@ class ReportService {
           total: sales.reduce((sum, s) => {
             const payments = (s.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
             if (payments.length === 0) {
-              // No payments array, use total if sale date matches
-              const saleDate = new Date(s.date);
-              saleDate.setHours(0, 0, 0, 0);
-              return saleDate.getTime() === startOfDay.getTime() ? sum + Number(s.total || 0) : sum;
+            // No payments array, use total if sale date matches
+            // Database stores dates in UTC, so we extract UTC date components for correct comparison
+            const saleDate = new Date(s.date);
+            const { year, month, day } = extractDateComponents(saleDate);
+            const saleDateNormalized = new Date(year, month, day, 12, 0, 0, 0);
+            return saleDateNormalized.getTime() === startOfDay.getTime() ? sum + Number(s.total || 0) : sum;
             }
             // Sum only payments that occurred on this date
             return sum + payments.reduce((paymentSum, payment) => {
-              const paymentDate = payment.date ? new Date(payment.date) : new Date(s.date);
-              paymentDate.setHours(0, 0, 0, 0);
+              const paymentDateRaw = payment.date ? new Date(payment.date) : new Date(s.date);
+              // Normalize to noon (12:00:00) for consistent date comparison
+              const paymentDate = normalizeDateToNoon(paymentDateRaw);
               if (paymentDate.getTime() === startOfDay.getTime()) {
                 return paymentSum + Number(payment.amount || 0);
               }
@@ -487,8 +544,9 @@ class ReportService {
             }
             // Sum only payments that occurred on this date
             return sum + payments.reduce((paymentSum, payment) => {
-              const paymentDate = payment.date ? new Date(payment.date) : new Date(p.date);
-              paymentDate.setHours(0, 0, 0, 0);
+              const paymentDateRaw = payment.date ? new Date(payment.date) : new Date(p.date);
+              // Normalize to noon (12:00:00) for consistent date comparison
+              const paymentDate = normalizeDateToNoon(paymentDateRaw);
               if (paymentDate.getTime() === startOfDay.getTime()) {
                 return paymentSum + Number(payment.amount || 0);
               }
@@ -497,8 +555,8 @@ class ReportService {
           }, 0),
       },
       expenses: {
-        count: expenses.length,
-          total: expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0),
+        count: filteredExpenses.length,
+          total: filteredExpenses.reduce((sum, e) => sum + Number(e.amount || 0), 0),
         },
       },
       sales: {
@@ -507,9 +565,12 @@ class ReportService {
           const payments = (sale.payments as Array<{ type?: string; amount?: number; date?: string; cardId?: string; bankAccountId?: string }> | null) || [];
           if (payments.length === 0) {
             // If no payments array, create a single row from sale date
+            // Database stores dates in UTC, so we extract UTC date components for correct comparison
             const saleDate = new Date(sale.date);
-            saleDate.setHours(0, 0, 0, 0);
-            if (saleDate.getTime() === startOfDay.getTime()) {
+            const { year, month, day } = extractDateComponents(saleDate);
+            // Normalize to noon (12:00:00) for consistent date comparison
+            const saleDateNormalized = new Date(year, month, day, 12, 0, 0, 0);
+            if (saleDateNormalized.getTime() === startOfDay.getTime()) {
               return [{
                 ...sale,
                 paymentAmount: Number(sale.total || 0),
@@ -526,11 +587,11 @@ class ReportService {
               const paymentDateOnly = payment.date ? parsePaymentDate(payment.date) : null;
               if (!paymentDateOnly) {
                 // Fallback to sale date
+                // Database stores dates in UTC, so we extract UTC date components for correct comparison
                 const saleDate = new Date(sale.date);
-                const saleYear = saleDate.getFullYear();
-                const saleMonth = saleDate.getMonth();
-                const saleDay = saleDate.getDate();
-                const saleDateOnly = new Date(saleYear, saleMonth, saleDay, 0, 0, 0, 0);
+                const { year, month, day } = extractDateComponents(saleDate);
+                // Normalize to noon (12:00:00) for consistent date comparison
+                const saleDateOnly = new Date(year, month, day, 12, 0, 0, 0);
                 if (saleDateOnly.getTime() === startOfDay.getTime()) {
                   return {
                     ...sale,
@@ -644,8 +705,8 @@ class ReportService {
           const payments = (purchase.payments as Array<{ type?: string; amount?: number; date?: string; cardId?: string; bankAccountId?: string }> | null) || [];
           if (payments.length === 0) {
             // If no payments array, create a single row from purchase date
-            const purchaseDate = new Date(purchase.date);
-            purchaseDate.setHours(0, 0, 0, 0);
+            // Normalize to noon (12:00:00) for consistent date comparison
+            const purchaseDate = normalizeDateToNoon(new Date(purchase.date));
             if (purchaseDate.getTime() === startOfDay.getTime()) {
               return [{
                 ...purchase,
@@ -663,11 +724,8 @@ class ReportService {
               const paymentDateOnly = payment.date ? parsePaymentDate(payment.date) : null;
               if (!paymentDateOnly) {
                 // Fallback to purchase date
-                const purchaseDate = new Date(purchase.date);
-                const purchaseYear = purchaseDate.getFullYear();
-                const purchaseMonth = purchaseDate.getMonth();
-                const purchaseDay = purchaseDate.getDate();
-                const purchaseDateOnly = new Date(purchaseYear, purchaseMonth, purchaseDay, 0, 0, 0, 0);
+                // Normalize to noon (12:00:00) for consistent date comparison
+                const purchaseDateOnly = normalizeDateToNoon(new Date(purchase.date));
                 if (purchaseDateOnly.getTime() === startOfDay.getTime()) {
                   return {
                     ...purchase,
@@ -695,8 +753,8 @@ class ReportService {
         total: purchases.reduce((sum, p) => {
           const payments = (p.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
           if (payments.length === 0) {
-            const purchaseDate = new Date(p.date);
-            purchaseDate.setHours(0, 0, 0, 0);
+            // Normalize to noon (12:00:00) for consistent date comparison
+            const purchaseDate = normalizeDateToNoon(new Date(p.date));
             return purchaseDate.getTime() === startOfDay.getTime() ? sum + Number(p.total || 0) : sum;
           }
           return sum + payments.reduce((paymentSum, payment) => {
@@ -746,10 +804,10 @@ class ReportService {
         }, 0),
       },
       expenses: {
-        items: expenses,
-        total: expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0),
-        cash: expenses.filter(e => e.paymentType === "cash").reduce((sum, e) => sum + Number(e.amount || 0), 0),
-        bank_transfer: expenses.filter(e => e.paymentType === "bank_transfer").reduce((sum, e) => sum + Number(e.amount || 0), 0),
+        items: filteredExpenses,
+        total: filteredExpenses.reduce((sum, e) => sum + Number(e.amount || 0), 0),
+        cash: filteredExpenses.filter(e => e.paymentType === "cash").reduce((sum, e) => sum + Number(e.amount || 0), 0),
+        bank_transfer: filteredExpenses.filter(e => e.paymentType === "bank_transfer").reduce((sum, e) => sum + Number(e.amount || 0), 0),
         card: 0, // Expenses don't use card payments
       },
     };
@@ -770,9 +828,10 @@ class ReportService {
    */
   async getDateRangeReport(startDate: string, endDate: string) {
     const start = parseLocalYMD(startDate);
-    start.setHours(0, 0, 0, 0);
+    // Use noon (12:00:00) for date comparisons to avoid timezone conversion issues
+    start.setHours(12, 0, 0, 0); // Use noon instead of midnight
     const end = parseLocalYMD(endDate);
-    end.setHours(23, 59, 59, 999);
+    end.setHours(12, 59, 59, 999); // Use 12:59:59 instead of 23:59:59
 
     // IMPORTANT: Opening Balance = Previous day's closing balance (baseline only)
     // It should NOT include manual additions made during the date range
@@ -881,8 +940,10 @@ class ReportService {
       }
 
       // IMPORTANT: Filter transactions by actual date to ensure only transactions within the date range are included
+      // Database stores dates in UTC, so we extract UTC date components for correct comparison
       const txDate = new Date(tx.date || tx.createdAt);
-      const txDateOnly = new Date(txDate.getFullYear(), txDate.getMonth(), txDate.getDate());
+      const { year, month, day } = extractDateComponents(txDate);
+      const txDateOnly = new Date(year, month, day, 12, 0, 0, 0);
       
       // Skip transactions that are outside the date range
       if (txDateOnly.getTime() < start.getTime() || txDateOnly.getTime() > end.getTime()) {
@@ -1003,20 +1064,24 @@ class ReportService {
       const payments = (sale.payments as Array<{ type?: string; amount?: number; date?: string; cardId?: string; bankAccountId?: string }> | null) || [];
       if (payments.length === 0) {
         // If no payments array, check if sale date is in range
+        // Database stores dates in UTC, so we extract UTC date components for correct comparison
         const saleDate = new Date(sale.date);
-        const saleYear = saleDate.getFullYear();
-        const saleMonth = saleDate.getMonth();
-        const saleDay = saleDate.getDate();
-        const saleDateOnly = new Date(saleYear, saleMonth, saleDay);
+        const { year, month, day } = extractDateComponents(saleDate);
+        // Normalize to noon (12:00:00) for consistent date comparison
+        const saleDateOnly = new Date(year, month, day, 12, 0, 0, 0);
         return saleDateOnly.getTime() >= start.getTime() && saleDateOnly.getTime() <= end.getTime();
       }
       // Check if any payment has a date within the range
       return payments.some((payment) => {
-        const rawDate = payment.date ? new Date(payment.date) : new Date(sale.date);
-        const paymentYear = rawDate.getFullYear();
-        const paymentMonth = rawDate.getMonth();
-        const paymentDay = rawDate.getDate();
-        const paymentDateOnly = new Date(paymentYear, paymentMonth, paymentDay);
+        const paymentDateOnly = payment.date ? parsePaymentDate(payment.date) : null;
+        if (!paymentDateOnly) {
+          // Fallback to sale date
+          // Database stores dates in UTC, so we extract UTC date components for correct comparison
+          const saleDate = new Date(sale.date);
+          const { year, month, day } = extractDateComponents(saleDate);
+          const saleDateOnly = new Date(year, month, day, 12, 0, 0, 0);
+          return saleDateOnly.getTime() >= start.getTime() && saleDateOnly.getTime() <= end.getTime();
+        }
         return paymentDateOnly.getTime() >= start.getTime() && paymentDateOnly.getTime() <= end.getTime();
       });
     });
@@ -1026,32 +1091,40 @@ class ReportService {
       const payments = (purchase.payments as Array<{ type?: string; amount?: number; date?: string; cardId?: string; bankAccountId?: string }> | null) || [];
       if (payments.length === 0) {
         // If no payments array, check if purchase date is in range
+        // Database stores dates in UTC, so we extract UTC date components for correct comparison
         const purchaseDate = new Date(purchase.date);
-        const purchaseYear = purchaseDate.getFullYear();
-        const purchaseMonth = purchaseDate.getMonth();
-        const purchaseDay = purchaseDate.getDate();
-        const purchaseDateOnly = new Date(purchaseYear, purchaseMonth, purchaseDay);
+        const { year, month, day } = extractDateComponents(purchaseDate);
+        // Normalize to noon (12:00:00) for consistent date comparison
+        const purchaseDateOnly = new Date(year, month, day, 12, 0, 0, 0);
         return purchaseDateOnly.getTime() >= start.getTime() && purchaseDateOnly.getTime() <= end.getTime();
       }
       // Check if any payment has a date within the range
       return payments.some((payment) => {
         const paymentDateOnly = payment.date ? parsePaymentDate(payment.date) : null;
         if (!paymentDateOnly) {
-          const purchaseDate = new Date(purchase.date);
-          const purchaseYear = purchaseDate.getFullYear();
-          const purchaseMonth = purchaseDate.getMonth();
-          const purchaseDay = purchaseDate.getDate();
-          const purchaseDateOnly = new Date(purchaseYear, purchaseMonth, purchaseDay, 0, 0, 0, 0);
-          return purchaseDateOnly.getTime() >= start.getTime() && purchaseDateOnly.getTime() <= end.getTime();
+                // Database stores dates in UTC, so we extract UTC date components for correct comparison
+                const purchaseDate = new Date(purchase.date);
+                const { year: purchaseYear, month: purchaseMonth, day: purchaseDay } = extractDateComponents(purchaseDate);
+                const purchaseDateOnly = new Date(purchaseYear, purchaseMonth, purchaseDay, 12, 0, 0, 0);
+                return purchaseDateOnly.getTime() >= start.getTime() && purchaseDateOnly.getTime() <= end.getTime();
         }
         return paymentDateOnly.getTime() >= start.getTime() && paymentDateOnly.getTime() <= end.getTime();
       });
     });
 
     // Expenses use the date field directly (not payment dates)
-    const expenses = await prisma.expense.findMany({
-      where: { date: { gte: start, lte: end } },
+    // Normalize expense dates to noon for consistent comparison
+    const allExpenses = await prisma.expense.findMany({
       orderBy: { createdAt: "asc" },
+    });
+    
+    // Filter expenses by normalizing their dates to noon and comparing with date range
+    // Database stores dates in UTC, so we extract UTC date components for correct comparison
+    const expenses = allExpenses.filter((expense) => {
+      const expenseDate = new Date(expense.date);
+      const { year: expenseYear, month: expenseMonth, day: expenseDay } = extractDateComponents(expenseDate);
+      const expenseDateOnly = new Date(expenseYear, expenseMonth, expenseDay, 12, 0, 0, 0);
+      return expenseDateOnly.getTime() >= start.getTime() && expenseDateOnly.getTime() <= end.getTime();
     });
 
     // Extract opening balance additions from transactions for the date range
@@ -1063,9 +1136,11 @@ class ReportService {
         if (!isAddition) return false;
         
         // Check if transaction date is within the range
+        // Database stores dates in UTC, so we extract UTC date components for correct comparison
         const txDate = new Date(tx.date || tx.createdAt);
-        txDate.setHours(0, 0, 0, 0);
-        return txDate.getTime() >= start.getTime() && txDate.getTime() <= end.getTime();
+        const { year, month, day } = extractDateComponents(txDate);
+        const txDateOnly = new Date(year, month, day, 12, 0, 0, 0);
+        return txDateOnly.getTime() >= start.getTime() && txDateOnly.getTime() <= end.getTime();
       })
       .map((tx: any) => {
         // Use bankAccount from transaction if available, otherwise use bankMap
@@ -1117,9 +1192,12 @@ class ReportService {
             const payments = (s.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
             if (payments.length === 0) {
               // No payments array, use total if sale date is in range
+              // Database stores dates in UTC, so we extract UTC date components for correct comparison
               const saleDate = new Date(s.date);
-              saleDate.setHours(0, 0, 0, 0);
-              return (saleDate.getTime() >= start.getTime() && saleDate.getTime() <= end.getTime()) 
+              const { year, month, day } = extractDateComponents(saleDate);
+              // Normalize to noon (12:00:00) for consistent date comparison
+              const saleDateNormalized = new Date(year, month, day, 12, 0, 0, 0);
+              return (saleDateNormalized.getTime() >= start.getTime() && saleDateNormalized.getTime() <= end.getTime()) 
                 ? sum + Number(s.total || 0) 
                 : sum;
             }
@@ -1127,11 +1205,11 @@ class ReportService {
             return sum + payments.reduce((paymentSum, payment) => {
               const paymentDateOnly = payment.date ? parsePaymentDate(payment.date) : null;
               if (!paymentDateOnly) {
+                // Normalize to noon (12:00:00) for consistent date comparison
+                // Database stores dates in UTC, so we extract UTC date components for correct comparison
                 const saleDate = new Date(s.date);
-                const saleYear = saleDate.getFullYear();
-                const saleMonth = saleDate.getMonth();
-                const saleDay = saleDate.getDate();
-                const saleDateOnly = new Date(saleYear, saleMonth, saleDay, 0, 0, 0, 0);
+                const { year, month, day } = extractDateComponents(saleDate);
+                const saleDateOnly = new Date(year, month, day, 12, 0, 0, 0);
                 if (saleDateOnly.getTime() >= start.getTime() && saleDateOnly.getTime() <= end.getTime()) {
                   return paymentSum + Number(payment.amount || 0);
                 }
@@ -1151,9 +1229,12 @@ class ReportService {
             const payments = (p.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
             if (payments.length === 0) {
               // No payments array, use total if purchase date is in range
+              // Database stores dates in UTC, so we extract UTC date components for correct comparison
               const purchaseDate = new Date(p.date);
-        purchaseDate.setHours(0, 0, 0, 0);
-              return (purchaseDate.getTime() >= start.getTime() && purchaseDate.getTime() <= end.getTime())
+              const { year, month, day } = extractDateComponents(purchaseDate);
+              // Normalize to noon (12:00:00) for consistent date comparison
+              const purchaseDateNormalized = new Date(year, month, day, 12, 0, 0, 0);
+              return (purchaseDateNormalized.getTime() >= start.getTime() && purchaseDateNormalized.getTime() <= end.getTime())
                 ? sum + Number(p.total || 0)
                 : sum;
             }
@@ -1161,11 +1242,10 @@ class ReportService {
             return sum + payments.reduce((paymentSum, payment) => {
               const paymentDateOnly = payment.date ? parsePaymentDate(payment.date) : null;
               if (!paymentDateOnly) {
+                // Database stores dates in UTC, so we extract UTC date components for correct comparison
                 const purchaseDate = new Date(p.date);
-                const purchaseYear = purchaseDate.getFullYear();
-                const purchaseMonth = purchaseDate.getMonth();
-                const purchaseDay = purchaseDate.getDate();
-                const purchaseDateOnly = new Date(purchaseYear, purchaseMonth, purchaseDay, 0, 0, 0, 0);
+                const { year: purchaseYear, month: purchaseMonth, day: purchaseDay } = extractDateComponents(purchaseDate);
+                const purchaseDateOnly = new Date(purchaseYear, purchaseMonth, purchaseDay, 12, 0, 0, 0);
                 if (purchaseDateOnly.getTime() >= start.getTime() && purchaseDateOnly.getTime() <= end.getTime()) {
                   return paymentSum + Number(payment.amount || 0);
                 }
@@ -1321,9 +1401,10 @@ class ReportService {
           // Create a row for each payment that matches the date range
           return payments
             .map((payment, index) => {
-              const paymentDate = payment.date ? new Date(payment.date) : new Date(purchase.date);
-              paymentDate.setHours(0, 0, 0, 0);
-              if (paymentDate.getTime() >= start.getTime() && paymentDate.getTime() <= end.getTime()) {
+        const paymentDateRaw = payment.date ? new Date(payment.date) : new Date(purchase.date);
+        // Normalize to noon (12:00:00) for consistent date comparison
+        const paymentDate = normalizeDateToNoon(paymentDateRaw);
+        if (paymentDate.getTime() >= start.getTime() && paymentDate.getTime() <= end.getTime()) {
                 return {
                   ...purchase,
                   paymentAmount: Number(payment.amount || 0),
