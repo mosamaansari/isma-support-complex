@@ -128,56 +128,38 @@ export default function Reports() {
           }
 
           // Add sales payments
+          // Backend returns sales.items where each item is already a payment row (has paymentAmount, paymentDate, paymentType)
           if (dailyReportData.sales?.items?.length > 0) {
-            dailyReportData.sales.items.forEach((sale: any) => {
-              if (sale.payments?.length > 0) {
-                sale.payments.forEach((payment: any) => {
-                  transactions.push({
-                    type: "Sale",
-                    datetime: new Date(payment.date || sale.date),
-                    paymentType: payment.type || sale.paymentType || "cash",
-                    amount: Number(payment.amount || sale.total || 0),
-                    source: sale.billNumber || "N/A",
-                    description: sale.customerName || "Walk-in",
-                  });
-                });
-              } else {
-                transactions.push({
-                  type: "Sale",
-                  datetime: new Date(sale.date),
-                  paymentType: sale.paymentType || "cash",
-                  amount: Number(sale.total || 0),
-                  source: sale.billNumber || "N/A",
-                  description: sale.customerName || "Walk-in",
-                });
-              }
+            dailyReportData.sales.items.forEach((saleRow: any) => {
+              // Backend already expanded payments into separate rows
+              // Use paymentAmount, paymentDate, paymentType directly
+              const isPaymentRow = saleRow.paymentAmount !== undefined;
+              transactions.push({
+                type: "Sale",
+                datetime: new Date(isPaymentRow ? (saleRow.paymentDate || saleRow.date) : saleRow.date),
+                paymentType: isPaymentRow ? (saleRow.paymentType || "cash") : (saleRow.paymentType || "cash"),
+                amount: Number(isPaymentRow ? saleRow.paymentAmount : (saleRow.total || 0)),
+                source: saleRow.billNumber || "N/A",
+                description: saleRow.customerName || "Walk-in",
+              });
             });
           }
 
           // Add purchase payments
+          // Backend returns purchases.items where each item is already a payment row (has paymentAmount, paymentDate, paymentType)
           if (dailyReportData.purchases?.items?.length > 0) {
-            dailyReportData.purchases.items.forEach((purchase: any) => {
-              if (purchase.payments?.length > 0) {
-                purchase.payments.forEach((payment: any) => {
-                  transactions.push({
-                    type: "Purchase",
-                    datetime: new Date(payment.date || purchase.date),
-                    paymentType: payment.type || purchase.paymentType || "cash",
-                    amount: Number(payment.amount || purchase.total || 0),
-                    source: purchase.supplierName || "N/A",
-                    description: `Ref ID: ${purchase.id.substring(0, 8)}`,
-                  });
-                });
-              } else {
-                transactions.push({
-                  type: "Purchase",
-                  datetime: new Date(purchase.date),
-                  paymentType: "cash",
-                  amount: Number(purchase.total || 0),
-                  source: purchase.supplierName || "N/A",
-                  description: `Ref ID: ${purchase.id.substring(0, 8)}`,
-                });
-              }
+            dailyReportData.purchases.items.forEach((purchaseRow: any) => {
+              // Backend already expanded payments into separate rows
+              // Use paymentAmount, paymentDate, paymentType directly
+              const isPaymentRow = purchaseRow.paymentAmount !== undefined;
+              transactions.push({
+                type: "Purchase",
+                datetime: new Date(isPaymentRow ? (purchaseRow.paymentDate || purchaseRow.date) : purchaseRow.date),
+                paymentType: isPaymentRow ? (purchaseRow.paymentType || "cash") : "cash",
+                amount: Number(isPaymentRow ? purchaseRow.paymentAmount : (purchaseRow.total || 0)),
+                source: purchaseRow.supplierName || "N/A",
+                description: `Ref ID: ${purchaseRow.id.substring(0, 8)}`,
+              });
             });
           }
 
@@ -2116,94 +2098,105 @@ export default function Reports() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredPurchases.map((purchaseRow: any, index: number) => {
-                    if (!purchaseRow || !purchaseRow.id) return null;
-
-                    // Backend sends payment rows with paymentAmount and paymentDate
-                    // If it's already a payment row (has paymentAmount), use it directly
-                    // Otherwise, treat as legacy purchase format
-                    const isPaymentRow =
-                      purchaseRow.paymentAmount !== undefined;
-                    const paymentDate = isPaymentRow
-                      ? purchaseRow.paymentDate
-                        ? new Date(purchaseRow.paymentDate)
+                  {(() => {
+                    // Deduplicate purchases by id + paymentIndex to prevent duplicates
+                    const seenPurchaseKeys = new Set<string>();
+                    return (filteredPurchases || []).filter((purchaseRow: any) => {
+                      if (!purchaseRow || !purchaseRow.id) return false;
+                      const paymentIndex = purchaseRow.paymentIndex !== undefined ? purchaseRow.paymentIndex : 0;
+                      const key = `${purchaseRow.id}-${paymentIndex}`;
+                      if (seenPurchaseKeys.has(key)) {
+                        return false; // Skip duplicate
+                      }
+                      seenPurchaseKeys.add(key);
+                      return true;
+                    }).map((purchaseRow: any, index: number) => {
+                      // Backend sends payment rows with paymentAmount and paymentDate
+                      // If it's already a payment row (has paymentAmount), use it directly
+                      // Otherwise, treat as legacy purchase format
+                      const isPaymentRow =
+                        purchaseRow.paymentAmount !== undefined;
+                      const paymentDate = isPaymentRow
+                        ? purchaseRow.paymentDate
+                          ? new Date(purchaseRow.paymentDate)
+                          : purchaseRow.date
+                          ? new Date(purchaseRow.date)
+                          : new Date()
                         : purchaseRow.date
                         ? new Date(purchaseRow.date)
-                        : new Date()
-                      : purchaseRow.date
-                      ? new Date(purchaseRow.date)
-                      : purchaseRow.createdAt
-                      ? new Date(purchaseRow.createdAt)
-                      : new Date();
+                        : purchaseRow.createdAt
+                        ? new Date(purchaseRow.createdAt)
+                        : new Date();
 
-                    const displayAmount = isPaymentRow
-                      ? purchaseRow.paymentAmount
-                      : purchaseRow.total || 0;
+                      const displayAmount = isPaymentRow
+                        ? purchaseRow.paymentAmount
+                        : purchaseRow.total || 0;
 
-                    const paymentType = isPaymentRow
-                      ? purchaseRow.paymentType
-                      : "cash";
+                      const paymentType = isPaymentRow
+                        ? purchaseRow.paymentType
+                        : "cash";
 
-                    const paymentIndex = isPaymentRow
-                      ? purchaseRow.paymentIndex
-                      : 0;
-                    const hasMultiplePayments =
-                      isPaymentRow && paymentIndex > 0;
+                      const paymentIndex = isPaymentRow
+                        ? purchaseRow.paymentIndex
+                        : 0;
+                      const hasMultiplePayments =
+                        isPaymentRow && paymentIndex > 0;
 
-                    const items = (purchaseRow.items || []) as Array<{
-                      productName: string;
-                      quantity: number;
-                    }>;
+                      const items = (purchaseRow.items || []) as Array<{
+                        productName: string;
+                        quantity: number;
+                      }>;
 
-                    return (
-                      <tr
-                        key={
-                          isPaymentRow
-                            ? `${purchaseRow.id}-payment-${paymentIndex}-${index}`
-                            : `${purchaseRow.id}-${index}`
-                        }
-                        className="border-b border-gray-100 dark:border-gray-700"
-                      >
-                        <td className="p-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                          {paymentDate.toLocaleString("en-US", {
-                            year: "numeric",
-                            month: "short",
-                            day: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                          {hasMultiplePayments && (
-                            <span className="text-xs text-gray-500 ml-1">
-                              (Payment {paymentIndex + 1})
-                            </span>
-                          )}
-                        </td>
-                        <td className="p-2 text-gray-700 dark:text-gray-300">
-                          {purchaseRow.supplierName || "N/A"}
-                        </td>
-                        <td className="p-2 text-gray-700 dark:text-gray-300 max-w-[200px]">
-                          <div className="line-clamp-2 truncate">
-                            {items.length > 0
-                              ? items
-                                  .map(
-                                    (item) =>
-                                      `${item.productName} (${item.quantity})`
-                                  )
-                                  .join(", ")
-                              : "N/A"}
-                          </div>
-                        </td>
-                        <td className="p-2 text-right font-semibold text-gray-800 dark:text-white whitespace-nowrap">
-                          <div className="price-responsive">
-                            {formatCompleteAmount(Number(displayAmount || 0))}
-                          </div>
-                          <div className="text-xs text-gray-500 mt-1">
-                            {paymentType.toUpperCase()}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                      return (
+                        <tr
+                          key={
+                            isPaymentRow
+                              ? `${purchaseRow.id}-payment-${paymentIndex}-${index}`
+                              : `${purchaseRow.id}-${index}`
+                          }
+                          className="border-b border-gray-100 dark:border-gray-700"
+                        >
+                          <td className="p-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                            {paymentDate.toLocaleString("en-US", {
+                              year: "numeric",
+                              month: "short",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                            {hasMultiplePayments && (
+                              <span className="text-xs text-gray-500 ml-1">
+                                (Payment {paymentIndex + 1})
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-2 text-gray-700 dark:text-gray-300">
+                            {purchaseRow.supplierName || "N/A"}
+                          </td>
+                          <td className="p-2 text-gray-700 dark:text-gray-300 max-w-[200px]">
+                            <div className="line-clamp-2 truncate">
+                              {items.length > 0
+                                ? items
+                                    .map(
+                                      (item) =>
+                                        `${item.productName} (${item.quantity})`
+                                    )
+                                    .join(", ")
+                                : "N/A"}
+                            </div>
+                          </td>
+                          <td className="p-2 text-right font-semibold text-gray-800 dark:text-white whitespace-nowrap">
+                            <div className="price-responsive">
+                              {formatCompleteAmount(Number(displayAmount || 0))}
+                            </div>
+                            <div className="text-xs text-gray-500 mt-1">
+                              {paymentType.toUpperCase()}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    });
+                  })()}
                   <tr className="border-t-2 border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900">
                     <td
                       colSpan={3}
@@ -2264,9 +2257,20 @@ export default function Reports() {
                   ) : (
                     <>
                       {/* Payment Rows - Backend now sends payment rows, each payment is a separate row */}
-                      {(filteredSales || []).map(
-                        (paymentRow: any, index: number) => {
-                          if (!paymentRow || !paymentRow.id) return null;
+                      {(() => {
+                        // Deduplicate sales by id + paymentIndex to prevent duplicates
+                        const seenSaleKeys = new Set<string>();
+                        return (filteredSales || []).filter((paymentRow: any) => {
+                          if (!paymentRow || !paymentRow.id) return false;
+                          const paymentIndex = paymentRow.paymentIndex !== undefined ? paymentRow.paymentIndex : 0;
+                          const key = `${paymentRow.id}-${paymentIndex}`;
+                          if (seenSaleKeys.has(key)) {
+                            return false; // Skip duplicate
+                          }
+                          seenSaleKeys.add(key);
+                          return true;
+                        }).map(
+                          (paymentRow: any, index: number) => {
 
                           // Backend sends payment rows with paymentAmount and paymentDate
                           // If it's already a payment row (has paymentAmount), use it directly
@@ -2340,8 +2344,8 @@ export default function Reports() {
                               </td>
                             </tr>
                           );
-                        }
-                      )}
+                        });
+                      })()}
                     </>
                   )}
                 </tbody>

@@ -561,61 +561,81 @@ class ReportService {
       },
       sales: {
         // Expand sales into payment rows - each payment becomes a separate row
-        items: sales.flatMap((sale) => {
-          const payments = (sale.payments as Array<{ type?: string; amount?: number; date?: string; cardId?: string; bankAccountId?: string }> | null) || [];
-          if (payments.length === 0) {
-            // If no payments array, create a single row from sale date
-            // Database stores dates in UTC, so we extract UTC date components for correct comparison
-            const saleDate = new Date(sale.date);
-            const { year, month, day } = extractDateComponents(saleDate);
-            // Normalize to noon (12:00:00) for consistent date comparison
-            const saleDateNormalized = new Date(year, month, day, 12, 0, 0, 0);
-            if (saleDateNormalized.getTime() === startOfDay.getTime()) {
-              return [{
-                ...sale,
-                paymentAmount: Number(sale.total || 0),
-                paymentDate: sale.date,
-                paymentType: sale.paymentType || "cash",
-                paymentIndex: 0,
-              }];
+        // Use a Set to track seen payment keys (sale.id + paymentIndex) to prevent duplicates
+        items: (() => {
+          const seenSalePayments = new Set<string>();
+          return sales.flatMap((sale) => {
+            const payments = (sale.payments as Array<{ type?: string; amount?: number; date?: string; cardId?: string; bankAccountId?: string }> | null) || [];
+            if (payments.length === 0) {
+              // If no payments array, create a single row from sale date
+              // Database stores dates in UTC, so we extract UTC date components for correct comparison
+              const saleDate = new Date(sale.date);
+              const { year, month, day } = extractDateComponents(saleDate);
+              // Normalize to noon (12:00:00) for consistent date comparison
+              const saleDateNormalized = new Date(year, month, day, 12, 0, 0, 0);
+              if (saleDateNormalized.getTime() === startOfDay.getTime()) {
+                const paymentKey = `${sale.id}-0`;
+                if (seenSalePayments.has(paymentKey)) {
+                  return [];
+                }
+                seenSalePayments.add(paymentKey);
+                return [{
+                  ...sale,
+                  paymentAmount: Number(sale.total || 0),
+                  paymentDate: sale.date,
+                  paymentType: sale.paymentType || "cash",
+                  paymentIndex: 0,
+                }];
+              }
+              return [];
             }
-            return [];
-          }
-          // Create a row for each payment that matches the target date
-          return payments
-            .map((payment, index) => {
-              const paymentDateOnly = payment.date ? parsePaymentDate(payment.date) : null;
-              if (!paymentDateOnly) {
-                // Fallback to sale date
-                // Database stores dates in UTC, so we extract UTC date components for correct comparison
-                const saleDate = new Date(sale.date);
-                const { year, month, day } = extractDateComponents(saleDate);
-                // Normalize to noon (12:00:00) for consistent date comparison
-                const saleDateOnly = new Date(year, month, day, 12, 0, 0, 0);
-                if (saleDateOnly.getTime() === startOfDay.getTime()) {
+            // Create a row for each payment that matches the target date
+            return payments
+              .map((payment, index) => {
+                // Create a more specific key that includes payment type and amount to prevent duplicates
+                const paymentType = payment.type || sale.paymentType || "cash";
+                const paymentAmount = Number(payment.amount || 0);
+                const paymentKey = `${sale.id}-${index}-${paymentType}-${paymentAmount.toFixed(2)}`;
+                // Skip if we've already seen this payment
+                if (seenSalePayments.has(paymentKey)) {
+                  return null;
+                }
+                
+                const paymentDateOnly = payment.date ? parsePaymentDate(payment.date) : null;
+                if (!paymentDateOnly) {
+                  // Fallback to sale date
+                  // Database stores dates in UTC, so we extract UTC date components for correct comparison
+                  const saleDate = new Date(sale.date);
+                  const { year, month, day } = extractDateComponents(saleDate);
+                  // Normalize to noon (12:00:00) for consistent date comparison
+                  const saleDateOnly = new Date(year, month, day, 12, 0, 0, 0);
+                  if (saleDateOnly.getTime() === startOfDay.getTime()) {
+                    seenSalePayments.add(paymentKey);
+                    return {
+                      ...sale,
+                      paymentAmount: paymentAmount,
+                      paymentDate: sale.date,
+                      paymentType: paymentType,
+                      paymentIndex: index,
+                    };
+                  }
+                  return null;
+                }
+                if (paymentDateOnly.getTime() === startOfDay.getTime()) {
+                  seenSalePayments.add(paymentKey);
                   return {
                     ...sale,
-                    paymentAmount: Number(payment.amount || 0),
-                    paymentDate: sale.date,
-                    paymentType: payment.type || sale.paymentType || "cash",
+                    paymentAmount: paymentAmount,
+                    paymentDate: payment.date || sale.date,
+                    paymentType: paymentType,
                     paymentIndex: index,
                   };
                 }
                 return null;
-              }
-              if (paymentDateOnly.getTime() === startOfDay.getTime()) {
-                return {
-                  ...sale,
-                  paymentAmount: Number(payment.amount || 0),
-                  paymentDate: payment.date || sale.date,
-                  paymentType: payment.type || sale.paymentType || "cash",
-                  paymentIndex: index,
-                };
-              }
-              return null;
-            })
-            .filter((row) => row !== null);
-        }),
+              })
+              .filter((row) => row !== null);
+          });
+        })(),
         total: sales.reduce((sum, s) => {
           const payments = (s.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
           if (payments.length === 0) {
@@ -678,9 +698,19 @@ class ReportService {
           const payments = (s.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
           const bankPayments = payments.filter(p => p.type === "bank_transfer");
           return sum + bankPayments.reduce((paymentSum, payment) => {
-            const paymentDate = payment.date ? new Date(payment.date) : new Date(s.date);
-            paymentDate.setHours(0, 0, 0, 0);
-            if (paymentDate.getTime() === startOfDay.getTime()) {
+            const paymentDateOnly = payment.date ? parsePaymentDate(payment.date) : null;
+            if (!paymentDateOnly) {
+              // Fallback to sale date
+              const saleDate = new Date(s.date);
+              const { year, month, day } = extractDateComponents(saleDate);
+              // Normalize to noon (12:00:00) for consistent date comparison
+              const saleDateOnly = new Date(year, month, day, 12, 0, 0, 0);
+              if (saleDateOnly.getTime() === startOfDay.getTime()) {
+                return paymentSum + Number(payment.amount || 0);
+              }
+              return paymentSum;
+            }
+            if (paymentDateOnly.getTime() === startOfDay.getTime()) {
               return paymentSum + Number(payment.amount || 0);
             }
             return paymentSum;
@@ -701,55 +731,75 @@ class ReportService {
       },
       purchases: {
         // Expand purchases into payment rows - each payment becomes a separate row
-        items: purchases.flatMap((purchase) => {
-          const payments = (purchase.payments as Array<{ type?: string; amount?: number; date?: string; cardId?: string; bankAccountId?: string }> | null) || [];
-          if (payments.length === 0) {
-            // If no payments array, create a single row from purchase date
-            // Normalize to noon (12:00:00) for consistent date comparison
-            const purchaseDate = normalizeDateToNoon(new Date(purchase.date));
-            if (purchaseDate.getTime() === startOfDay.getTime()) {
-              return [{
-                ...purchase,
-                paymentAmount: Number(purchase.total || 0),
-                paymentDate: purchase.date,
-                paymentType: "cash",
-                paymentIndex: 0,
-              }];
+        // Use a Set to track seen payment keys (purchase.id + paymentIndex) to prevent duplicates
+        items: (() => {
+          const seenPurchasePayments = new Set<string>();
+          return purchases.flatMap((purchase) => {
+            const payments = (purchase.payments as Array<{ type?: string; amount?: number; date?: string; cardId?: string; bankAccountId?: string }> | null) || [];
+            if (payments.length === 0) {
+              // If no payments array, create a single row from purchase date
+              // Normalize to noon (12:00:00) for consistent date comparison
+              const purchaseDate = normalizeDateToNoon(new Date(purchase.date));
+              if (purchaseDate.getTime() === startOfDay.getTime()) {
+                const paymentKey = `${purchase.id}-0`;
+                if (seenPurchasePayments.has(paymentKey)) {
+                  return [];
+                }
+                seenPurchasePayments.add(paymentKey);
+                return [{
+                  ...purchase,
+                  paymentAmount: Number(purchase.total || 0),
+                  paymentDate: purchase.date,
+                  paymentType: "cash",
+                  paymentIndex: 0,
+                }];
+              }
+              return [];
             }
-            return [];
-          }
-          // Create a row for each payment that matches the target date
-          return payments
-            .map((payment, index) => {
-              const paymentDateOnly = payment.date ? parsePaymentDate(payment.date) : null;
-              if (!paymentDateOnly) {
-                // Fallback to purchase date
-                // Normalize to noon (12:00:00) for consistent date comparison
-                const purchaseDateOnly = normalizeDateToNoon(new Date(purchase.date));
-                if (purchaseDateOnly.getTime() === startOfDay.getTime()) {
+            // Create a row for each payment that matches the target date
+            return payments
+              .map((payment, index) => {
+                // Create a more specific key that includes payment type and amount to prevent duplicates
+                const paymentType = payment.type || "cash";
+                const paymentAmount = Number(payment.amount || 0);
+                const paymentKey = `${purchase.id}-${index}-${paymentType}-${paymentAmount.toFixed(2)}`;
+                // Skip if we've already seen this payment
+                if (seenPurchasePayments.has(paymentKey)) {
+                  return null;
+                }
+                
+                const paymentDateOnly = payment.date ? parsePaymentDate(payment.date) : null;
+                if (!paymentDateOnly) {
+                  // Fallback to purchase date
+                  // Normalize to noon (12:00:00) for consistent date comparison
+                  const purchaseDateOnly = normalizeDateToNoon(new Date(purchase.date));
+                  if (purchaseDateOnly.getTime() === startOfDay.getTime()) {
+                    seenPurchasePayments.add(paymentKey);
+                    return {
+                      ...purchase,
+                      paymentAmount: paymentAmount,
+                      paymentDate: purchase.date,
+                      paymentType: paymentType,
+                      paymentIndex: index,
+                    };
+                  }
+                  return null;
+                }
+                if (paymentDateOnly.getTime() === startOfDay.getTime()) {
+                  seenPurchasePayments.add(paymentKey);
                   return {
                     ...purchase,
-                    paymentAmount: Number(payment.amount || 0),
-                    paymentDate: purchase.date,
-                    paymentType: payment.type || "cash",
+                    paymentAmount: paymentAmount,
+                    paymentDate: payment.date || purchase.date,
+                    paymentType: paymentType,
                     paymentIndex: index,
                   };
                 }
                 return null;
-              }
-              if (paymentDateOnly.getTime() === startOfDay.getTime()) {
-                return {
-                  ...purchase,
-                  paymentAmount: Number(payment.amount || 0),
-                  paymentDate: payment.date || purchase.date,
-                  paymentType: payment.type || "cash",
-                  paymentIndex: index,
-                };
-              }
-              return null;
-            })
-            .filter((row) => row !== null);
-        }),
+              })
+              .filter((row) => row !== null);
+          });
+        })(),
         total: purchases.reduce((sum, p) => {
           const payments = (p.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
           if (payments.length === 0) {
@@ -758,9 +808,16 @@ class ReportService {
             return purchaseDate.getTime() === startOfDay.getTime() ? sum + Number(p.total || 0) : sum;
           }
           return sum + payments.reduce((paymentSum, payment) => {
-            const paymentDate = payment.date ? new Date(payment.date) : new Date(p.date);
-            paymentDate.setHours(0, 0, 0, 0);
-            if (paymentDate.getTime() === startOfDay.getTime()) {
+            const paymentDateOnly = payment.date ? parsePaymentDate(payment.date) : null;
+            if (!paymentDateOnly) {
+              // Fallback to purchase date
+              const purchaseDate = normalizeDateToNoon(new Date(p.date));
+              if (purchaseDate.getTime() === startOfDay.getTime()) {
+                return paymentSum + Number(payment.amount || 0);
+              }
+              return paymentSum;
+            }
+            if (paymentDateOnly.getTime() === startOfDay.getTime()) {
               return paymentSum + Number(payment.amount || 0);
             }
             return paymentSum;
@@ -770,9 +827,16 @@ class ReportService {
           const payments = (p.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
           const cashPayments = payments.filter(pay => pay.type === "cash");
           return sum + cashPayments.reduce((paymentSum, payment) => {
-            const paymentDate = payment.date ? new Date(payment.date) : new Date(p.date);
-            paymentDate.setHours(0, 0, 0, 0);
-            if (paymentDate.getTime() === startOfDay.getTime()) {
+            const paymentDateOnly = payment.date ? parsePaymentDate(payment.date) : null;
+            if (!paymentDateOnly) {
+              // Fallback to purchase date
+              const purchaseDate = normalizeDateToNoon(new Date(p.date));
+              if (purchaseDate.getTime() === startOfDay.getTime()) {
+                return paymentSum + Number(payment.amount || 0);
+              }
+              return paymentSum;
+            }
+            if (paymentDateOnly.getTime() === startOfDay.getTime()) {
               return paymentSum + Number(payment.amount || 0);
             }
             return paymentSum;
@@ -782,9 +846,16 @@ class ReportService {
           const payments = (p.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
           const bankPayments = payments.filter(pay => pay.type === "bank_transfer");
           return sum + bankPayments.reduce((paymentSum, payment) => {
-            const paymentDate = payment.date ? new Date(payment.date) : new Date(p.date);
-            paymentDate.setHours(0, 0, 0, 0);
-            if (paymentDate.getTime() === startOfDay.getTime()) {
+            const paymentDateOnly = payment.date ? parsePaymentDate(payment.date) : null;
+            if (!paymentDateOnly) {
+              // Fallback to purchase date
+              const purchaseDate = normalizeDateToNoon(new Date(p.date));
+              if (purchaseDate.getTime() === startOfDay.getTime()) {
+                return paymentSum + Number(payment.amount || 0);
+              }
+              return paymentSum;
+            }
+            if (paymentDateOnly.getTime() === startOfDay.getTime()) {
               return paymentSum + Number(payment.amount || 0);
             }
             return paymentSum;
@@ -1265,57 +1336,77 @@ class ReportService {
       },
       sales: {
         // Expand sales into payment rows - each payment becomes a separate row
-        items: sales.flatMap((sale) => {
-          const payments = (sale.payments as Array<{ type?: string; amount?: number; date?: string; cardId?: string; bankAccountId?: string }> | null) || [];
-          if (payments.length === 0) {
-            // If no payments array, create a single row from sale date if in range
-            const saleDate = new Date(sale.date);
-            saleDate.setHours(0, 0, 0, 0);
-            if (saleDate.getTime() >= start.getTime() && saleDate.getTime() <= end.getTime()) {
-              return [{
-                ...sale,
-                paymentAmount: Number(sale.total || 0),
-                paymentDate: sale.date,
-                paymentType: sale.paymentType || "cash",
-                paymentIndex: 0,
-              }];
+        // Use a Set to track seen payment keys (sale.id + paymentIndex) to prevent duplicates
+        items: (() => {
+          const seenSalePayments = new Set<string>();
+          return sales.flatMap((sale) => {
+            const payments = (sale.payments as Array<{ type?: string; amount?: number; date?: string; cardId?: string; bankAccountId?: string }> | null) || [];
+            if (payments.length === 0) {
+              // If no payments array, create a single row from sale date if in range
+              const saleDate = new Date(sale.date);
+              saleDate.setHours(0, 0, 0, 0);
+              if (saleDate.getTime() >= start.getTime() && saleDate.getTime() <= end.getTime()) {
+                const paymentKey = `${sale.id}-0`;
+                if (seenSalePayments.has(paymentKey)) {
+                  return [];
+                }
+                seenSalePayments.add(paymentKey);
+                return [{
+                  ...sale,
+                  paymentAmount: Number(sale.total || 0),
+                  paymentDate: sale.date,
+                  paymentType: sale.paymentType || "cash",
+                  paymentIndex: 0,
+                }];
+              }
+              return [];
             }
-            return [];
-          }
-          // Create a row for each payment that matches the date range
-          return payments
-            .map((payment, index) => {
-              const paymentDateOnly = payment.date ? parsePaymentDate(payment.date) : null;
-              if (!paymentDateOnly) {
-                const saleDate = new Date(sale.date);
-                const saleYear = saleDate.getFullYear();
-                const saleMonth = saleDate.getMonth();
-                const saleDay = saleDate.getDate();
-                const saleDateOnly = new Date(saleYear, saleMonth, saleDay, 0, 0, 0, 0);
-                if (saleDateOnly.getTime() >= start.getTime() && saleDateOnly.getTime() <= end.getTime()) {
+            // Create a row for each payment that matches the date range
+            return payments
+              .map((payment, index) => {
+                // Create a more specific key that includes payment type and amount to prevent duplicates
+                const paymentType = payment.type || sale.paymentType || "cash";
+                const paymentAmount = Number(payment.amount || 0);
+                const paymentKey = `${sale.id}-${index}-${paymentType}-${paymentAmount.toFixed(2)}`;
+                // Skip if we've already seen this payment
+                if (seenSalePayments.has(paymentKey)) {
+                  return null;
+                }
+                
+                const paymentDateOnly = payment.date ? parsePaymentDate(payment.date) : null;
+                if (!paymentDateOnly) {
+                  const saleDate = new Date(sale.date);
+                  const saleYear = saleDate.getFullYear();
+                  const saleMonth = saleDate.getMonth();
+                  const saleDay = saleDate.getDate();
+                  const saleDateOnly = new Date(saleYear, saleMonth, saleDay, 0, 0, 0, 0);
+                  if (saleDateOnly.getTime() >= start.getTime() && saleDateOnly.getTime() <= end.getTime()) {
+                    seenSalePayments.add(paymentKey);
+                    return {
+                      ...sale,
+                      paymentAmount: paymentAmount,
+                      paymentDate: sale.date,
+                      paymentType: paymentType,
+                      paymentIndex: index,
+                    };
+                  }
+                  return null;
+                }
+                if (paymentDateOnly.getTime() >= start.getTime() && paymentDateOnly.getTime() <= end.getTime()) {
+                  seenSalePayments.add(paymentKey);
                   return {
                     ...sale,
-                    paymentAmount: Number(payment.amount || 0),
-                    paymentDate: sale.date,
-                    paymentType: payment.type || sale.paymentType || "cash",
+                    paymentAmount: paymentAmount,
+                    paymentDate: payment.date || sale.date,
+                    paymentType: paymentType,
                     paymentIndex: index,
                   };
                 }
                 return null;
-              }
-              if (paymentDateOnly.getTime() >= start.getTime() && paymentDateOnly.getTime() <= end.getTime()) {
-                return {
-                  ...sale,
-                  paymentAmount: Number(payment.amount || 0),
-                  paymentDate: payment.date || sale.date,
-                  paymentType: payment.type || sale.paymentType || "cash",
-                  paymentIndex: index,
-                };
-              }
-              return null;
-            })
-            .filter((row) => row !== null);
-        }),
+              })
+              .filter((row) => row !== null);
+          });
+        })(),
         total: sales.reduce((sum, s) => {
           const payments = (s.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
           if (payments.length === 0) {
@@ -1346,9 +1437,20 @@ class ReportService {
           const payments = (s.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
           const cashPayments = payments.filter(p => p.type === "cash");
           return sum + cashPayments.reduce((paymentSum, payment) => {
-            const paymentDate = payment.date ? new Date(payment.date) : new Date(s.date);
-            paymentDate.setHours(0, 0, 0, 0);
-            if (paymentDate.getTime() >= start.getTime() && paymentDate.getTime() <= end.getTime()) {
+            const paymentDateOnly = payment.date ? parsePaymentDate(payment.date) : null;
+            if (!paymentDateOnly) {
+              // Fallback to sale date
+              const saleDate = new Date(s.date);
+              const saleYear = saleDate.getFullYear();
+              const saleMonth = saleDate.getMonth();
+              const saleDay = saleDate.getDate();
+              const saleDateOnly = new Date(saleYear, saleMonth, saleDay, 0, 0, 0, 0);
+              if (saleDateOnly.getTime() >= start.getTime() && saleDateOnly.getTime() <= end.getTime()) {
+                return paymentSum + Number(payment.amount || 0);
+              }
+              return paymentSum;
+            }
+            if (paymentDateOnly.getTime() >= start.getTime() && paymentDateOnly.getTime() <= end.getTime()) {
               return paymentSum + Number(payment.amount || 0);
             }
             return paymentSum;
@@ -1358,9 +1460,20 @@ class ReportService {
           const payments = (s.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
           const bankPayments = payments.filter(p => p.type === "bank_transfer");
           return sum + bankPayments.reduce((paymentSum, payment) => {
-            const paymentDate = payment.date ? new Date(payment.date) : new Date(s.date);
-            paymentDate.setHours(0, 0, 0, 0);
-            if (paymentDate.getTime() >= start.getTime() && paymentDate.getTime() <= end.getTime()) {
+            const paymentDateOnly = payment.date ? parsePaymentDate(payment.date) : null;
+            if (!paymentDateOnly) {
+              // Fallback to sale date
+              const saleDate = new Date(s.date);
+              const saleYear = saleDate.getFullYear();
+              const saleMonth = saleDate.getMonth();
+              const saleDay = saleDate.getDate();
+              const saleDateOnly = new Date(saleYear, saleMonth, saleDay, 0, 0, 0, 0);
+              if (saleDateOnly.getTime() >= start.getTime() && saleDateOnly.getTime() <= end.getTime()) {
+                return paymentSum + Number(payment.amount || 0);
+              }
+              return paymentSum;
+            }
+            if (paymentDateOnly.getTime() >= start.getTime() && paymentDateOnly.getTime() <= end.getTime()) {
               return paymentSum + Number(payment.amount || 0);
             }
             return paymentSum;
@@ -1381,42 +1494,61 @@ class ReportService {
       },
       purchases: {
         // Expand purchases into payment rows - each payment becomes a separate row
-        items: purchases.flatMap((purchase) => {
-          const payments = (purchase.payments as Array<{ type?: string; amount?: number; date?: string; cardId?: string; bankAccountId?: string }> | null) || [];
-          if (payments.length === 0) {
-            // If no payments array, create a single row from purchase date if in range
-            const purchaseDate = new Date(purchase.date);
-            purchaseDate.setHours(0, 0, 0, 0);
-            if (purchaseDate.getTime() >= start.getTime() && purchaseDate.getTime() <= end.getTime()) {
-              return [{
-                ...purchase,
-                paymentAmount: Number(purchase.total || 0),
-                paymentDate: purchase.date,
-                paymentType: "cash",
-                paymentIndex: 0,
-              }];
-            }
-            return [];
-          }
-          // Create a row for each payment that matches the date range
-          return payments
-            .map((payment, index) => {
-        const paymentDateRaw = payment.date ? new Date(payment.date) : new Date(purchase.date);
-        // Normalize to noon (12:00:00) for consistent date comparison
-        const paymentDate = normalizeDateToNoon(paymentDateRaw);
-        if (paymentDate.getTime() >= start.getTime() && paymentDate.getTime() <= end.getTime()) {
-                return {
+        // Use a Set to track seen payment keys (purchase.id + paymentIndex) to prevent duplicates
+        items: (() => {
+          const seenPurchasePayments = new Set<string>();
+          return purchases.flatMap((purchase) => {
+            const payments = (purchase.payments as Array<{ type?: string; amount?: number; date?: string; cardId?: string; bankAccountId?: string }> | null) || [];
+            if (payments.length === 0) {
+              // If no payments array, create a single row from purchase date if in range
+              const purchaseDate = new Date(purchase.date);
+              purchaseDate.setHours(0, 0, 0, 0);
+              if (purchaseDate.getTime() >= start.getTime() && purchaseDate.getTime() <= end.getTime()) {
+                const paymentKey = `${purchase.id}-0`;
+                if (seenPurchasePayments.has(paymentKey)) {
+                  return [];
+                }
+                seenPurchasePayments.add(paymentKey);
+                return [{
                   ...purchase,
-                  paymentAmount: Number(payment.amount || 0),
-                  paymentDate: payment.date || purchase.date,
-                  paymentType: payment.type || "cash",
-                  paymentIndex: index,
-                };
+                  paymentAmount: Number(purchase.total || 0),
+                  paymentDate: purchase.date,
+                  paymentType: "cash",
+                  paymentIndex: 0,
+                }];
               }
-              return null;
-            })
-            .filter((row) => row !== null);
-        }),
+              return [];
+            }
+            // Create a row for each payment that matches the date range
+            return payments
+              .map((payment, index) => {
+                // Create a more specific key that includes payment type and amount to prevent duplicates
+                const paymentType = payment.type || "cash";
+                const paymentAmount = Number(payment.amount || 0);
+                const paymentKey = `${purchase.id}-${index}-${paymentType}-${paymentAmount.toFixed(2)}`;
+                // Skip if we've already seen this payment
+                if (seenPurchasePayments.has(paymentKey)) {
+                  return null;
+                }
+                
+                const paymentDateRaw = payment.date ? new Date(payment.date) : new Date(purchase.date);
+                // Normalize to noon (12:00:00) for consistent date comparison
+                const paymentDate = normalizeDateToNoon(paymentDateRaw);
+                if (paymentDate.getTime() >= start.getTime() && paymentDate.getTime() <= end.getTime()) {
+                  seenPurchasePayments.add(paymentKey);
+                  return {
+                    ...purchase,
+                    paymentAmount: paymentAmount,
+                    paymentDate: payment.date || purchase.date,
+                    paymentType: paymentType,
+                    paymentIndex: index,
+                  };
+                }
+                return null;
+              })
+              .filter((row) => row !== null);
+          });
+        })(),
         total: purchases.reduce((sum, p) => {
           const payments = (p.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
           if (payments.length === 0) {
@@ -1447,9 +1579,16 @@ class ReportService {
           const payments = (p.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
           const cashPayments = payments.filter(pay => pay.type === "cash");
           return sum + cashPayments.reduce((paymentSum, payment) => {
-            const paymentDate = payment.date ? new Date(payment.date) : new Date(p.date);
-            paymentDate.setHours(0, 0, 0, 0);
-            if (paymentDate.getTime() >= start.getTime() && paymentDate.getTime() <= end.getTime()) {
+            const paymentDateOnly = payment.date ? parsePaymentDate(payment.date) : null;
+            if (!paymentDateOnly) {
+              // Fallback to purchase date
+              const purchaseDate = normalizeDateToNoon(new Date(p.date));
+              if (purchaseDate.getTime() >= start.getTime() && purchaseDate.getTime() <= end.getTime()) {
+                return paymentSum + Number(payment.amount || 0);
+              }
+              return paymentSum;
+            }
+            if (paymentDateOnly.getTime() >= start.getTime() && paymentDateOnly.getTime() <= end.getTime()) {
               return paymentSum + Number(payment.amount || 0);
             }
             return paymentSum;
@@ -1459,9 +1598,16 @@ class ReportService {
           const payments = (p.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
           const bankPayments = payments.filter(pay => pay.type === "bank_transfer");
           return sum + bankPayments.reduce((paymentSum, payment) => {
-            const paymentDate = payment.date ? new Date(payment.date) : new Date(p.date);
-            paymentDate.setHours(0, 0, 0, 0);
-            if (paymentDate.getTime() >= start.getTime() && paymentDate.getTime() <= end.getTime()) {
+            const paymentDateOnly = payment.date ? parsePaymentDate(payment.date) : null;
+            if (!paymentDateOnly) {
+              // Fallback to purchase date
+              const purchaseDate = normalizeDateToNoon(new Date(p.date));
+              if (purchaseDate.getTime() >= start.getTime() && purchaseDate.getTime() <= end.getTime()) {
+                return paymentSum + Number(payment.amount || 0);
+              }
+              return paymentSum;
+            }
+            if (paymentDateOnly.getTime() >= start.getTime() && paymentDateOnly.getTime() <= end.getTime()) {
               return paymentSum + Number(payment.amount || 0);
             }
             return paymentSum;

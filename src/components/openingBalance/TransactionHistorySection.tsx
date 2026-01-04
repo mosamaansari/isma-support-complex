@@ -810,20 +810,48 @@ export default function TransactionHistorySection({
                         }
                         return null;
                       })()}
-                      {dayGroup.transactions
-                        .filter((t) => {
-                          if (type === "cash") return t.paymentType === "cash";
-                          if (type === "bank" && bankAccountId) return t.bankAccountId === bankAccountId;
-                          if (type === "banks") return t.paymentType === "bank_transfer";
-                          return true;
-                        })
-                        .sort((a, b) => {
-                          // Sort by time (createdAt)
-                          const timeA = new Date(a.createdAt || a.date).getTime();
-                          const timeB = new Date(b.createdAt || b.date).getTime();
-                          return timeA - timeB;
-                        })
-                        .map((transaction) => (
+                      {(() => {
+                        // Filter and deduplicate transactions by ID and by source+sourceId+amount to prevent duplicates
+                        const seenIds = new Set<string>();
+                        const seenKeys = new Set<string>(); // Track by source+sourceId+amount+paymentType for sales/purchases
+                        
+                        return dayGroup.transactions
+                          .filter((t: any) => {
+                            // Skip duplicates by ID
+                            if (seenIds.has(t.id)) {
+                              return false;
+                            }
+                            seenIds.add(t.id);
+                            
+                            // For sales and purchases, also check for duplicates by source+sourceId+amount+paymentType
+                            // This prevents the same payment from showing twice (e.g., "sale" and "sale_payment")
+                            if (t.sourceId && (t.source === "sale" || t.source === "sale_payment" || 
+                                t.source === "purchase" || t.source === "purchase_payment")) {
+                              // Normalize source to treat "sale_payment" same as "sale"
+                              const normalizedSource = t.source === "sale_payment" ? "sale" : 
+                                                       t.source === "purchase_payment" ? "purchase" : 
+                                                       t.source;
+                              const transactionKey = `${normalizedSource}_${t.sourceId}_${Number(t.amount).toFixed(2)}_${t.paymentType || "cash"}`;
+                              
+                              if (seenKeys.has(transactionKey)) {
+                                return false; // Skip duplicate
+                              }
+                              seenKeys.add(transactionKey);
+                            }
+                            
+                            // Apply type filter
+                            if (type === "cash") return t.paymentType === "cash";
+                            if (type === "bank" && bankAccountId) return t.bankAccountId === bankAccountId;
+                            if (type === "banks") return t.paymentType === "bank_transfer";
+                            return true;
+                          })
+                          .sort((a, b) => {
+                            // Sort by time (createdAt)
+                            const timeA = new Date(a.createdAt || a.date).getTime();
+                            const timeB = new Date(b.createdAt || b.date).getTime();
+                            return timeA - timeB;
+                          })
+                          .map((transaction) => (
                           <tr
                             key={transaction.id}
                             className={`border-b border-gray-100 dark:border-gray-700 ${
@@ -903,7 +931,8 @@ export default function TransactionHistorySection({
                               {transaction.userName || "-"}
                             </td>
                           </tr>
-                        ))}
+                          ));
+                      })()}
                     </tbody>
                   </table>
                 </div>
