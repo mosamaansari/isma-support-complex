@@ -8,7 +8,7 @@ import { useData } from "../context/DataContext";
 import { hasPermission } from "../utils/permissions";
 import DailyConfirmationModal from "../components/modals/DailyConfirmationModal";
 import api from "../services/api";
-import { getCookie, setCookie } from "../utils/cookies";
+import { getCookie } from "../utils/cookies";
 
 const LayoutContent: React.FC = () => {
   const { isExpanded, isHovered, isMobileOpen } = useSidebar();
@@ -60,90 +60,76 @@ const LayoutContent: React.FC = () => {
 
       if (!hasRelevantPermission) return;
 
-      // Get today's date in YYYY-MM-DD format
+      // Get today's date in YYYY-MM-DD format (using Pakistan timezone)
       const now = new Date();
-      const year = now.getFullYear();
-      const month = String(now.getMonth() + 1).padStart(2, '0');
-      const day = String(now.getDate()).padStart(2, '0');
+      const pakistanTime = new Date();
+      console.log("Local time:", now.toString()); 
+      const year = pakistanTime.getFullYear();
+      const month = String(pakistanTime.getMonth() + 1).padStart(2, '0');
+      const day = String(pakistanTime.getDate()).padStart(2, '0');
       const today = `${year}-${month}-${day}`;
       const cookieName = "daily_confirmation_date";
       
-      // Check if already confirmed today (check cookie first)
+      // Check cookie first - if today's date is not in cookie, we need to check backend
       const confirmedDate = getCookie(cookieName);
       console.log("Daily Confirmation Check - Cookie date:", confirmedDate, "Today:", today);
       
-      // Only skip API call if cookie date exactly matches today's date
+      // If cookie has today's date, user has already confirmed (skip API call for optimization)
       if (confirmedDate === today) {
-        // Already confirmed today, skip API call
         console.log("Daily confirmation already done today (from cookie), skipping API call");
         setIsCheckingConfirmation(false);
         return;
       }
       
-      // If cookie has old date (not today) or no cookie, proceed to check API
-      // This ensures modal shows for new day even if old cookie exists
+      // Cookie doesn't have today's date - check backend to see if user has confirmed
+      // This handles cases where cookie was cleared or it's a new day
       if (confirmedDate && confirmedDate !== today) {
-        console.log("Cookie has old date (" + confirmedDate + "), checking API for today (" + today + ")");
+        console.log("Cookie has old date (" + confirmedDate + "), checking backend for today (" + today + ")");
       } else {
-        console.log("No cookie found, checking API for confirmation status");
+        console.log("No cookie found or date mismatch, checking backend for confirmation status");
       }
 
       setIsCheckingConfirmation(true);
       try {
-        // API call to check if confirmation is needed
+        // Check backend to see if THIS user has confirmed today
         const status = await api.checkDailyConfirmation();
-        console.log("Daily confirmation status from API:", status);
+        console.log("Daily confirmation status from backend:", status);
         
-        // If already confirmed, store in cookie and don't show modal
+        // Backend is authoritative - if user has already confirmed, don't show modal
         if (status && status.confirmed) {
-          setCookie(cookieName, today, 1); // Store for 1 day
+          console.log("User has already confirmed today (backend check), not showing modal");
           setIsCheckingConfirmation(false);
           return;
         }
 
-        // If needs confirmation, show modal
+        // Backend says user hasn't confirmed - show modal
         if (status && status.needsConfirmation) {
-          console.log("Showing confirmation modal - needsConfirmation is true");
+          console.log("Showing confirmation modal - user needs to confirm (backend: needsConfirmation=true)");
           setConfirmationData({
             previousCashBalance: status.previousCashBalance || 0,
             bankBalances: status.bankBalances || [],
           });
           setShowConfirmationModal(true);
         } else if (status && !status.confirmed) {
-          // If status exists but not confirmed, show modal (this handles edge cases)
-          console.log("Showing confirmation modal - status exists but not confirmed");
+          // If status exists but not confirmed, show modal
+          console.log("Showing confirmation modal - user has not confirmed (backend: confirmed=false)");
           setConfirmationData({
             previousCashBalance: status.previousCashBalance || 0,
             bankBalances: status.bankBalances || [],
           });
           setShowConfirmationModal(true);
         } else {
-          // If status is not clear, check if today's opening balance exists
-          let todayBalance = null;
-          try {
-            todayBalance = await api.getOpeningBalance(today);
-          } catch (e) {
-            // If error, assume no balance exists
-            todayBalance = null;
-          }
-
-          // If no opening balance for today and not confirmed, show modal for first time setup
-          if (!todayBalance && (!status || !status.confirmed)) {
-            console.log("Showing confirmation modal - no opening balance and not confirmed");
-            setConfirmationData({
-              previousCashBalance: status?.previousCashBalance || 0,
-              bankBalances: status?.bankBalances || [],
-            });
-            setShowConfirmationModal(true);
-          } else if (status && status.confirmed) {
-            // If confirmed, store in cookie
-            console.log("Already confirmed, storing cookie");
-            setCookie(cookieName, today, 1);
-          }
+          // If status is unclear, assume confirmation is needed and show modal
+          console.log("Showing confirmation modal - status unclear, assuming confirmation needed");
+          setConfirmationData({
+            previousCashBalance: status?.previousCashBalance || 0,
+            bankBalances: status?.bankBalances || [],
+          });
+          setShowConfirmationModal(true);
         }
       } catch (error) {
         console.error("Error checking daily confirmation:", error);
-        // On error, don't show modal - let user proceed
+        // On error, don't show modal - let user proceed to avoid blocking access
       } finally {
         setIsCheckingConfirmation(false);
       }

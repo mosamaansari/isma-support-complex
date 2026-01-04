@@ -39,12 +39,21 @@ class DailyConfirmationService {
   async getConfirmationStatus(userId?: string): Promise<DailyConfirmationStatus> {
     // Use Pakistan timezone to get current time and today's date
     const now = new Date();
-    const pakistanTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Karachi" }));
+    const pakistanOffset = 5 * 60 * 60 * 1000; // 5 hours in milliseconds
+    const utcTime = now.getTime();
+    const pakistanTimeMs = utcTime + pakistanOffset;
+    const pakistanTime = new Date(pakistanTimeMs);
     const today = getTodayInPakistan();
     console.log(today);
     // Convert to string format to avoid timezone conversion issues
     const todayStr = formatLocalYMD(today);
-    const todayDate = parseLocalYMD(todayStr);
+    // Parse the date string to get components (same as confirmDaily method)
+    const [year, month, day] = todayStr.split("-").map(v => parseInt(v, 10));
+    // Create date at noon (12:00:00) to match how dates are stored in database (same as confirmDaily)
+    // Then add +5 hours for Pakistan timezone (UTC+5) to ensure correct date comparison
+    const todayDateBase = new Date(year, month - 1, day, 12, 0, 0, 0);
+    const todayDate = new Date(todayDateBase.getTime() + pakistanOffset);
+    console.log("todayDate for database query (with +5 hours):", todayDate);
 
     // Check if it's after 12:10 AM or 12:30 AM in Pakistan timezone (cron runs at 12:00 AM)
     // Show popup after 12:10 AM (10 minutes after cron)
@@ -55,10 +64,11 @@ class DailyConfirmationService {
     const currentMinute = pakistanTime.getMinutes();
     const shouldShow = currentHour > showAfterHour || (currentHour === showAfterHour && currentMinute >= showAfterMinute);
 
-    // Get confirmation status for today
+    // Get confirmation status for today - check if this date exists in database
     const confirmation = await prisma.dailyConfirmation.findUnique({
       where: { date: todayDate },
     });
+    console.log("Confirmation found in database:", confirmation ? "YES" : "NO");
 
     // Check if this specific user has confirmed (for per-user tracking)
     // Note: This is a simple check - for full per-user support, we'd need a separate table
