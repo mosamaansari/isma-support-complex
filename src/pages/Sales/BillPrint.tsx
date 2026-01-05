@@ -233,6 +233,12 @@ export default function BillPrint() {
             .text-center {
               text-align: center;
             }
+            table th.text-center {
+              text-align: center;
+            }
+            table td.text-center {
+              text-align: center;
+            }
             .totals {
               margin: 8px 0;
               font-size: 11px;
@@ -295,6 +301,7 @@ export default function BillPrint() {
               <thead>
                 <tr>
                   <th>Description</th>
+                  <th class="text-center">Qty</th>
                   <th class="text-right">Price</th>
                 </tr>
               </thead>
@@ -303,7 +310,8 @@ export default function BillPrint() {
                   const itemTotal = Number(item.total);
                   return `
                     <tr>
-                      <td>${item.productName} x${item.quantity}</td>
+                      <td>${item.productName}</td>
+                      <td class="text-center">${item.quantity}</td>
                       <td class="text-right">${itemTotal.toFixed(2)}</td>
                     </tr>
                   `;
@@ -730,6 +738,7 @@ export default function BillPrint() {
           <thead>
             <tr>
               <th>Description</th>
+              <th className="text-center">Qty</th>
               <th className="text-right">Price</th>
             </tr>
           </thead>
@@ -738,7 +747,8 @@ export default function BillPrint() {
               const itemTotal = Number(item.total);
               return (
                 <tr key={index}>
-                  <td>{item.productName} x{item.quantity}</td>
+                  <td>{item.productName}</td>
+                  <td className="text-center">{item.quantity}</td>
                   <td className="text-right">{itemTotal.toFixed(2)}</td>
                 </tr>
               );
@@ -960,6 +970,15 @@ export default function BillPrint() {
           }
           .print-receipt .text-right {
             text-align: right;
+          }
+          .print-receipt .text-center {
+            text-align: center;
+          }
+          .print-receipt table th.text-center {
+            text-align: center;
+          }
+          .print-receipt table td.text-center {
+            text-align: center;
           }
           .print-receipt .totals {
             margin: 8px 0;
