@@ -3,7 +3,7 @@ import logger from "../utils/logger";
 import whatsappService from "./whatsapp.service";
 import productService from "./product.service";
 import { validateTodayDate } from "../utils/dateValidation";
-import { parseLocalISO, getCurrentLocalDateTime, formatDateToLocalISO } from "../utils/date";
+import { parseLocalISO, getCurrentLocalDateTime, formatDateToLocalISO, getTodayInPakistan, formatLocalYMD, parseLocalYMDForDB } from "../utils/date";
 import { limitDecimalPlaces } from "../utils/numberHelpers";
 
 const splitSaleQuantities = (item: {
@@ -434,8 +434,11 @@ class SaleService {
         priceDozen = priceDozen || priceSingle * 12;
       }
 
-      const effectivePrice = limitDecimalPlaces(item.customPrice ?? priceSingle);
+      // Don't round price early - round only the final result to avoid precision loss
+      const effectivePrice = item.customPrice ?? priceSingle ?? 0;
+      // Round unitPrice for storage consistency, but use unrounded effectivePrice for calculations
       const unitPrice = product.salePrice ? limitDecimalPlaces(Number(product.salePrice)) : 0;
+      // Multiply first, then round to avoid precision loss (e.g., 0.0833... * 24 = 2.0, not 0.08 * 24 = 1.92)
       const itemSubtotal = limitDecimalPlaces(effectivePrice * totalQuantity);
 
       // Calculate discount based on type
@@ -554,22 +557,40 @@ class SaleService {
     }> = [];
     let remainingBalance = total;
 
-    if (data.payments && data.payments.length > 0) {
-      // New multiple payments format - use payment date if provided, otherwise use sale date
-      // Store dates as-is without parsing (no timezone conversion)
-      const saleDate = data.date || formatDateToLocalISO(getCurrentLocalDateTime());
-      payments = data.payments.map((payment: any) => ({
-        ...payment,
-        date: data.date ? parseLocalISO(data.date) : getCurrentLocalDateTime(), // Use payment date if provided, otherwise use sale date (no parsing)
-      }));
-      const totalPaid = payments.reduce((sum, payment) => sum + payment.amount, 0);
-      remainingBalance = total - totalPaid;
+    // Check if payments array exists and has valid payments
+    // IMPORTANT: If payments array exists (even if empty), use new format - don't create default payment
+    if (data.payments !== undefined && Array.isArray(data.payments)) {
+      // New multiple payments format - filter out payments with empty/undefined/null/0 amount
+      const validPayments = data.payments.filter((payment: any) => {
+        const amount = payment.amount ?? 0;
+        return amount !== null && amount !== undefined && !isNaN(Number(amount)) && Number(amount) > 0;
+      });
+      
+      if (validPayments.length > 0) {
+        // We have valid payments - process them
+        // Store dates as-is without parsing (no timezone conversion)
+        const saleDate = data.date || formatDateToLocalISO(getCurrentLocalDateTime());
+        payments = validPayments.map((payment: any) => ({
+          ...payment,
+          date: data.date ? parseLocalISO(data.date) : getCurrentLocalDateTime(), // Use payment date if provided, otherwise use sale date (no parsing)
+        }));
+        const totalPaid = payments.reduce((sum, payment) => sum + (payment.amount || 0), 0);
+        remainingBalance = total - totalPaid;
 
-      if (totalPaid > total) {
-        throw new Error("Total payment amount cannot exceed sale total");
+        if (totalPaid > total) {
+          throw new Error("Total payment amount cannot exceed sale total");
+        }
+      } else {
+        // Payments array was provided (even if empty []) but all were empty/0 - no payments made
+        // Don't create default payment - user explicitly didn't provide any payment
+        payments = [];
+        remainingBalance = total;
       }
-    } else {
-      // Old single payment format (backward compatibility)
+    } else if (data.paymentType && data.payments === undefined) {
+      // Old single payment format (backward compatibility) - ONLY if:
+      // 1. paymentType is explicitly provided
+      // 2. payments field doesn't exist at all (undefined, not empty array)
+      // This handles old API clients that don't send payments array
       const paymentType = (data.paymentType || "cash") as "cash" | "bank_transfer";
       const paymentAmount = total;
       remainingBalance = 0;
@@ -582,6 +603,10 @@ class SaleService {
         bankAccountId: data.bankAccountId || undefined,
         date: data.date ? parseLocalISO(data.date) : getCurrentLocalDateTime(), // Use sale date as-is (no parsing)
       }];
+    } else {
+      // No payments array provided (or payments is null) - user hasn't made any payment
+      payments = [];
+      remainingBalance = total;
     }
 
     // Determine status based on remaining balance
@@ -697,8 +722,9 @@ class SaleService {
       }>) || [];
 
       for (const payment of payments) {
-        // Skip invalid payments
-        if (!payment.amount || payment.amount <= 0 || isNaN(Number(payment.amount))) {
+        // Skip invalid payments (allow 0, but skip null/undefined/NaN)
+        const paymentAmount = payment.amount ?? 0;
+        if (paymentAmount === null || paymentAmount === undefined || isNaN(Number(paymentAmount)) || paymentAmount < 0) {
           logger.warn(`Skipping invalid payment amount: ${payment.amount} for sale ${sale.id}`);
           continue;
         }
@@ -707,7 +733,7 @@ class SaleService {
         if (payment.type === "cash") {
           await balanceManagementService.updateCashBalance(
             sale.date,
-            Number(payment.amount),
+            Number(paymentAmount),
             "income",
             {
               description: `Sale - Bill #${sale.billNumber}${sale.customerName ? ` - ${sale.customerName}` : ""}`,
@@ -717,14 +743,14 @@ class SaleService {
               userName: user.name,
             }
           );
-          logger.info(`Updated cash balance: +${payment.amount} for sale ${sale.billNumber}`);
+          logger.info(`Updated cash balance: +${paymentAmount} for sale ${sale.billNumber}`);
         } else if (payment.type === "bank_transfer") {
           const bankAccountId = payment.bankAccountId || sale.bankAccountId;
           if (bankAccountId) {
             await balanceManagementService.updateBankBalance(
               bankAccountId,
               sale.date,
-              Number(payment.amount),
+              Number(paymentAmount),
               "income",
               {
                 description: `Sale - Bill #${sale.billNumber}${sale.customerName ? ` - ${sale.customerName}` : ""}`,
@@ -734,7 +760,7 @@ class SaleService {
                 userName: user.name,
               }
             );
-            logger.info(`Updated bank balance: +${payment.amount} for sale ${sale.billNumber}, bank: ${bankAccountId}`);
+            logger.info(`Updated bank balance: +${paymentAmount} for sale ${sale.billNumber}, bank: ${bankAccountId}`);
           }
         } else if (payment.type === "card") {
           const cardId = payment.cardId || sale.cardId;
@@ -742,7 +768,7 @@ class SaleService {
             await balanceManagementService.updateCardBalance(
               cardId,
               sale.date,
-              Number(payment.amount),
+              Number(paymentAmount),
               "income",
               {
                 description: `Sale - Bill #${sale.billNumber}${sale.customerName ? ` - ${sale.customerName}` : ""} (Card)`,
@@ -752,7 +778,7 @@ class SaleService {
                 userName: user.name,
               }
             );
-            logger.info(`Updated card balance: +${payment.amount} for sale ${sale.billNumber}, card: ${cardId}`);
+            logger.info(`Updated card balance: +${paymentAmount} for sale ${sale.billNumber}, card: ${cardId}`);
           } else {
             logger.warn(`Skipping card payment without cardId for sale ${sale.billNumber}`);
           }
@@ -787,7 +813,15 @@ class SaleService {
     return sale;
   }
 
-  async cancelSale(id: string) {
+  async cancelSale(
+    id: string,
+    refundData?: {
+      refundMethod: "cash" | "bank_transfer";
+      bankAccountId?: string;
+    },
+    userId?: string,
+    userName?: string
+  ) {
     const sale = await prisma.sale.findUnique({
       where: { id },
       include: { items: true },
@@ -799,6 +833,120 @@ class SaleService {
 
     if (sale.status === "cancelled") {
       throw new Error("Sale already cancelled");
+    }
+
+    // Check if sale is within 1 week (7 days) from createdAt
+    const saleCreatedAt = new Date(sale.createdAt);
+    const today = new Date();
+    const daysDifference = Math.floor((today.getTime() - saleCreatedAt.getTime()) / (1000 * 60 * 60 * 24));
+    
+    if (daysDifference > 7) {
+      throw new Error("Sale cannot be cancelled. Only sales within 7 days of creation can be cancelled.");
+    }
+
+    // Calculate total paid amount and process refunds to original sources
+    const payments = (sale.payments as Array<{
+      type: string;
+      amount: number;
+      cardId?: string;
+      bankAccountId?: string;
+    }>) || [];
+    const totalPaid = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
+
+    // If there are payments, process refund to original sources
+    if (totalPaid > 0) {
+      if (!userId || !userName) {
+        throw new Error("User information is required for refund processing");
+      }
+
+      const balanceManagementService = (await import("./balanceManagement.service")).default;
+      // Use Pakistan calendar date so refund transaction appears in Reports on the correct date
+      const refundDateForBalance = parseLocalYMDForDB(formatLocalYMD(getTodayInPakistan()));
+
+      try {
+        // Process each payment refund to its original source
+        for (const payment of payments) {
+          const paymentAmount = payment.amount || 0;
+          if (paymentAmount <= 0) continue;
+
+          if (payment.type === "cash") {
+            // Refund to cash balance (deduct as expense)
+            await balanceManagementService.updateCashBalance(
+              refundDateForBalance,
+              paymentAmount,
+              "expense",
+              {
+                description: `Sale Refund - Bill #${sale.billNumber}${sale.customerName ? ` - ${sale.customerName}` : ""}`,
+                source: "sale_refund",
+                sourceId: sale.id,
+                userId: userId,
+                userName: userName,
+              }
+            );
+            logger.info(`Refunded cash: -${paymentAmount} for cancelled sale ${sale.billNumber}`);
+          } else if (payment.type === "card" && payment.cardId) {
+            // Refund to card balance (deduct as expense)
+            await balanceManagementService.updateCardBalance(
+              payment.cardId,
+              refundDateForBalance,
+              paymentAmount,
+              "expense",
+              {
+                description: `Sale Refund - Bill #${sale.billNumber}${sale.customerName ? ` - ${sale.customerName}` : ""}`,
+                source: "sale_refund",
+                sourceId: sale.id,
+                userId: userId,
+                userName: userName,
+              }
+            );
+            logger.info(`Refunded card: -${paymentAmount} for cancelled sale ${sale.billNumber}, card: ${payment.cardId}`);
+          } else if (payment.type === "bank_transfer" && payment.bankAccountId) {
+            // Refund to bank account balance (deduct as expense)
+            await balanceManagementService.updateBankBalance(
+              payment.bankAccountId,
+              refundDateForBalance,
+              paymentAmount,
+              "expense",
+              {
+                description: `Sale Refund - Bill #${sale.billNumber}${sale.customerName ? ` - ${sale.customerName}` : ""}`,
+                source: "sale_refund",
+                sourceId: sale.id,
+                userId: userId,
+                userName: userName,
+              }
+            );
+            logger.info(`Refunded bank transfer: -${paymentAmount} for cancelled sale ${sale.billNumber}, bank: ${payment.bankAccountId}`);
+          } else if (payment.type === "credit") {
+            // For credit payments, update customer due amount
+            if (sale.customerId) {
+              const customer = await prisma.customer.findUnique({ where: { id: sale.customerId } });
+              if (customer) {
+                const oldDue = Number(customer.dueAmount || 0);
+                const newDue = oldDue + paymentAmount;
+                await prisma.customer.update({
+                  where: { id: sale.customerId },
+                  data: { dueAmount: newDue },
+                });
+                logger.info(`Restored credit: +${paymentAmount} to customer due for cancelled sale ${sale.billNumber}`);
+              }
+            }
+          }
+        }
+      } catch (error: any) {
+        logger.error("Error processing refund:", error);
+        throw new Error(`Failed to process refund: ${error.message}`);
+      }
+    }
+
+    // Recalculate closing balance for today to include refunds
+    try {
+      const dailyClosingBalanceService = (await import("./dailyClosingBalance.service")).default;
+      const today = new Date();
+      await dailyClosingBalanceService.calculateAndStoreClosingBalance(today);
+      logger.info(`Recalculated closing balance after sale refund for ${sale.billNumber}`);
+    } catch (error: any) {
+      logger.error("Error recalculating closing balance after refund:", error);
+      // Don't fail the refund if closing balance recalculation fails
     }
 
     // Restore product quantities (shop or warehouse)
@@ -863,10 +1011,6 @@ class SaleService {
     userId?: string,
     userType?: "user" | "admin"
   ) {
-    // Validate that date is today (if provided)
-    console.log("aaa", payment.date)
-    validateTodayDate(payment.date, 'payment date');
-
     const sale = await prisma.sale.findUnique({
       where: { id: saleId },
       include: { customer: true },
@@ -888,25 +1032,20 @@ class SaleService {
       date?: string;
     }>) || [];
 
-    const totalPaid = currentPayments.reduce((sum, p) => sum + p.amount, 0);
+    const totalPaid = currentPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
     const currentRemaining = Number(sale.remainingBalance);
+    const paymentAmount = payment.amount || 0;
 
-    if (payment.amount > currentRemaining) {
+    if (paymentAmount > currentRemaining) {
       throw new Error("Payment amount exceeds remaining balance");
     }
     // Guard against total paid surpassing total
-    if (totalPaid + payment.amount > Number(sale.total)) {
+    if (totalPaid + paymentAmount > Number(sale.total)) {
       throw new Error("Total payment amount cannot exceed sale total");
     }
 
-    // Add current date and time to payment (use local timezone, not UTC)
-    // If payment.date is provided, use it (already validated as today)
-    // Otherwise, use current local date and time
-    const paymentDate = payment.date 
-      ? payment.date 
-      : formatDateToLocalISO(getCurrentLocalDateTime());
-    console.log("paymentDate", paymentDate)
-    console.log("payment.date", payment.date)
+    // Always use current date and time for the new payment (avoids timezone/validation issues)
+    const paymentDate = formatDateToLocalISO(getCurrentLocalDateTime());
 
     const paymentWithDate = {
       ...payment,
@@ -914,12 +1053,12 @@ class SaleService {
     };
 
     const newPayments = [...currentPayments, paymentWithDate];
-    const newTotalPaid = totalPaid + payment.amount;
+    const newTotalPaid = totalPaid + paymentAmount;
     const newRemainingBalance = Number(sale.total) - newTotalPaid;
 
     // Update status: if remaining balance is 0 or less, mark as completed
     const newStatus = newRemainingBalance <= 0 ? "completed" : "pending";
-    console.log("newPayments", newPayments)
+
     const updatedSale = await prisma.sale.update({
       where: { id: saleId },
       data: {
@@ -971,17 +1110,21 @@ class SaleService {
         }
       }
 
-      // Skip invalid payments
-      if (!payment.amount || payment.amount <= 0 || isNaN(Number(payment.amount))) {
+      // Skip invalid payments (allow 0, but skip null/undefined/NaN)
+      const paymentAmount = payment.amount ?? 0;
+      if (paymentAmount === null || paymentAmount === undefined || isNaN(Number(paymentAmount)) || paymentAmount < 0) {
         logger.warn(`Skipping invalid payment amount: ${payment.amount} for sale ${sale.id}`);
       } else {
-        // Use sale date for balance updates (not payment date)
-        const amount = Number(payment.amount);
+        // Use payment date (today in Pakistan) for balance updates so the transaction
+        // appears in Reports "All Transactions" on the day the payment was actually added
+        // Use parseLocalYMDForDB to ensure correct date storage in @db.Date column
+        const paymentDateForBalance = parseLocalYMDForDB(formatLocalYMD(getTodayInPakistan()));
+        const amount = Number(paymentAmount);
 
         // Update balance only for cash, bank_transfer, or card payments (not credit)
         if (payment.type === "cash") {
           await balanceManagementService.updateCashBalance(
-            sale.date,
+            paymentDateForBalance,
             amount,
             "income",
             {
@@ -998,7 +1141,7 @@ class SaleService {
           if (bankAccountId) {
             await balanceManagementService.updateBankBalance(
               bankAccountId,
-              sale.date,
+              paymentDateForBalance,
               amount,
               "income",
               {
@@ -1016,7 +1159,7 @@ class SaleService {
           if (cardId) {
             await balanceManagementService.updateCardBalance(
               cardId,
-              sale.date,
+              paymentDateForBalance,
               amount,
               "income",
               {
@@ -1040,7 +1183,7 @@ class SaleService {
     // Update customer due amount
     if (sale.customerId) {
       const oldDue = Number(sale.customer?.dueAmount || 0);
-      const newDue = oldDue - payment.amount;
+      const newDue = oldDue - (payment.amount || 0);
 
       await prisma.customer.update({
         where: { id: sale.customerId },

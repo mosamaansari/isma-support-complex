@@ -36,10 +36,11 @@ class BalanceTransactionController {
 
   async getCashTransactions(req: AuthRequest, res: Response) {
     try {
-      const { startDate, endDate } = req.query;
+      const { startDate, endDate, excludeRefunds } = req.query;
       const transactions = await balanceTransactionService.getCashTransactions(
         startDate as string | undefined,
-        endDate as string | undefined
+        endDate as string | undefined,
+        excludeRefunds === "true" || excludeRefunds === true
       );
       return res.status(200).json({
         message: "Cash transactions retrieved successfully",
@@ -62,7 +63,7 @@ class BalanceTransactionController {
 
   async getBankTransactions(req: AuthRequest, res: Response) {
     try {
-      const { bankAccountId, startDate, endDate } = req.query;
+      const { bankAccountId, startDate, endDate, excludeRefunds } = req.query;
       if (!bankAccountId) {
         return res.status(400).json({
           message: "Bank account ID is required",
@@ -73,7 +74,8 @@ class BalanceTransactionController {
       const transactions = await balanceTransactionService.getBankTransactions(
         bankAccountId as string,
         startDate as string | undefined,
-        endDate as string | undefined
+        endDate as string | undefined,
+        excludeRefunds === "true" || excludeRefunds === true
       );
       return res.status(200).json({
         message: "Bank transactions retrieved successfully",
@@ -96,10 +98,11 @@ class BalanceTransactionController {
 
   async getAllTransactionsGroupedByDay(req: AuthRequest, res: Response) {
     try {
-      const { startDate, endDate } = req.query;
+      const { startDate, endDate, excludeRefunds } = req.query;
       const grouped = await balanceTransactionService.getAllTransactionsGroupedByDay(
         startDate as string | undefined,
-        endDate as string | undefined
+        endDate as string | undefined,
+        excludeRefunds === "true" || excludeRefunds === true
       );
       return res.status(200).json({
         message: "Transactions grouped by day retrieved successfully",

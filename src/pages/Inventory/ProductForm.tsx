@@ -31,7 +31,7 @@ const productFormSchema = yup.object().shape({
   salePrice: yup
     .number()
     .required("Sale price is required")
-    .min(0.01, "Sale price must be greater than 0")
+    .min(0, "Sale price cannot be negative")
     .max(10000000, "Sale price is too large"),
   shopQuantity: yup
     .number()

@@ -1,7 +1,7 @@
 import prisma from "../config/database";
 import logger from "../utils/logger";
 import balanceTransactionService from "./balanceTransaction.service";
-import { formatLocalYMD, parseLocalYMD } from "../utils/date";
+import { formatLocalYMD, parseLocalYMD, parseLocalYMDForDB } from "../utils/date";
 
 interface BankBalance {
   bankAccountId: string;
@@ -27,6 +27,27 @@ class DailyClosingBalanceService {
     // Using noon ensures that even if converted to UTC, the date part remains correct
     // Pakistan is UTC+5, so 12:00 PKT = 07:00 UTC (same date)
     const dateObj = new Date(year, month - 1, day, 12, 0, 0, 0);
+
+    // Check if closing balance already exists and was calculated recently (within last hour)
+    // This prevents duplicate calculations if cron runs multiple times
+    const existingClosing = await prisma.dailyClosingBalance.findUnique({
+      where: { date: dateObj },
+    });
+
+    if (existingClosing) {
+      const now = new Date();
+      const updatedAt = new Date(existingClosing.updatedAt);
+      const timeDiff = now.getTime() - updatedAt.getTime();
+      const oneHour = 60 * 60 * 1000; // 1 hour in milliseconds
+      
+      // If closing balance was updated within last hour, skip recalculation to prevent double entry
+      if (timeDiff < oneHour) {
+        logger.info(`Closing balance for ${dateStr} already exists and was recently updated (${Math.round(timeDiff / 1000 / 60)} minutes ago), skipping recalculation to prevent double entry`);
+        return existingClosing;
+      } else {
+        logger.info(`Closing balance for ${dateStr} exists but is old (${Math.round(timeDiff / 1000 / 60 / 60)} hours ago), will recalculate`);
+      }
+    }
 
     // Get opening balance for this date
     const openingBalance = await prisma.dailyOpeningBalance.findUnique({
@@ -79,13 +100,22 @@ class DailyClosingBalanceService {
       }
     }
 
-    // Get all transactions for this date
-    const transactions = await balanceTransactionService.getTransactions({
+    // Get transactions for this date and the next day (to include txns with date=next day but created late night in local time)
+    const nextDay = new Date(year, month - 1, day + 1);
+    const nextDayStr = formatLocalYMD(nextDay);
+    const transactionsRaw = await balanceTransactionService.getTransactions({
       startDate: dateStr,
-      endDate: dateStr,
+      endDate: nextDayStr,
     });
 
-    logger.info(`Calculating closing balance for ${dateStr}: startingCash=${startingCash}, transactions=${transactions.length}`);
+    // Filter by createdAt's LOCAL date so txns are assigned to the day they actually occurred
+    const transactions = transactionsRaw.filter((tx) => {
+      const txCreated = new Date(tx.createdAt);
+      const ty = txCreated.getFullYear(), tm = txCreated.getMonth(), td = txCreated.getDate();
+      return ty === year && tm === month - 1 && td === day;
+    });
+
+    logger.info(`Calculating closing balance for ${dateStr}: startingCash=${startingCash}, transactions=${transactions.length} (raw=${transactionsRaw.length})`);
 
     // Calculate closing balances starting from the determined baseline
     let closingCash = startingCash;
@@ -104,23 +134,7 @@ class DailyClosingBalanceService {
     let skippedCount = 0;
     let processedCount = 0;
     for (const transaction of transactions) {
-      // IMPORTANT: Filter transactions by actual date to ensure only transactions for the selected date are included
-      const txDate = transaction.date ? new Date(transaction.date) : new Date(transaction.createdAt);
-      const txYear = txDate.getFullYear();
-      const txMonth = txDate.getMonth();
-      const txDay = txDate.getDate();
-      const txDateOnly = new Date(txYear, txMonth, txDay);
-      
-      const targetYear = dateObj.getFullYear();
-      const targetMonth = dateObj.getMonth();
-      const targetDay = dateObj.getDate();
-      const targetDateOnly = new Date(targetYear, targetMonth, targetDay);
-      
-      // Skip transactions that don't match the target date
-      if (txDateOnly.getTime() !== targetDateOnly.getTime()) {
-        logger.info(`Skipping transaction ${transaction.id} - date mismatch in closing balance: txDate=${txYear}-${String(txMonth + 1).padStart(2, '0')}-${String(txDay).padStart(2, '0')}, targetDate=${targetYear}-${String(targetMonth + 1).padStart(2, '0')}-${String(targetDay).padStart(2, '0')}`);
-        continue;
-      }
+      // (Transactions are already filtered by createdAt's local date above)
 
       // IMPORTANT: Skip 'opening_balance' transactions if we are starting from today's opening balance record,
       // to avoid double counting. These transactions represent the initial baseline setting.
@@ -201,14 +215,21 @@ class DailyClosingBalanceService {
       cardBalances: cardBalancesArray as any,
     };
 
+    // Use upsert to prevent duplicate entries - this ensures only one entry per date
     const closingBalance = await prisma.dailyClosingBalance.upsert({
       where: { date: dateObj },
-      update: closingBalanceData,
+      update: {
+        ...closingBalanceData,
+        updatedAt: new Date(), // Explicitly set updatedAt to current time for accurate tracking
+      },
       create: {
         date: dateObj,
         ...closingBalanceData,
+        createdAt: new Date(), // Explicitly set createdAt to current time for accurate tracking
       },
     });
+
+    logger.info(`Closing balance stored for ${dateStr}: cash=${closingCash}, createdAt=${closingBalance.createdAt.toISOString()}, updatedAt=${closingBalance.updatedAt.toISOString()}`);
 
     // Create balance transaction for closing balance (for tracking purposes)
     try {
@@ -228,7 +249,7 @@ class DailyClosingBalanceService {
    * Get closing balance for a specific date
    */
   async getClosingBalance(date: string) {
-    const dateObj = parseLocalYMD(date);
+    const dateObj = parseLocalYMDForDB(date);
 
     const closingBalance = await prisma.dailyClosingBalance.findUnique({
       where: { date: dateObj },
@@ -377,16 +398,35 @@ class DailyClosingBalanceService {
    * Get previous day's closing balance (which becomes next day's opening balance)
    */
   async getPreviousDayClosingBalance(date: string) {
-    // Parse date string to get components
-    const [year, month, day] = date.split("-").map(v => parseInt(v, 10));
-    
-    // Create date at noon (12:00:00) to avoid timezone conversion issues
-    const dateObj = new Date(year, month - 1, day, 12, 0, 0, 0);
-    dateObj.setDate(dateObj.getDate() - 1); // Get previous day
+    // Parse date string (YYYY-MM-DD) and get previous day using parseLocalYMD for consistency
+    const current = parseLocalYMD(date);
+    const previousDate = new Date(current);
+    previousDate.setDate(previousDate.getDate() - 1);
+    // Use noon for DB @db.Date column matching (same as calculateAndStoreClosingBalance)
+    previousDate.setHours(12, 0, 0, 0);
 
-    const previousClosing = await prisma.dailyClosingBalance.findUnique({
-      where: { date: dateObj },
+    let previousClosing = await prisma.dailyClosingBalance.findUnique({
+      where: { date: previousDate },
     });
+
+    // If not found, calculate and store it (e.g. 17th's closing when asking for 18th's opening)
+    if (!previousClosing) {
+      try {
+        const calculated = await this.calculateAndStoreClosingBalance(previousDate);
+        // Use the freshly calculated result directly
+        if (calculated) {
+          return {
+            date: formatLocalYMD(calculated.date),
+            cashBalance: Number(calculated.cashBalance),
+            bankBalances: (calculated.bankBalances as any[]) || [],
+            cardBalances: (calculated.cardBalances as any[]) || [],
+          };
+        }
+      } catch (error) {
+        logger.error(`Error calculating closing balance for previous day: ${formatLocalYMD(previousDate)}`, error);
+        return null;
+      }
+    }
 
     if (previousClosing) {
       return {
@@ -397,9 +437,7 @@ class DailyClosingBalanceService {
       };
     }
 
-    // If not found, calculate it
-    // dateObj is already at noon, so we can use it directly
-    return await this.calculateAndStoreClosingBalance(dateObj);
+    return null;
   }
 
   /**

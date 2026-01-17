@@ -124,8 +124,16 @@ export default function BillPrint() {
       return;
     }
 
-    const totalPaid = sale.payments?.reduce((sum, p) => sum + (p.amount || 0), 0) || (sale.remainingBalance && sale.remainingBalance < sale.total ? sale.total - sale.remainingBalance : sale.total);
-    const remainingBalance = sale.remainingBalance || (sale.total - totalPaid);
+    // Filter out payments with invalid amounts (0, null, undefined, NaN) before calculating totalPaid
+    const validPayments = (sale.payments || []).filter((p: any) => 
+      p?.amount !== undefined && 
+      p?.amount !== null && 
+      !isNaN(Number(p.amount)) && 
+      Number(p.amount) > 0
+    );
+    const totalPaid = validPayments.reduce((sum: number, p: any) => sum + (p?.amount || 0), 0);
+    // Recalculate remaining balance based on actual totalPaid
+    const remainingBalance = Math.max(0, sale.total - totalPaid);
     const change = totalPaid > sale.total ? totalPaid - sale.total : 0;
     const paymentStatus = remainingBalance > 0 ? "Pending" : "Completed";
     const billDate = new Date(sale.createdAt || sale.date || new Date()).toLocaleString('en-US', { 
@@ -158,28 +166,28 @@ export default function BillPrint() {
                 margin: 0;
                 size: 80mm auto;
               }
-              body { margin: 0; padding: 10mm; }
+              body { margin: 0; padding: 5mm; }
               .no-print { display: none !important; }
             }
             body {
               font-family: 'Courier New', monospace;
               font-size: 12px;
-              padding: 10mm;
+              padding: 5mm;
               margin: 0;
-              color: #000;
+              color: #000000;
               background: #fff;
               max-width: 80mm;
               margin: 0 auto;
             }
             .receipt {
               background: #fff;
-              padding: 5mm;
+              padding: 2mm;
             }
             .shop-header {
               text-align: center;
-              margin-bottom: 8px;
-              border-bottom: 1px dashed #000;
-              padding-bottom: 8px;
+              margin-bottom: 4px;
+              border-bottom: 1px dashed #000000;
+              padding-bottom: 4px;
             }
             .shop-name {
               font-weight: bold;
@@ -190,23 +198,27 @@ export default function BillPrint() {
             .shop-details {
               font-size: 10px;
               line-height: 1.4;
+              color: #000000;
             }
             .separator {
               text-align: center;
-              margin: 6px 0;
+              margin: 4px 0;
               font-size: 10px;
+              color: #000000;
             }
             .section-title {
               text-align: center;
               font-weight: bold;
               font-size: 12px;
-              margin: 8px 0;
+              margin: 4px 0;
               text-transform: uppercase;
+              color: #000000;
             }
             .customer-info {
-              margin: 8px 0;
+              margin: 4px 0;
               font-size: 11px;
               line-height: 1.5;
+              color: #000000;
             }
             .customer-info div {
               margin: 2px 0;
@@ -221,11 +233,13 @@ export default function BillPrint() {
               text-align: left;
               padding: 4px 2px;
               font-weight: bold;
-              border-bottom: 1px dashed #000;
+              border-bottom: 1px dashed #000000;
+              color: #000000;
             }
             table td {
               padding: 3px 2px;
-              border-bottom: 1px dashed #ccc;
+              border-bottom: 1px dashed #666;
+              color: #000000;
             }
             .text-right {
               text-align: right;
@@ -240,39 +254,46 @@ export default function BillPrint() {
               text-align: center;
             }
             .totals {
-              margin: 8px 0;
+              margin: 4px 0;
               font-size: 11px;
+              color: #000000;
             }
             .totals-row {
               display: flex;
               justify-content: space-between;
               margin: 3px 0;
+              color: #000000;
             }
             .total-row {
               font-weight: bold;
               font-size: 12px;
-              border-top: 1px dashed #000;
-              border-bottom: 1px dashed #000;
+              border-top: 1px dashed #000000;
+              border-bottom: 1px dashed #000000;
               padding: 4px 0;
-              margin: 6px 0;
+              margin: 4px 0;
+              color: #000000;
             }
             .bank-info {
-              margin: 8px 0;
+              margin: 4px 0;
               font-size: 10px;
               line-height: 1.4;
+              color: #000000;
             }
             .bank-info div {
               margin: 2px 0;
+              color: #000000;
             }
             .footer {
               text-align: center;
-              margin-top: 12px;
+              margin-top: 8px;
               font-size: 10px;
+              color: #000000;
             }
             .thank-you {
               font-weight: bold;
               font-size: 12px;
-              margin: 8px 0;
+              margin: 4px 0;
+              color: #000000;
             }
           </style>
         </head>
@@ -302,16 +323,19 @@ export default function BillPrint() {
                 <tr>
                   <th>Description</th>
                   <th class="text-center">Qty</th>
+                  <th class="text-right">Unit Price</th>
                   <th class="text-right">Price</th>
                 </tr>
               </thead>
               <tbody>
                 ${sale.items.map((item: any) => {
                   const itemTotal = Number(item.total);
+                  const unitPrice = (item as any).customPrice || item.unitPrice || (itemTotal / item.quantity);
                   return `
                     <tr>
                       <td>${item.productName}</td>
                       <td class="text-center">${item.quantity}</td>
+                      <td class="text-right">${unitPrice.toFixed(2)}</td>
                       <td class="text-right">${itemTotal.toFixed(2)}</td>
                     </tr>
                   `;
@@ -404,8 +428,16 @@ export default function BillPrint() {
     return null;
   }
 
-  const totalPaid = (sale.payments || []).reduce((sum: number, p: any) => sum + (p?.amount || 0), 0) || (sale.remainingBalance !== undefined && sale.remainingBalance !== null && sale.remainingBalance < sale.total ? sale.total - sale.remainingBalance : sale.total);
-  const remainingBalance = sale.remainingBalance !== undefined && sale.remainingBalance !== null ? sale.remainingBalance : (sale.total - totalPaid);
+  // Filter out payments with invalid amounts (0, null, undefined, NaN) before calculating totalPaid
+  const validPayments = (sale.payments || []).filter((p: any) => 
+    p?.amount !== undefined && 
+    p?.amount !== null && 
+    !isNaN(Number(p.amount)) && 
+    Number(p.amount) > 0
+  );
+  const totalPaid = validPayments.reduce((sum: number, p: any) => sum + (p?.amount || 0), 0);
+  // Recalculate remaining balance based on actual totalPaid
+  const remainingBalance = Math.max(0, sale.total - totalPaid);
   const change = totalPaid > sale.total ? totalPaid - sale.total : 0;
   
   // Calculate display amounts for discount and tax
@@ -739,16 +771,19 @@ export default function BillPrint() {
             <tr>
               <th>Description</th>
               <th className="text-center">Qty</th>
+              <th className="text-right">Unit Price</th>
               <th className="text-right">Price</th>
             </tr>
           </thead>
           <tbody>
             {sale.items.map((item: any, index) => {
               const itemTotal = Number(item.total);
+              const unitPrice = (item as any).customPrice || item.unitPrice || (itemTotal / item.quantity);
               return (
                 <tr key={index}>
                   <td>{item.productName}</td>
                   <td className="text-center">{item.quantity}</td>
+                  <td className="text-right">{unitPrice.toFixed(2)}</td>
                   <td className="text-right">{itemTotal.toFixed(2)}</td>
                 </tr>
               );
@@ -910,17 +945,15 @@ export default function BillPrint() {
             width: 80mm;
             max-width: 80mm;
             margin: 0;
-            padding: 10mm;
-            font-family: 'Courier New', monospace;
             font-size: 12px;
-            color: #000;
+            color: #000000;
             background: #fff;
           }
           .print-receipt .shop-header {
             text-align: center;
-            margin-bottom: 8px;
-            border-bottom: 1px dashed #000;
-            padding-bottom: 8px;
+            margin-bottom: 4px;
+            border-bottom: 1px dashed #000000;
+            padding-bottom: 4px;
           }
           .print-receipt .shop-name {
             font-weight: bold;
@@ -931,23 +964,27 @@ export default function BillPrint() {
           .print-receipt .shop-details {
             font-size: 10px;
             line-height: 1.4;
+            color: #000000;
           }
           .print-receipt .separator {
             text-align: center;
-            margin: 6px 0;
+            margin: 4px 0;
             font-size: 10px;
+            color: #000000;
           }
           .print-receipt .section-title {
             text-align: center;
             font-weight: bold;
             font-size: 12px;
-            margin: 8px 0;
+            margin: 4px 0;
             text-transform: uppercase;
+            color: #000000;
           }
           .print-receipt .customer-info {
-            margin: 8px 0;
+            margin: 4px 0;
             font-size: 11px;
             line-height: 1.5;
+            color: #000000;
           }
           .print-receipt .customer-info div {
             margin: 2px 0;
@@ -962,11 +999,13 @@ export default function BillPrint() {
             text-align: left;
             padding: 4px 2px;
             font-weight: bold;
-            border-bottom: 1px dashed #000;
+            border-bottom: 1px dashed #000000;
+            color: #000000;
           }
           .print-receipt table td {
             padding: 3px 2px;
-            border-bottom: 1px dashed #ccc;
+            border-bottom: 1px dashed #666;
+            color: #000000;
           }
           .print-receipt .text-right {
             text-align: right;
@@ -981,39 +1020,46 @@ export default function BillPrint() {
             text-align: center;
           }
           .print-receipt .totals {
-            margin: 8px 0;
+            margin: 4px 0;
             font-size: 11px;
+            color: #000000;
           }
           .print-receipt .totals-row {
             display: flex;
             justify-content: space-between;
             margin: 3px 0;
+            color: #000000;
           }
           .print-receipt .total-row {
             font-weight: bold;
             font-size: 12px;
-            border-top: 1px dashed #000;
-            border-bottom: 1px dashed #000;
+            border-top: 1px dashed #000000;
+            border-bottom: 1px dashed #000000;
             padding: 4px 0;
-            margin: 6px 0;
+            margin: 4px 0;
+            color: #000000;
           }
           .print-receipt .bank-info {
-            margin: 8px 0;
+            margin: 4px 0;
             font-size: 10px;
             line-height: 1.4;
+            color: #000000;
           }
           .print-receipt .bank-info div {
             margin: 2px 0;
+            color: #000000;
           }
           .print-receipt .footer {
             text-align: center;
-            margin-top: 12px;
+            margin-top: 8px;
             font-size: 10px;
+            color: #000000;
           }
           .print-receipt .thank-you {
             font-weight: bold;
             font-size: 12px;
-            margin: 8px 0;
+            margin: 4px 0;
+            color: #000000;
           }
         }
       `}</style>

@@ -84,7 +84,16 @@ export default function SalesPaymentsCombinedPrint() {
   }
 
   const payments = sale.payments || [];
-  const totalPaid = payments.reduce((sum: number, p: SalePayment) => sum + (p?.amount || 0), 0);
+  // Filter out payments with invalid amounts (0, null, undefined, NaN) before calculating totalPaid
+  const validPayments = payments.filter((p: SalePayment) => 
+    p?.amount !== undefined && 
+    p?.amount !== null && 
+    !isNaN(Number(p.amount)) && 
+    Number(p.amount) > 0
+  );
+  const totalPaid = validPayments.reduce((sum: number, p: SalePayment) => sum + (p?.amount || 0), 0);
+  // Recalculate remaining balance based on actual totalPaid (not the stored value which might be incorrect)
+  const remainingBalance = Math.max(0, sale.total - totalPaid);
 
   if (payments.length === 0) {
     return (
@@ -180,8 +189,8 @@ export default function SalesPaymentsCombinedPrint() {
               </div>
               <div>
                 <p className="text-sm text-gray-600">Remaining Balance:</p>
-                <p className={`font-semibold text-lg ${(sale.remainingBalance || 0) > 0 ? 'text-orange-600' : 'text-green-600'}`}>
-                  Rs. {(sale.remainingBalance || 0).toFixed(2)}
+                <p className={`font-semibold text-lg ${remainingBalance > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                  Rs. {remainingBalance.toFixed(2)}
                 </p>
               </div>
             </div>
@@ -236,8 +245,8 @@ export default function SalesPaymentsCombinedPrint() {
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-700">Remaining Balance:</span>
-                <span className={`font-semibold ${(sale.remainingBalance || 0) > 0 ? 'text-orange-600' : 'text-green-600'}`}>
-                  Rs. {(sale.remainingBalance || 0).toFixed(2)}
+                <span className={`font-semibold ${remainingBalance > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                  Rs. {remainingBalance.toFixed(2)}
                 </span>
               </div>
             </div>
@@ -293,7 +302,7 @@ export default function SalesPaymentsCombinedPrint() {
           </div>
           <div className="totals-row">
             <span>Remaining:</span>
-            <span>{(sale.remainingBalance || 0).toFixed(2)}</span>
+            <span>{remainingBalance.toFixed(2)}</span>
           </div>
           <div className="totals-row total-row">
             <span>Total Paid:</span>
@@ -378,8 +387,6 @@ export default function SalesPaymentsCombinedPrint() {
             width: 80mm;
             max-width: 80mm;
             margin: 0;
-            padding: 10mm;
-            font-family: 'Courier New', monospace;
             font-size: 12px;
             color: #000;
             background: #fff;

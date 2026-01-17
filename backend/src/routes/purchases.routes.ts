@@ -65,6 +65,42 @@ router.put(
   purchaseController.updatePurchase.bind(purchaseController)
 );
 
+// Cancel purchase
+router.patch(
+  "/:id/cancel",
+  authenticate,
+  requirePermission(PERMISSIONS.PURCHASES_CANCEL),
+  paramsValidator(
+    Joi.object({
+      id: Joi.string().required().trim().min(1).messages({
+        "string.empty": "Purchase ID is required",
+        "string.min": "Purchase ID is required",
+        "any.required": "Purchase ID is required",
+      }),
+    })
+  ),
+  bodyValidator(
+    Joi.object({
+      refundMethod: Joi.string()
+        .valid("cash", "bank_transfer")
+        .optional()
+        .messages({
+          "any.only": "Refund method must be either 'cash' or 'bank_transfer'",
+        }),
+      bankAccountId: Joi.string()
+        .optional()
+        .when("refundMethod", {
+          is: "bank_transfer",
+          then: Joi.required().messages({
+            "any.required": "Bank account ID is required when refund method is bank_transfer",
+          }),
+          otherwise: Joi.optional(),
+        }),
+    })
+  ),
+  purchaseController.cancelPurchase.bind(purchaseController)
+);
+
 // Add payment to existing purchase
 router.post(
   "/:id/payments",

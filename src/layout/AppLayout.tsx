@@ -43,7 +43,7 @@ const LayoutContent: React.FC = () => {
     }
   }, []);
 
-  // Check daily confirmation when user is loaded
+  // Check daily confirmation when user is loaded and periodically at 12 PM
   useEffect(() => {
     const checkDailyConfirmation = async () => {
       if (!currentUser || loading) return;
@@ -59,6 +59,9 @@ const LayoutContent: React.FC = () => {
         ));
 
       if (!hasRelevantPermission) return;
+
+      // Don't check if modal is already shown
+      if (showConfirmationModal) return;
 
       // Get today's date in YYYY-MM-DD format (using Pakistan timezone)
       const now = new Date();
@@ -135,7 +138,19 @@ const LayoutContent: React.FC = () => {
       }
     };
 
+    // Check immediately on mount or when user loads
     checkDailyConfirmation();
+
+    // Set up periodic check every minute to catch when it becomes 12 PM
+    const intervalId = setInterval(() => {
+      checkDailyConfirmation();
+    }, 60000); // Check every minute (60000ms)
+
+    // Cleanup interval on unmount
+    return () => {
+      clearInterval(intervalId);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser, loading]);
 
   // Show loading while checking auth OR while loading user data (but only if we have a token)

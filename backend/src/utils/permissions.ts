@@ -16,6 +16,7 @@ export const PERMISSIONS = {
   PURCHASES_VIEW: "purchases:view",
   PURCHASES_CREATE: "purchases:create",
   PURCHASES_UPDATE: "purchases:update",
+  PURCHASES_CANCEL: "purchases:cancel",
   PURCHASES_ADD_PAYMENT: "purchases:add_payment",
   
   // Expenses

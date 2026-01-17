@@ -99,7 +99,14 @@ export default function SalesPaymentPrint() {
   } else {
     paymentDate = new Date(sale.date || sale.createdAt);
   }
-  const totalPaid = (sale.payments || []).reduce((sum: number, p: SalePayment) => sum + (p?.amount || 0), 0);
+  // Filter out payments with invalid amounts (0, null, undefined, NaN) before calculating totalPaid
+  const validPayments = (sale.payments || []).filter((p: SalePayment) => 
+    p?.amount !== undefined && 
+    p?.amount !== null && 
+    !isNaN(Number(p.amount)) && 
+    Number(p.amount) > 0
+  );
+  const totalPaid = validPayments.reduce((sum: number, p: SalePayment) => sum + (p?.amount || 0), 0);
   const paymentNumber = paymentIndex ? parseInt(paymentIndex) + 1 : 1;
   const totalPayments = (sale.payments || []).length;
   const paymentBank =
@@ -363,8 +370,7 @@ export default function SalesPaymentPrint() {
             width: 80mm;
             max-width: 80mm;
             margin: 0;
-            padding: 10mm;
-            font-family: 'Courier New', monospace;
+            
             font-size: 12px;
             color: #000;
             background: #fff;

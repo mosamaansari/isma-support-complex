@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router";
 import PageMeta from "../../components/common/PageMeta";
 import { useData } from "../../context/DataContext";
@@ -20,7 +20,7 @@ import { getTodayDate } from "../../utils/dateHelpers";
 import { formatPriceWithCurrency } from "../../utils/priceHelpers";
 
 export default function SalesList() {
-  const { sales, salesPagination, cancelSale, addPaymentToSale, currentUser, bankAccounts, refreshSales, loading } = useData();
+  const { sales, salesPagination, cancelSale, addPaymentToSale, currentUser, bankAccounts, refreshBankAccounts, refreshSales, loading } = useData();
   const { showSuccess, showError } = useAlert();
   
   useEffect(() => {
@@ -54,6 +54,18 @@ export default function SalesList() {
     amount: 0,
   });
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
+  const bankAccountsLoadedRef = useRef(false);
+
+  // Load bank accounts only once on mount to prevent duplicate API calls
+  useEffect(() => {
+    if (!bankAccountsLoadedRef.current && bankAccounts.length === 0) {
+      bankAccountsLoadedRef.current = true;
+      refreshBankAccounts().catch(console.error);
+    } else if (bankAccounts.length > 0) {
+      bankAccountsLoadedRef.current = true;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const filteredSales = (sales || []).filter((sale) => {
     if (!sale || !sale.billNumber) return false;
@@ -69,23 +81,34 @@ export default function SalesList() {
   // Calculate totals for filtered sales (all rows visible in table)
   const totalSales = filteredSales.reduce((sum, s) => sum + (s?.total || 0), 0);
   const totalPaid = filteredSales.reduce((sum, s) => {
-    const paid = (s.payments || []).reduce((pSum: number, p: SalePayment) => pSum + (p?.amount || 0), 0);
+    // Filter out payments with invalid amounts (0, null, undefined, NaN)
+    const validPayments = (s.payments || []).filter((p: SalePayment) => 
+      p?.amount !== undefined && 
+      p?.amount !== null && 
+      !isNaN(Number(p.amount)) && 
+      Number(p.amount) > 0
+    );
+    const paid = validPayments.reduce((pSum: number, p: SalePayment) => pSum + (p?.amount || 0), 0);
     return sum + paid;
   }, 0);
   const totalRemaining = filteredSales.reduce((sum, s) => {
-    const paid = (s.payments || []).reduce((pSum: number, p: SalePayment) => pSum + (p?.amount || 0), 0);
-    const remaining = s.remainingBalance !== undefined && s.remainingBalance !== null 
-      ? s.remainingBalance 
-      : ((s.total || 0) - paid);
+    // Filter out payments with invalid amounts (0, null, undefined, NaN)
+    const validPayments = (s.payments || []).filter((p: SalePayment) => 
+      p?.amount !== undefined && 
+      p?.amount !== null && 
+      !isNaN(Number(p.amount)) && 
+      Number(p.amount) > 0
+    );
+    const paid = validPayments.reduce((pSum: number, p: SalePayment) => pSum + (p?.amount || 0), 0);
+    const remaining = Math.max(0, (s.total || 0) - paid);
     return sum + remaining;
   }, 0);
   const completedSales = filteredSales.filter((s) => s && s.status === "completed").reduce((sum, s) => sum + (s?.total || 0), 0);
 
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
-  const [saleToCancel, setSaleToCancel] = useState<string | null>(null);
-
-  const handleCancelSaleClick = (id: string) => {
-    setSaleToCancel(id);
+  const [saleToCancel, setSaleToCancel] = useState<any>(null);
+  const handleCancelSaleClick = (sale: any) => {
+    setSaleToCancel(sale);
     setCancelModalOpen(true);
   };
 
@@ -93,15 +116,14 @@ export default function SalesList() {
     if (!saleToCancel) return;
     
     try {
-      await cancelSale(saleToCancel);
-      showSuccess("Sale cancelled successfully!");
+      // Payments will be automatically refunded to their original sources
+      await cancelSale(saleToCancel.id, undefined);
+      showSuccess("Sale cancelled successfully! Payments have been refunded to their original sources.");
       refreshSales(salesPagination?.page || 1, salesPagination?.pageSize || 10);
       setCancelModalOpen(false);
       setSaleToCancel(null);
     } catch (error: any) {
       showError(extractErrorMessage(error) || "Failed to cancel sale. Please try again.");
-      setCancelModalOpen(false);
-      setSaleToCancel(null);
     }
   };
 
@@ -133,8 +155,8 @@ export default function SalesList() {
   const handleSubmitPayment = async () => {
     if (!selectedSale) return;
 
-    if (!paymentData.amount || paymentData.amount <= 0) {
-      showError("Payment amount must be greater than 0");
+    if (paymentData.amount === undefined || paymentData.amount === null || paymentData.amount < 0) {
+      showError("Payment amount cannot be negative");
       return;
     }
 
@@ -336,10 +358,15 @@ export default function SalesList() {
               filteredSales.map((sale) => {
                 if (!sale || !sale.billNumber) return null;
                 
-                const totalPaid = (sale.payments || []).reduce((sum: number, p: SalePayment) => sum + (p?.amount || 0), 0);
-                const remainingBalance = sale.remainingBalance !== undefined && sale.remainingBalance !== null 
-                  ? sale.remainingBalance 
-                  : ((sale.total || 0) - totalPaid);
+                // Filter out payments with invalid amounts (0, null, undefined, NaN) before calculating totalPaid
+                const validPayments = (sale.payments || []).filter((p: SalePayment) => 
+                  p?.amount !== undefined && 
+                  p?.amount !== null && 
+                  !isNaN(Number(p.amount)) && 
+                  Number(p.amount) > 0
+                );
+                const totalPaid = validPayments.reduce((sum: number, p: SalePayment) => sum + (p?.amount || 0), 0);
+                const remainingBalance = Math.max(0, (sale.total || 0) - totalPaid);
                 
                 return (
                   <tr
@@ -443,7 +470,7 @@ export default function SalesList() {
                             currentUser?.role === "superadmin" ||
                             currentUser?.id === sale.userId) && (
                             <button
-                              onClick={() => handleCancelSaleClick(sale.id)}
+                              onClick={() => handleCancelSaleClick(sale)}
                               className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded dark:hover:bg-red-900/20 border border-red-200 dark:border-red-800 flex-shrink-0"
                               title="Cancel Sale"
                             >
@@ -473,7 +500,17 @@ export default function SalesList() {
               <p className="text-sm text-gray-600 dark:text-gray-400">Total: <span className="font-semibold">Rs. {selectedSale.total.toFixed(2)}</span></p>
               <p className="text-sm text-gray-600 dark:text-gray-400">
                 Remaining: <span className="font-semibold text-orange-600 dark:text-orange-400">
-                  Rs. {(selectedSale.remainingBalance || (selectedSale.total - (selectedSale.payments?.reduce((sum: number, p: SalePayment) => sum + (p.amount || 0), 0) || 0))).toFixed(2)}
+                  Rs. {(() => {
+                    // Filter out payments with invalid amounts (0, null, undefined, NaN)
+                    const validPaymentsForRemaining = (selectedSale.payments || []).filter((p: SalePayment) => 
+                      p?.amount !== undefined && 
+                      p?.amount !== null && 
+                      !isNaN(Number(p.amount)) && 
+                      Number(p.amount) > 0
+                    );
+                    const totalPaidForRemaining = validPaymentsForRemaining.reduce((sum: number, p: SalePayment) => sum + (p.amount || 0), 0);
+                    return Math.max(0, selectedSale.total - totalPaidForRemaining).toFixed(2);
+                  })()}
                 </span>
               </p>
             </div>
@@ -570,7 +607,16 @@ export default function SalesList() {
                 <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
                   <p className="text-xs text-gray-600 dark:text-gray-400">
                     Total Payments: <span className="font-semibold">{(selectedSale.payments || []).length}</span> | 
-                    Total Paid: <span className="font-semibold">Rs. {(selectedSale.payments || []).reduce((sum: number, p: SalePayment) => sum + (p?.amount || 0), 0).toFixed(2)}</span>
+                    Total Paid: <span className="font-semibold">Rs. {(() => {
+                      // Filter out payments with invalid amounts (0, null, undefined, NaN)
+                      const validPayments = (selectedSale.payments || []).filter((p: SalePayment) => 
+                        p?.amount !== undefined && 
+                        p?.amount !== null && 
+                        !isNaN(Number(p.amount)) && 
+                        Number(p.amount) > 0
+                      );
+                      return validPayments.reduce((sum: number, p: SalePayment) => sum + (p?.amount || 0), 0).toFixed(2);
+                    })()}</span>
                   </p>
                 </div>
               </div>
@@ -652,7 +698,16 @@ export default function SalesList() {
                         Total Paid:
                       </td>
                       <td className="p-3 text-right font-bold text-lg text-gray-800 dark:text-white">
-                        Rs. {(selectedSale.payments || []).reduce((sum: number, p: SalePayment) => sum + (p?.amount || 0), 0).toFixed(2)}
+                        Rs. {(() => {
+                          // Filter out payments with invalid amounts (0, null, undefined, NaN)
+                          const validPaymentsForTotal = (selectedSale.payments || []).filter((p: SalePayment) => 
+                            p?.amount !== undefined && 
+                            p?.amount !== null && 
+                            !isNaN(Number(p.amount)) && 
+                            Number(p.amount) > 0
+                          );
+                          return validPaymentsForTotal.reduce((sum: number, p: SalePayment) => sum + (p?.amount || 0), 0).toFixed(2);
+                        })()}
                       </td>
                       <td className="p-3"></td>
                     </tr>
@@ -734,28 +789,70 @@ export default function SalesList() {
               </p>
             </div>
           </div>
-          <p className="mb-6 text-gray-700 dark:text-gray-300">
-            Are you sure you want to cancel this sale? This will restore product stock. This action cannot be undone.
-          </p>
-          <div className="flex gap-3 justify-end">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setCancelModalOpen(false);
-                setSaleToCancel(null);
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              onClick={confirmCancelSale}
-              className="bg-orange-600 hover:bg-orange-700 text-white"
-            >
-              Cancel Sale
-            </Button>
-          </div>
+          
+          {saleToCancel && (() => {
+            const payments = (saleToCancel.payments || []) as SalePayment[];
+            // Filter out payments with invalid amounts (0, null, undefined, NaN)
+            const validPaymentsForCancel = payments.filter((p: SalePayment) => 
+              p?.amount !== undefined && 
+              p?.amount !== null && 
+              !isNaN(Number(p.amount)) && 
+              Number(p.amount) > 0
+            );
+            const totalPaid = validPaymentsForCancel.reduce((sum: number, p: SalePayment) => sum + (p?.amount || 0), 0);
+            const saleCreatedAt = new Date(saleToCancel.createdAt);
+            const today = new Date();
+            const daysDifference = Math.floor((today.getTime() - saleCreatedAt.getTime()) / (1000 * 60 * 60 * 24));
+            const canReturn = daysDifference <= 7;
+            
+            return (
+              <>
+                <p className="mb-4 text-gray-700 dark:text-gray-300">
+                  Are you sure you want to cancel this sale? This will restore product stock. This action cannot be undone.
+                </p>
+                
+                {!canReturn && (
+                  <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded">
+                    <p className="text-sm text-red-600 dark:text-red-400">
+                      ⚠️ This sale is more than 7 days old. Returns are only allowed within 7 days of the sale date.
+                    </p>
+                  </div>
+                )}
+                
+                {totalPaid > 0 && canReturn && (
+                  <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded">
+                    <p className="text-sm font-medium text-gray-800 dark:text-white mb-2">
+                      Refund Amount: Rs. {totalPaid.toFixed(2)}
+                    </p>
+                    <p className="text-sm text-gray-700 dark:text-gray-300">
+                      Payments will be automatically refunded to their original sources (cash, card, or bank account).
+                    </p>
+                  </div>
+                )}
+                
+                <div className="flex gap-3 justify-end">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setCancelModalOpen(false);
+                      setSaleToCancel(null);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={confirmCancelSale}
+                    className="bg-orange-600 hover:bg-orange-700 text-white"
+                    disabled={!canReturn}
+                  >
+                    Cancel Sale
+                  </Button>
+                </div>
+              </>
+            );
+          })()}
         </div>
       </Modal>
     </>

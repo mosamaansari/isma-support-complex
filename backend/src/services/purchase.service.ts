@@ -2,7 +2,7 @@ import prisma from "../config/database";
 import logger from "../utils/logger";
 import productService from "./product.service";
 import { validateTodayDate } from "../utils/dateValidation";
-import { parseLocalISO, getCurrentLocalDateTime, formatDateToLocalISO } from "../utils/date";
+import { parseLocalISO, getCurrentLocalDateTime, formatDateToLocalISO, getTodayInPakistan, formatLocalYMD, parseLocalYMDForDB } from "../utils/date";
 import { limitDecimalPlaces } from "../utils/numberHelpers";
 
 const splitPurchaseQuantities = (item: {
@@ -218,8 +218,13 @@ class PurchaseService {
         costDozen = costDozen || costSingle * 12;
       }
 
-      const unitCost = limitDecimalPlaces(costSingle || 0);
-      const itemSubtotal = limitDecimalPlaces(unitCost * totalQuantity);
+      // Don't round price early - round only the final result to avoid precision loss
+      // Use unrounded costSingle for calculations, but round for storage
+      const unitCostForCalc = costSingle || 0;
+      // Multiply first, then round to avoid precision loss (e.g., 0.0833... * 24 = 2.0, not 0.08 * 24 = 1.92)
+      const itemSubtotal = limitDecimalPlaces(unitCostForCalc * totalQuantity);
+      // Round unitCost for storage consistency
+      const unitCost = limitDecimalPlaces(unitCostForCalc);
 
       // Calculate discount based on type
       const discount = item.discount || 0;
@@ -279,9 +284,15 @@ class PurchaseService {
     // Use provided userType if available, otherwise use detected type
     const userTypeToUse = userType || finalUserType;
 
-    // Add current date and time to all payments
+    // Filter out payments with empty/undefined/null/0 amount - only process payments with actual amount
+    const validPayments = (data.payments || []).filter((payment: any) => {
+      const amount = payment.amount ?? 0;
+      return amount !== null && amount !== undefined && !isNaN(Number(amount)) && Number(amount) > 0;
+    });
+
+    // Add current date and time to all valid payments
     const currentDateTime = new Date().toISOString();
-    const paymentsWithDate = data.payments.map((payment: any) => ({
+    const paymentsWithDate = validPayments.map((payment: any) => ({
       ...payment,
       date: currentDateTime // Always use current date and time
     }));
@@ -298,13 +309,14 @@ class PurchaseService {
     const balanceManagementService = (await import("./balanceManagement.service")).default;
     const currentDate = new Date();
 
-    for (const payment of data.payments) {
-      // Skip invalid payments
-      if (!payment.amount || payment.amount <= 0 || isNaN(Number(payment.amount))) {
+    for (const payment of data.payments || []) {
+      // Skip invalid payments (allow 0, but skip null/undefined/NaN)
+      const paymentAmount = payment.amount ?? 0;
+      if (paymentAmount === null || paymentAmount === undefined || isNaN(Number(paymentAmount)) || paymentAmount < 0) {
         continue;
       }
 
-      const amount = Number(payment.amount);
+      const amount = Number(paymentAmount);
 
       if (payment.type === "cash") {
         const currentBalance = await balanceManagementService.getCurrentCashBalance(currentDate);
@@ -571,8 +583,8 @@ class PurchaseService {
     },
     userId: string
   ) {
-    // Validate that date is today (if provided)
-    validateTodayDate(data.date, 'purchase date');
+    // Don't validate or update date for edits - keep original purchase date
+    // validateTodayDate(data.date, 'purchase date');
 
     const purchase = await prisma.purchase.findUnique({
       where: { id },
@@ -583,9 +595,15 @@ class PurchaseService {
       throw new Error("Purchase not found");
     }
 
-    // Prevent edits on completed purchases
+    // Prevent edits on completed purchases that are older than 7 days
     if (purchase.status === "completed") {
-      throw new Error("Completed purchases cannot be edited");
+      const purchaseDate = new Date(purchase.date);
+      const today = new Date();
+      const daysDiff = Math.floor((today.getTime() - purchaseDate.getTime()) / (1000 * 60 * 60 * 24));
+      
+      if (daysDiff > 7) {
+        throw new Error(`Cannot edit completed purchases older than 7 days. This purchase is ${daysDiff} days old.`);
+      }
     }
 
     const updateData: any = {};
@@ -622,7 +640,7 @@ class PurchaseService {
 
     // Update items if provided, adjusting stock differences
     if (data.items) {
-      // 1) Revert old stock
+      // 1) Revert old stock and validate new quantities
       for (const oldItem of purchase.items) {
         const product: any = await prisma.product.findUnique({ where: { id: oldItem.productId } });
         if (product) {
@@ -635,6 +653,48 @@ class PurchaseService {
             (oldItem.toWarehouse === false ? 0 : oldItem.quantity)
           );
 
+          // Check if item is being removed or quantity decreased
+          const newItem = data.items.find((item: any) => item.productId === oldItem.productId);
+          if (!newItem) {
+            // Item is being removed - check if we have enough stock to remove
+            const currentShopStock = Number(product.shopQuantity || 0);
+            const currentWarehouseStock = Number(product.warehouseQuantity || 0);
+            
+            if (currentShopStock < revertShopQty) {
+              throw new Error(`Cannot remove item "${product.name}". Shop stock (${currentShopStock}) is less than purchased quantity (${revertShopQty}).`);
+            }
+            if (currentWarehouseStock < revertWarehouseQty) {
+              throw new Error(`Cannot remove item "${product.name}". Warehouse stock (${currentWarehouseStock}) is less than purchased quantity (${revertWarehouseQty}).`);
+            }
+          } else {
+            // Item quantity is being changed - check if decrease is valid
+            const newShopQty = Number((newItem as any).shopQuantity || 0);
+            const newWarehouseQty = Number((newItem as any).warehouseQuantity || 0);
+            const priceType = (newItem as any).priceType || "single";
+            const newShopUnits = priceType === "dozen" ? newShopQty * 12 : newShopQty;
+            const newWarehouseUnits = priceType === "dozen" ? newWarehouseQty * 12 : newWarehouseQty;
+            
+            // Calculate difference
+            const shopDiff = newShopUnits - revertShopQty;
+            const warehouseDiff = newWarehouseUnits - revertWarehouseQty;
+            
+            // Prevent quantity decrease - only allow increase
+            if (shopDiff < 0) {
+              throw new Error(`Cannot decrease shop quantity for "${product.name}". You can only increase quantities, not decrease them.`);
+            }
+            if (warehouseDiff < 0) {
+              throw new Error(`Cannot decrease warehouse quantity for "${product.name}". You can only increase quantities, not decrease them.`);
+            }
+            
+            // Prevent cost/price updates - check if cost has changed
+            const oldCost = Number(oldItem.cost || 0);
+            const newCost = Number((newItem as any).cost || 0);
+            if (oldCost !== newCost) {
+              throw new Error(`Cannot update cost for "${product.name}". Cost cannot be changed during edit.`);
+            }
+          }
+
+          // Revert old stock
           if (revertWarehouseQty > 0) {
             await prisma.product.update({
               where: { id: product.id },
@@ -779,16 +839,45 @@ class PurchaseService {
     if (data.taxType !== undefined) updateData.taxType = data.taxType;
     if (data.total !== undefined) updateData.total = data.total;
     if (data.payments) {
+      // When editing, only allow adding new payments, not modifying or removing existing ones
+      const existingPayments = (purchase.payments as any[]) || [];
+      
+      // Prevent payment removal
+      if (data.payments.length < existingPayments.length) {
+        throw new Error("Cannot remove existing payments. You can only add new payments.");
+      }
+      
+      // Check if any existing payment amount, type, or IDs are being changed
+      for (let i = 0; i < existingPayments.length; i++) {
+        const existingPayment = existingPayments[i];
+        const newPayment = data.payments[i];
+        if (existingPayment && newPayment) {
+          if (existingPayment.amount !== newPayment.amount) {
+            throw new Error("Cannot modify existing payment amounts. You can only add new payments.");
+          }
+          if (existingPayment.type !== newPayment.type) {
+            throw new Error("Cannot modify existing payment types. You can only add new payments.");
+          }
+          if (existingPayment.cardId !== newPayment.cardId) {
+            throw new Error("Cannot modify existing payment card IDs. You can only add new payments.");
+          }
+          if (existingPayment.bankAccountId !== newPayment.bankAccountId) {
+            throw new Error("Cannot modify existing payment bank account IDs. You can only add new payments.");
+          }
+        }
+      }
+
       updateData.payments = data.payments as any;
       // Recalculate remaining balance
-      const totalPaid = data.payments.reduce((sum, payment) => sum + payment.amount, 0);
+      const totalPaid = data.payments.reduce((sum, payment) => sum + (payment.amount || 0), 0);
       const purchaseTotal = data.total !== undefined ? Number(data.total) : Number(purchase.total);
       if (totalPaid > purchaseTotal) {
         throw new Error("Total paid amount cannot exceed total amount");
       }
       updateData.remainingBalance = purchaseTotal - totalPaid;
     }
-    // Don't allow date updates - always use current date
+    // Don't allow date updates - keep original purchase date
+    // Date field is not updated when editing purchases
     // if (data.date) updateData.date = new Date(data.date);
 
     const updatedPurchase = await prisma.purchase.update({
@@ -836,6 +925,325 @@ class PurchaseService {
     };
   }
 
+  async cancelPurchase(
+    id: string,
+    refundData?: {
+      refundMethod: "cash" | "bank_transfer";
+      bankAccountId?: string;
+    },
+    userId?: string,
+    userName?: string
+  ) {
+    const purchase = await prisma.purchase.findUnique({
+      where: { id },
+      include: { items: true },
+    });
+
+    if (!purchase) {
+      throw new Error("Purchase not found");
+    }
+
+    if (purchase.status === "cancelled") {
+      throw new Error("Purchase already cancelled");
+    }
+
+    // Check if purchase is within 1 week (7 days)
+    const purchaseDate = new Date(purchase.date || purchase.createdAt);
+    const today = new Date();
+    const daysDifference = Math.floor((today.getTime() - purchaseDate.getTime()) / (1000 * 60 * 60 * 24));
+    
+    if (daysDifference > 7) {
+      throw new Error("Purchase cannot be cancelled. Only purchases within 7 days can be cancelled.");
+    }
+
+    // Calculate total paid amount
+    const payments = (purchase.payments as Array<{
+      type: string;
+      amount: number;
+      cardId?: string;
+      bankAccountId?: string;
+    }>) || [];
+    const totalPaid = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
+
+    // If there are payments, process refund
+    if (totalPaid > 0) {
+      if (!refundData || !refundData.refundMethod) {
+        throw new Error("Refund method is required. Please specify how to refund the payment (cash or bank_transfer).");
+      }
+
+      if (refundData.refundMethod === "bank_transfer" && !refundData.bankAccountId) {
+        throw new Error("Bank account ID is required for bank transfer refund");
+      }
+
+      if (!userId || !userName) {
+        throw new Error("User information is required for refund processing");
+      }
+
+      // Refund amount back to cash or bank balance
+      const balanceManagementService = (await import("./balanceManagement.service")).default;
+      const currentDate = new Date();
+
+      try {
+        if (refundData.refundMethod === "cash") {
+          // Refund to cash balance (add back)
+          await balanceManagementService.updateCashBalance(
+            currentDate,
+            totalPaid,
+            "income",
+            {
+              description: `Purchase Refund - Purchase #${purchase.id}${purchase.supplierName ? ` - ${purchase.supplierName}` : ""}`,
+              source: "purchase_refund",
+              sourceId: purchase.id,
+              userId: userId,
+              userName: userName,
+            }
+          );
+          logger.info(`Refunded cash: +${totalPaid} for cancelled purchase ${purchase.id}`);
+        } else if (refundData.refundMethod === "bank_transfer" && refundData.bankAccountId) {
+          // Refund to bank account balance (add back)
+          await balanceManagementService.updateBankBalance(
+            refundData.bankAccountId,
+            currentDate,
+            totalPaid,
+            "income",
+            {
+              description: `Purchase Refund - Purchase #${purchase.id}${purchase.supplierName ? ` - ${purchase.supplierName}` : ""}`,
+              source: "purchase_refund",
+              sourceId: purchase.id,
+              userId: userId,
+              userName: userName,
+            }
+          );
+          logger.info(`Refunded bank transfer: +${totalPaid} for cancelled purchase ${purchase.id}`);
+        }
+      } catch (error: any) {
+        logger.error("Error processing refund:", error);
+        throw new Error(`Failed to process refund: ${error.message}`);
+      }
+    }
+
+    // Restore product quantities (deduct what was added during purchase)
+    for (const item of purchase.items) {
+      const updateData: any = {};
+      const product = await prisma.product.findUnique({ where: { id: item.productId } });
+
+      if (product) {
+        const shopQtyToDeduct =
+          (item as any).shopQuantity ?? (item.toWarehouse === false ? item.quantity : 0);
+        const warehouseQtyToDeduct =
+          (item as any).warehouseQuantity ?? (item.toWarehouse === false ? 0 : item.quantity);
+
+        if (warehouseQtyToDeduct > 0 && 'warehouseQuantity' in product) {
+          updateData.warehouseQuantity = {
+            decrement: warehouseQtyToDeduct,
+          };
+        }
+        if (shopQtyToDeduct > 0 && 'shopQuantity' in product) {
+          updateData.shopQuantity = {
+            decrement: shopQtyToDeduct,
+          };
+        }
+        if (!('shopQuantity' in product) && !('warehouseQuantity' in product)) {
+          // Fallback to old schema
+          updateData.quantity = {
+            decrement: item.quantity,
+          };
+        }
+
+        const updatedProduct = await prisma.product.update({
+          where: { id: item.productId },
+          data: updateData,
+        });
+
+        // Reset notification if stock recovered
+        await productService.checkAndNotifyLowStock(updatedProduct.id);
+      }
+    }
+
+    // Update purchase status
+    const updatedPurchase = await prisma.purchase.update({
+      where: { id },
+      data: { 
+        status: "cancelled",
+        updatedAt: getCurrentLocalDateTime(),
+      },
+    });
+
+    return updatedPurchase;
+  }
+
+  async cancelPurchase(
+    id: string,
+    refundData?: {
+      refundMethod: "cash" | "bank_transfer";
+      bankAccountId?: string;
+    },
+    userId?: string,
+    userName?: string
+  ) {
+    const purchase = await prisma.purchase.findUnique({
+      where: { id },
+      include: { items: true },
+    });
+
+    if (!purchase) {
+      throw new Error("Purchase not found");
+    }
+
+    if (purchase.status === "cancelled") {
+      throw new Error("Purchase already cancelled");
+    }
+
+    // Check if purchase is within 1 week (7 days) from createdAt
+    const purchaseCreatedAt = new Date(purchase.createdAt);
+    const today = new Date();
+    const daysDifference = Math.floor((today.getTime() - purchaseCreatedAt.getTime()) / (1000 * 60 * 60 * 24));
+    
+    if (daysDifference > 7) {
+      throw new Error("Purchase cannot be cancelled. Only purchases within 7 days of creation can be cancelled.");
+    }
+
+    // Calculate total paid amount and process refunds to original sources
+    const payments = (purchase.payments as Array<{
+      type: string;
+      amount: number;
+      cardId?: string;
+      bankAccountId?: string;
+    }>) || [];
+    const totalPaid = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
+
+    // If there are payments, process refund to original sources
+    if (totalPaid > 0) {
+      if (!userId || !userName) {
+        throw new Error("User information is required for refund processing");
+      }
+
+      const balanceManagementService = (await import("./balanceManagement.service")).default;
+      // Use Pakistan calendar date so refund transaction appears in Reports on the correct date
+      const refundDateForBalance = parseLocalYMDForDB(formatLocalYMD(getTodayInPakistan()));
+
+      try {
+        // Process each payment refund to its original source
+        for (const payment of payments) {
+          const paymentAmount = payment.amount || 0;
+          if (paymentAmount <= 0) continue;
+
+          if (payment.type === "cash") {
+            // Refund to cash balance (add back as income)
+            await balanceManagementService.updateCashBalance(
+              refundDateForBalance,
+              paymentAmount,
+              "income",
+              {
+                description: `Purchase Refund - Purchase #${purchase.id}${purchase.supplierName ? ` - ${purchase.supplierName}` : ""}`,
+                source: "purchase_refund",
+                sourceId: purchase.id,
+                userId: userId,
+                userName: userName,
+              }
+            );
+            logger.info(`Refunded cash: +${paymentAmount} for cancelled purchase ${purchase.id}`);
+          } else if (payment.type === "card" && payment.cardId) {
+            // Refund to card balance (add back as income)
+            await balanceManagementService.updateCardBalance(
+              payment.cardId,
+              refundDateForBalance,
+              paymentAmount,
+              "income",
+              {
+                description: `Purchase Refund - Purchase #${purchase.id}${purchase.supplierName ? ` - ${purchase.supplierName}` : ""}`,
+                source: "purchase_refund",
+                sourceId: purchase.id,
+                userId: userId,
+                userName: userName,
+              }
+            );
+            logger.info(`Refunded card: +${paymentAmount} for cancelled purchase ${purchase.id}, card: ${payment.cardId}`);
+          } else if (payment.type === "bank_transfer" && payment.bankAccountId) {
+            // Refund to bank account balance (add back as income)
+            await balanceManagementService.updateBankBalance(
+              payment.bankAccountId,
+              refundDateForBalance,
+              paymentAmount,
+              "income",
+              {
+                description: `Purchase Refund - Purchase #${purchase.id}${purchase.supplierName ? ` - ${purchase.supplierName}` : ""}`,
+                source: "purchase_refund",
+                sourceId: purchase.id,
+                userId: userId,
+                userName: userName,
+              }
+            );
+            logger.info(`Refunded bank transfer: +${paymentAmount} for cancelled purchase ${purchase.id}, bank: ${payment.bankAccountId}`);
+          }
+        }
+      } catch (error: any) {
+        logger.error("Error processing refund:", error);
+        throw new Error(`Failed to process refund: ${error.message}`);
+      }
+    }
+
+    // Recalculate closing balance for today to include refunds
+    try {
+      const dailyClosingBalanceService = (await import("./dailyClosingBalance.service")).default;
+      const today = new Date();
+      await dailyClosingBalanceService.calculateAndStoreClosingBalance(today);
+      logger.info(`Recalculated closing balance after purchase refund for ${purchase.id}`);
+    } catch (error: any) {
+      logger.error("Error recalculating closing balance after refund:", error);
+      // Don't fail the refund if closing balance recalculation fails
+    }
+
+    // Restore product quantities (deduct what was added during purchase)
+    for (const item of purchase.items) {
+      const updateData: any = {};
+      const product = await prisma.product.findUnique({ where: { id: item.productId } });
+
+      if (product) {
+        const shopQtyToDeduct =
+          (item as any).shopQuantity ?? (item.toWarehouse === false ? item.quantity : 0);
+        const warehouseQtyToDeduct =
+          (item as any).warehouseQuantity ?? (item.toWarehouse === false ? 0 : item.quantity);
+
+        if (warehouseQtyToDeduct > 0 && 'warehouseQuantity' in product) {
+          updateData.warehouseQuantity = {
+            decrement: warehouseQtyToDeduct,
+          };
+        }
+        if (shopQtyToDeduct > 0 && 'shopQuantity' in product) {
+          updateData.shopQuantity = {
+            decrement: shopQtyToDeduct,
+          };
+        }
+        if (!('shopQuantity' in product) && !('warehouseQuantity' in product)) {
+          // Fallback to old schema
+          updateData.quantity = {
+            decrement: item.quantity,
+          };
+        }
+
+        const updatedProduct = await prisma.product.update({
+          where: { id: item.productId },
+          data: updateData,
+        });
+
+        // Reset notification if stock recovered
+        await productService.checkAndNotifyLowStock(updatedProduct.id);
+      }
+    }
+
+    // Update purchase status
+    const updatedPurchase = await prisma.purchase.update({
+      where: { id },
+      data: { 
+        status: "cancelled",
+        updatedAt: getCurrentLocalDateTime(),
+      },
+    });
+
+    return updatedPurchase;
+  }
+
   async addPaymentToPurchase(
     purchaseId: string,
     payment: {
@@ -848,9 +1256,6 @@ class PurchaseService {
     userId: string,
     userType?: "user" | "admin"
   ) {
-    // Validate that date is today (if provided)
-    validateTodayDate(payment.date, 'payment date');
-    console.log(payment.date, "payment")
     const purchase = await prisma.purchase.findUnique({
       where: { id: purchaseId },
     });
@@ -867,17 +1272,12 @@ class PurchaseService {
     }
 
     const currentPayments = (purchase.payments as any) || [];
-    // Use local timezone for payment date (not UTC)
-    // If payment.date is provided, use it (already validated as today)
-    // Otherwise, use current local date and time
-    const paymentDate = payment.date 
-      ? payment.date 
-      : formatDateToLocalISO(getCurrentLocalDateTime());
-      console.log("payment.date", payment.date)
-      console.log("paymentDate", paymentDate)
+    // Always use current date and time for the new payment (avoids timezone/validation issues)
+    const paymentDate = formatDateToLocalISO(getCurrentLocalDateTime());
 
-    const newPayments = [...currentPayments, { ...payment, date: paymentDate }];
-    const totalPaid = newPayments.reduce((sum, p: any) => sum + Number(p.amount), 0);
+    const paymentAmount = payment.amount || 0;
+    const newPayments = [...currentPayments, { ...payment, amount: paymentAmount, date: paymentDate }];
+    const totalPaid = newPayments.reduce((sum, p: any) => sum + Number(p.amount || 0), 0);
     const remainingBalance = Number(purchase.total) - totalPaid;
 
     if (totalPaid > Number(purchase.total)) {
@@ -941,13 +1341,15 @@ class PurchaseService {
       if (!payment.amount || payment.amount <= 0 || isNaN(Number(payment.amount))) {
         logger.warn(`Skipping invalid payment amount: ${payment.amount} for purchase ${purchase.id}`);
       } else {
-        const paymentDate = payment.date ? payment.date : purchase.date;
+        // Use Pakistan calendar date so BalanceTransaction.date is correct for Reports
+        // Use parseLocalYMDForDB to ensure correct date storage in @db.Date column
+        const paymentDateForBalance = parseLocalYMDForDB(formatLocalYMD(getTodayInPakistan()));
         const amount = Number(payment.amount);
 
         // Update balance for cash, bank_transfer, or card payments
         if (payment.type === "cash") {
           await balanceManagementService.updateCashBalance(
-            paymentDate,
+            paymentDateForBalance,
             amount,
             "expense",
             {
@@ -962,7 +1364,7 @@ class PurchaseService {
         } else if (payment.type === "bank_transfer" && payment.bankAccountId) {
           await balanceManagementService.updateBankBalance(
             payment.bankAccountId,
-            paymentDate,
+            paymentDateForBalance,
             amount,
             "expense",
             {
@@ -979,7 +1381,7 @@ class PurchaseService {
           if (cardId) {
             await balanceManagementService.updateCardBalance(
               cardId,
-              paymentDate,
+              paymentDateForBalance,
               amount,
               "expense",
               {

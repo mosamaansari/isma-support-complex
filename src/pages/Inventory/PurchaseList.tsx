@@ -9,16 +9,17 @@ import Input from "../../components/form/input/InputField";
 import DatePicker from "../../components/form/DatePicker";
 import Pagination from "../../components/ui/Pagination";
 import PageSizeSelector from "../../components/ui/PageSizeSelector";
-import { PencilIcon, DownloadIcon } from "../../icons";
+import { PencilIcon, DownloadIcon, TrashBinIcon } from "../../icons";
 import { FaEye, FaListAlt, FaCreditCard } from "react-icons/fa";
 import Select from "../../components/form/Select";
 import Label from "../../components/form/Label";
+import { Modal } from "../../components/ui/modal";
 import { extractErrorMessage, extractValidationErrors } from "../../utils/errorHandler";
 import { formatPriceWithCurrency } from "../../utils/priceHelpers";
 import { formatDateToLocalISO, getTodayDate } from "../../utils/dateHelpers";
 
 export default function PurchaseList() {
-  const { purchases, purchasesPagination, refreshPurchases, cards, refreshCards, bankAccounts, refreshBankAccounts, addPaymentToPurchase, loading, error } = useData();
+  const { purchases, purchasesPagination, refreshPurchases, bankAccounts, refreshBankAccounts, cancelPurchase, addPaymentToPurchase, currentUser, loading, error } = useData();
   const { showSuccess, showError } = useAlert();
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState<"all" | "completed" | "pending" | "cancelled">("all");
@@ -32,20 +33,10 @@ export default function PurchaseList() {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [backendErrors, setBackendErrors] = useState<Record<string, string>>({});
-  const cardsLoadedRef = useRef(false);
+  const [cancelModalOpen, setCancelModalOpen] = useState(false);
+  const [purchaseToCancel, setPurchaseToCancel] = useState<any>(null);
   const bankAccountsLoadedRef = useRef(false);
   const purchasesLoadedRef = useRef(false);
-
-  // Load cards only once on mount
-  useEffect(() => {
-    if (!cardsLoadedRef.current && cards.length === 0) {
-      cardsLoadedRef.current = true;
-      refreshCards().catch(console.error);
-    } else if (cards.length > 0) {
-      cardsLoadedRef.current = true;
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // Load bank accounts only once on mount
   useEffect(() => {
@@ -122,6 +113,26 @@ export default function PurchaseList() {
     setShowViewPaymentsModal(true);
   };
 
+  const handleCancelPurchaseClick = (purchase: any) => {
+    setPurchaseToCancel(purchase);
+    setCancelModalOpen(true);
+  };
+
+  const confirmCancelPurchase = async () => {
+    if (!purchaseToCancel) return;
+    
+    try {
+      // Payments will be automatically refunded to their original sources
+      await cancelPurchase(purchaseToCancel.id, undefined);
+      showSuccess("Purchase cancelled successfully! Payments have been refunded to their original sources.");
+      refreshPurchases(purchasesPagination?.page || 1, purchasesPagination?.pageSize || 10);
+      setCancelModalOpen(false);
+      setPurchaseToCancel(null);
+    } catch (error: any) {
+      showError(extractErrorMessage(error) || "Failed to cancel purchase. Please try again.");
+    }
+  };
+
   const handlePrintPayment = (purchaseId: string, paymentIndex: number) => {
     window.open(`/inventory/purchase/payment/${purchaseId}/${paymentIndex}`, "_blank");
   };
@@ -133,8 +144,8 @@ export default function PurchaseList() {
   const handleSubmitPayment = async () => {
     if (!selectedPurchase) return;
 
-    if (!paymentData.amount || paymentData.amount <= 0) {
-      showError("Payment amount must be greater than 0");
+    if (paymentData.amount === undefined || paymentData.amount === null || paymentData.amount < 0) {
+      showError("Payment amount cannot be negative");
       return;
     }
 
@@ -429,6 +440,18 @@ export default function PurchaseList() {
                             <FaCreditCard className="w-3 h-3 sm:w-4 sm:h-4" />
                           </button>
                         )}
+                        {purchase.status !== "cancelled" &&
+                          (currentUser?.role === "admin" ||
+                            currentUser?.role === "superadmin" ||
+                            currentUser?.id === purchase.userId) && (
+                            <button
+                              onClick={() => handleCancelPurchaseClick(purchase)}
+                              className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded dark:hover:bg-red-900/20 border border-red-200 dark:border-red-800 flex-shrink-0"
+                              title="Cancel Purchase"
+                            >
+                              <TrashBinIcon className="w-3 h-3 sm:w-4 sm:h-4" />
+                            </button>
+                          )}
                         <Link to={`/inventory/purchase/edit/${purchase.id}`}>
                           <button 
                             className="p-1.5 sm:p-2 text-blue-600 hover:bg-blue-50 rounded dark:hover:bg-blue-900/20 flex-shrink-0"
@@ -808,6 +831,90 @@ export default function PurchaseList() {
           </div>
         </div>
       )}
+
+      {/* Cancel Purchase Confirmation Modal */}
+      <Modal
+        isOpen={cancelModalOpen}
+        onClose={() => {
+          setCancelModalOpen(false);
+          setPurchaseToCancel(null);
+        }}
+        className="max-w-md mx-4"
+        showCloseButton={true}
+      >
+        <div className="p-6">
+          <div className="flex items-center gap-4 mb-4">
+            <div className="flex items-center justify-center w-12 h-12 bg-orange-100 rounded-full dark:bg-orange-900/20">
+              <TrashBinIcon className="w-6 h-6 text-orange-600 dark:text-orange-400" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-gray-800 dark:text-white">
+                Cancel Purchase
+              </h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                This action cannot be undone
+              </p>
+            </div>
+          </div>
+          
+          {purchaseToCancel && (() => {
+            const payments = (purchaseToCancel.payments || []) as PurchasePayment[];
+            const totalPaid = payments.reduce((sum: number, p: PurchasePayment) => sum + (p?.amount || 0), 0);
+            const purchaseCreatedAt = new Date(purchaseToCancel.createdAt);
+            const today = new Date();
+            const daysDifference = Math.floor((today.getTime() - purchaseCreatedAt.getTime()) / (1000 * 60 * 60 * 24));
+            const canReturn = daysDifference <= 7;
+            
+            return (
+              <>
+                <p className="mb-4 text-gray-700 dark:text-gray-300">
+                  Are you sure you want to cancel this purchase? This will deduct product quantities and refund payments. This action cannot be undone.
+                </p>
+                
+                {!canReturn && (
+                  <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded">
+                    <p className="text-sm text-red-600 dark:text-red-400">
+                      ⚠️ This purchase is more than 7 days old. Cancellations are only allowed within 7 days of creation.
+                    </p>
+                  </div>
+                )}
+                
+                {totalPaid > 0 && canReturn && (
+                  <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded">
+                    <p className="text-sm font-medium text-gray-800 dark:text-white mb-2">
+                      Refund Amount: Rs. {totalPaid.toFixed(2)}
+                    </p>
+                    <p className="text-sm text-gray-700 dark:text-gray-300">
+                      Payments will be automatically refunded to their original sources (cash, card, or bank account).
+                    </p>
+                  </div>
+                )}
+                
+                <div className="flex gap-3 justify-end">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setCancelModalOpen(false);
+                      setPurchaseToCancel(null);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={confirmCancelPurchase}
+                    className="bg-orange-600 hover:bg-orange-700 text-white"
+                    disabled={!canReturn}
+                  >
+                    Cancel Purchase
+                  </Button>
+                </div>
+              </>
+            );
+          })()}
+        </div>
+      </Modal>
     </>
   );
 }

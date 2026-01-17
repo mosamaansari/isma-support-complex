@@ -252,11 +252,27 @@ class ReportService {
         if (sale) {
           description = `Sale - Bill #${sale.billNumber}${sale.customerName ? ` - ${sale.customerName}` : ""}`;
         }
+      } else if (tx.source === "sale_refund") {
+        txType = "Sale Refund";
+        const sale = await prisma.sale.findUnique({ where: { id: tx.sourceId || "" }, include: { customer: true } }).catch((): null => null);
+        if (sale) {
+          description = `Sale Refund - Bill #${sale.billNumber}${sale.customerName ? ` - ${sale.customerName}` : ""}`;
+        } else {
+          description = tx.description || "Sale Refund";
+        }
       } else if (tx.source === "purchase" || tx.source === "purchase_payment") {
         txType = "Purchase";
         const purchase = await prisma.purchase.findUnique({ where: { id: tx.sourceId || "" }, include: { supplier: true } }).catch((): null => null);
         if (purchase) {
           description = `Purchase - ${purchase.supplierName || "N/A"}`;
+        }
+      } else if (tx.source === "purchase_refund") {
+        txType = "Purchase Refund";
+        const purchase = await prisma.purchase.findUnique({ where: { id: tx.sourceId || "" }, include: { supplier: true } }).catch((): null => null);
+        if (purchase) {
+          description = `Purchase Refund - ${purchase.supplierName || "N/A"}`;
+        } else {
+          description = tx.description || "Purchase Refund";
         }
       } else if (tx.source === "expense") {
         txType = "Expense";
@@ -313,6 +329,7 @@ class ReportService {
         steps.push({
           step: stepNumber++,
           type: txType,
+          transactionType: type, // "income" or "expense"
           datetime: txDate,
           paymentType,
           amount,
@@ -334,13 +351,37 @@ class ReportService {
     }
 
     // Calculate closing balance
-    const closingCash = runningCash;
-    const closingBankBalances = Array.from(runningBankBalances.entries()).map(([id, balance]) => ({
+    // First, try to get the stored closing balance for this date (most accurate)
+    // This ensures refunds and all transactions are included
+    let closingCash = runningCash;
+    let closingBankBalances = Array.from(runningBankBalances.entries()).map(([id, balance]) => ({
       bankAccountId: id,
       bankName: bankMap.get(id)?.bankName || "Unknown",
       accountNumber: bankMap.get(id)?.accountNumber || "",
       balance,
     }));
+
+    // Try to get stored closing balance for this date (more accurate, includes all transactions)
+    try {
+      const storedClosingBalance = await dailyClosingBalanceService.getClosingBalance(date);
+      if (storedClosingBalance) {
+        // Use stored closing balance as it's more accurate (includes all transactions including refunds)
+        closingCash = Number(storedClosingBalance.cashBalance || 0);
+        const storedBanks = (storedClosingBalance.bankBalances as Array<{ bankAccountId: string; balance: number }>) || [];
+        closingBankBalances = storedBanks.map((b) => ({
+          bankAccountId: b.bankAccountId,
+          bankName: bankMap.get(b.bankAccountId)?.bankName || "Unknown",
+          accountNumber: bankMap.get(b.bankAccountId)?.accountNumber || "",
+          balance: Number(b.balance || 0),
+        }));
+        logger.info(`Using stored closing balance for ${date}: cash=${closingCash}`);
+      } else {
+        logger.info(`No stored closing balance found for ${date}, using calculated balance: cash=${closingCash}`);
+      }
+    } catch (error: any) {
+      logger.warn(`Error fetching stored closing balance for ${date}, using calculated balance: ${error.message}`);
+      // Continue with calculated balance if stored balance fetch fails
+    }
 
     // IMPORTANT: For Sales and Purchases, we need to look at PAYMENT DATES, not sale/purchase dates
     // Fetch all sales and purchases that might have payments on this date
@@ -902,7 +943,12 @@ class ReportService {
     // Use noon (12:00:00) for date comparisons to avoid timezone conversion issues
     start.setHours(12, 0, 0, 0); // Use noon instead of midnight
     const end = parseLocalYMD(endDate);
-    end.setHours(12, 59, 59, 999); // Use 12:59:59 instead of 23:59:59
+    // When startDate === endDate, set end to end of day to capture all transactions for that day
+    if (startDate === endDate) {
+      end.setHours(23, 59, 59, 999); // End of day for single day reports
+    } else {
+      end.setHours(12, 59, 59, 999); // Use 12:59:59 for date range comparisons
+    }
 
     // IMPORTANT: Opening Balance = Previous day's closing balance (baseline only)
     // It should NOT include manual additions made during the date range
@@ -952,6 +998,15 @@ class ReportService {
       startDate,
       endDate,
     });
+
+    // Log refund transactions for debugging
+    const refundTransactions = transactions.filter((tx: any) => tx.source === "sale_refund" || tx.source === "purchase_refund");
+    if (refundTransactions.length > 0) {
+      logger.info(`Found ${refundTransactions.length} refund transactions in date range ${startDate} to ${endDate}`);
+      refundTransactions.forEach((tx: any) => {
+        logger.info(`Refund transaction: ${tx.source}, id=${tx.id}, date=${tx.date}, createdAt=${tx.createdAt}, amount=${tx.amount}`);
+      });
+    }
 
     transactions.sort((a: any, b: any) => {
       const aTime = new Date(a.createdAt || a.date).getTime();
@@ -1011,14 +1066,24 @@ class ReportService {
       }
 
       // IMPORTANT: Filter transactions by actual date to ensure only transactions within the date range are included
+      // For all transactions (sales, purchases, refunds), use createdAt as it represents when the transaction actually occurred
+      // This ensures consistency with how getTransactions fetches them
       // Database stores dates in UTC, so we extract UTC date components for correct comparison
-      const txDate = new Date(tx.date || tx.createdAt);
+      let txDate: Date;
+      // Use createdAt for all transactions to ensure consistency with getTransactions query
+      // createdAt represents when the transaction actually occurred, which is more reliable than the date field
+      if (tx.createdAt) {
+        txDate = new Date(tx.createdAt);
+      } else {
+        // Fallback to date field if createdAt is not available
+        txDate = new Date(tx.date);
+      }
       const { year, month, day } = extractDateComponents(txDate);
       const txDateOnly = new Date(year, month, day, 12, 0, 0, 0);
       
       // Skip transactions that are outside the date range
       if (txDateOnly.getTime() < start.getTime() || txDateOnly.getTime() > end.getTime()) {
-        logger.info(`Skipping transaction ${tx.id} - outside date range: txDate=${txDateOnly.toISOString().split('T')[0]}, range=${start.toISOString().split('T')[0]} to ${end.toISOString().split('T')[0]}`);
+        logger.info(`Skipping transaction ${tx.id} (${tx.source}) - outside date range: txDate=${txDateOnly.toISOString().split('T')[0]}, range=${start.toISOString().split('T')[0]} to ${end.toISOString().split('T')[0]}`);
         continue;
       }
 
@@ -1035,11 +1100,27 @@ class ReportService {
         if (sale) {
           description = `Sale - Bill #${sale.billNumber}${sale.customerName ? ` - ${sale.customerName}` : ""}`;
         }
+      } else if (tx.source === "sale_refund") {
+        txType = "Sale Refund";
+        const sale = await prisma.sale.findUnique({ where: { id: tx.sourceId || "" }, include: { customer: true } }).catch((): null => null);
+        if (sale) {
+          description = `Sale Refund - Bill #${sale.billNumber}${sale.customerName ? ` - ${sale.customerName}` : ""}`;
+        } else {
+          description = tx.description || "Sale Refund";
+        }
       } else if (tx.source === "purchase" || tx.source === "purchase_payment") {
         txType = "Purchase";
         const purchase = await prisma.purchase.findUnique({ where: { id: tx.sourceId || "" }, include: { supplier: true } }).catch((): null => null);
         if (purchase) {
           description = `Purchase - ${purchase.supplierName || "N/A"}`;
+        }
+      } else if (tx.source === "purchase_refund") {
+        txType = "Purchase Refund";
+        const purchase = await prisma.purchase.findUnique({ where: { id: tx.sourceId || "" }, include: { supplier: true } }).catch((): null => null);
+        if (purchase) {
+          description = `Purchase Refund - ${purchase.supplierName || "N/A"}`;
+        } else {
+          description = tx.description || "Purchase Refund";
         }
       } else if (tx.source === "expense") {
         txType = "Expense";
@@ -1083,10 +1164,16 @@ class ReportService {
         balance,
       }));
 
+      // Use createdAt for actual datetime (has real time when transaction was created)
+      // createdAt is a proper Date object with time information
+      // When serialized to JSON, it will be sent as ISO string and frontend will parse it correctly
+      const transactionDateTime = new Date(tx.createdAt);
+
       steps.push({
         step: stepNumber++,
         type: txType,
-        datetime: txDate,
+        transactionType: type, // "income" or "expense"
+        datetime: transactionDateTime,
         paymentType,
         amount,
         cashBefore,
@@ -1103,14 +1190,264 @@ class ReportService {
       });
     }
 
+    // IMPORTANT: Also add payments directly from sales and purchases that might not have BalanceTransactions
+    // or whose BalanceTransactions might have been filtered out
+    // Fetch all sales and purchases that might have payments in the date range
+    const allSalesForPayments = await prisma.sale.findMany({
+      where: {
+        createdAt: { gte: new Date(start.getTime() - 30 * 24 * 60 * 60 * 1000) }, // 30 days before start
+      },
+      include: { customer: true },
+      orderBy: { createdAt: "asc" },
+    });
+
+    const allPurchasesForPayments = await prisma.purchase.findMany({
+      where: {
+        createdAt: { gte: new Date(start.getTime() - 30 * 24 * 60 * 60 * 1000) }, // 30 days before start
+      },
+      include: { supplier: true },
+      orderBy: { createdAt: "asc" },
+    });
+
+    // Track which transactions we've already added from BalanceTransactions
+    // Use a combination of source, sourceId, amount, and date to identify unique payments
+    const addedTransactionKeys = new Set<string>();
+    transactions.forEach((tx: any) => {
+      if (tx.source === "sale_payment" || tx.source === "purchase_payment") {
+        const txDate = new Date(tx.date || tx.createdAt);
+        const { year, month, day } = extractDateComponents(txDate);
+        const dateStr = `${year}-${month}-${day}`;
+        const key = `${tx.source}-${tx.sourceId || ""}-${Number(tx.amount || 0).toFixed(2)}-${dateStr}`;
+        addedTransactionKeys.add(key);
+      }
+    });
+
+    // Add sale payments that aren't already in BalanceTransactions
+    for (const sale of allSalesForPayments) {
+      const payments = (sale.payments as Array<{ type?: string; amount?: number; date?: string; cardId?: string; bankAccountId?: string }> | null) || [];
+      for (let paymentIndex = 0; paymentIndex < payments.length; paymentIndex++) {
+        const payment = payments[paymentIndex];
+        if (!payment.amount || payment.amount <= 0) continue;
+
+        const paymentDateOnly = payment.date ? parsePaymentDate(payment.date) : null;
+        let paymentDateTime: Date;
+        if (paymentDateOnly) {
+          // Use payment date if available
+          paymentDateTime = payment.date ? new Date(payment.date) : new Date(sale.date);
+        } else {
+          // Fallback to sale date
+          paymentDateTime = new Date(sale.date);
+        }
+
+        // Check if payment is in date range
+        const { year, month, day } = extractDateComponents(paymentDateTime);
+        const paymentDateOnlyForCheck = new Date(year, month, day, 12, 0, 0, 0);
+        if (paymentDateOnlyForCheck.getTime() < start.getTime() || paymentDateOnlyForCheck.getTime() > end.getTime()) {
+          continue;
+        }
+
+        // Check if we already added this from BalanceTransactions
+        // Use amount and date to match with BalanceTransaction
+        const dateStr = `${year}-${month}-${day}`;
+        const amount = Number(payment.amount || 0);
+        const transactionKey = `sale_payment-${sale.id}-${amount.toFixed(2)}-${dateStr}`;
+        if (addedTransactionKeys.has(transactionKey)) {
+          continue;
+        }
+
+        // Only add if payment type is cash, bank_transfer, or card (not credit)
+        const paymentType = payment.type || sale.paymentType || "cash";
+        if (paymentType === "credit") continue;
+        const type = "income";
+
+        // Update running balances
+        const cashBefore = runningCash;
+        const bankBalancesBefore = Array.from(runningBankBalances.entries()).map(([id, balance]) => ({
+          bankAccountId: id,
+          bankName: bankMap.get(id)?.bankName || "Unknown",
+          accountNumber: bankMap.get(id)?.accountNumber || "",
+          balance,
+        }));
+
+        if (paymentType === "cash") {
+          runningCash += amount;
+        } else if (paymentType === "bank_transfer" && (payment.bankAccountId || sale.bankAccountId)) {
+          const bankAccountId = payment.bankAccountId || sale.bankAccountId;
+          if (bankAccountId) {
+            const current = runningBankBalances.get(bankAccountId) || 0;
+            runningBankBalances.set(bankAccountId, current + amount);
+          }
+        } else if (paymentType === "card" && (payment.cardId || sale.cardId)) {
+          const cardId = payment.cardId || sale.cardId;
+          if (cardId) {
+            // Cards use bankAccountId field in BalanceTransaction
+            const current = runningBankBalances.get(cardId) || 0;
+            runningBankBalances.set(cardId, current + amount);
+          }
+        }
+
+        const cashAfter = runningCash;
+        const bankBalancesAfter = Array.from(runningBankBalances.entries()).map(([id, balance]) => ({
+          bankAccountId: id,
+          bankName: bankMap.get(id)?.bankName || "Unknown",
+          accountNumber: bankMap.get(id)?.accountNumber || "",
+          balance,
+        }));
+
+        steps.push({
+          step: stepNumber++,
+          type: "Sale",
+          transactionType: type,
+          datetime: paymentDateTime,
+          paymentType,
+          amount,
+          cashBefore,
+          cashAfter,
+          cashChange: amount,
+          bankAccountId: payment.bankAccountId || sale.bankAccountId || payment.cardId || sale.cardId,
+          bankName: (payment.bankAccountId || sale.bankAccountId) ? bankMap.get(payment.bankAccountId || sale.bankAccountId || "")?.bankName : null,
+          bankBalancesBefore,
+          bankBalancesAfter,
+          description: `Sale - Bill #${sale.billNumber}${sale.customerName ? ` - ${sale.customerName}` : ""}`,
+          source: "sale_payment",
+          sourceId: sale.id,
+          userName: sale.userName || "System",
+        });
+      }
+    }
+
+    // Add purchase payments that aren't already in BalanceTransactions
+    for (const purchase of allPurchasesForPayments) {
+      const payments = (purchase.payments as Array<{ type?: string; amount?: number; date?: string; cardId?: string; bankAccountId?: string }> | null) || [];
+      for (let paymentIndex = 0; paymentIndex < payments.length; paymentIndex++) {
+        const payment = payments[paymentIndex];
+        if (!payment.amount || payment.amount <= 0) continue;
+
+        const paymentDateOnly = payment.date ? parsePaymentDate(payment.date) : null;
+        let paymentDateTime: Date;
+        if (paymentDateOnly) {
+          // Use payment date if available
+          paymentDateTime = payment.date ? new Date(payment.date) : new Date(purchase.date);
+        } else {
+          // Fallback to purchase date
+          paymentDateTime = new Date(purchase.date);
+        }
+
+        // Check if payment is in date range
+        const { year, month, day } = extractDateComponents(paymentDateTime);
+        const paymentDateOnlyForCheck = new Date(year, month, day, 12, 0, 0, 0);
+        if (paymentDateOnlyForCheck.getTime() < start.getTime() || paymentDateOnlyForCheck.getTime() > end.getTime()) {
+          continue;
+        }
+
+        // Check if we already added this from BalanceTransactions
+        // Use amount and date to match with BalanceTransaction
+        const dateStr = `${year}-${month}-${day}`;
+        const amount = Number(payment.amount || 0);
+        const transactionKey = `purchase_payment-${purchase.id}-${amount.toFixed(2)}-${dateStr}`;
+        if (addedTransactionKeys.has(transactionKey)) {
+          continue;
+        }
+
+        const paymentType = payment.type || "cash";
+        const type = "expense";
+
+        // Update running balances
+        const cashBefore = runningCash;
+        const bankBalancesBefore = Array.from(runningBankBalances.entries()).map(([id, balance]) => ({
+          bankAccountId: id,
+          bankName: bankMap.get(id)?.bankName || "Unknown",
+          accountNumber: bankMap.get(id)?.accountNumber || "",
+          balance,
+        }));
+
+        if (paymentType === "cash") {
+          runningCash -= amount;
+        } else if (paymentType === "bank_transfer" && payment.bankAccountId) {
+          const current = runningBankBalances.get(payment.bankAccountId) || 0;
+          runningBankBalances.set(payment.bankAccountId, current - amount);
+        } else if (paymentType === "card" && (payment.cardId || payment.bankAccountId)) {
+          const cardId = payment.cardId || payment.bankAccountId;
+          if (cardId) {
+            const current = runningBankBalances.get(cardId) || 0;
+            runningBankBalances.set(cardId, current - amount);
+          }
+        }
+
+        const cashAfter = runningCash;
+        const bankBalancesAfter = Array.from(runningBankBalances.entries()).map(([id, balance]) => ({
+          bankAccountId: id,
+          bankName: bankMap.get(id)?.bankName || "Unknown",
+          accountNumber: bankMap.get(id)?.accountNumber || "",
+          balance,
+        }));
+
+        steps.push({
+          step: stepNumber++,
+          type: "Purchase",
+          transactionType: type,
+          datetime: paymentDateTime,
+          paymentType,
+          amount,
+          cashBefore,
+          cashAfter,
+          cashChange: -amount,
+          bankAccountId: payment.bankAccountId || payment.cardId,
+          bankName: payment.bankAccountId ? bankMap.get(payment.bankAccountId)?.bankName : null,
+          bankBalancesBefore,
+          bankBalancesAfter,
+          description: `Purchase - ${purchase.supplierName || "N/A"}`,
+          source: "purchase_payment",
+          sourceId: purchase.id,
+          userName: purchase.userName || "System",
+        });
+      }
+    }
+
+    // Re-sort steps by datetime after adding payments
+    steps.sort((a, b) => {
+      const aTime = new Date(a.datetime).getTime();
+      const bTime = new Date(b.datetime).getTime();
+      return aTime - bTime;
+    });
+
+    // Re-number steps after sorting
+    steps.forEach((step, index) => {
+      step.step = index + 1;
+    });
+
     // Calculate closing balance
-    const closingCash = runningCash;
-    const closingBankBalances = Array.from(runningBankBalances.entries()).map(([id, balance]) => ({
+    // First, try to get the stored closing balance for the end date (most accurate)
+    // This ensures refunds and all transactions are included
+    let closingCash = runningCash;
+    let closingBankBalances = Array.from(runningBankBalances.entries()).map(([id, balance]) => ({
       bankAccountId: id,
       bankName: bankMap.get(id)?.bankName || "Unknown",
       accountNumber: bankMap.get(id)?.accountNumber || "",
       balance,
     }));
+
+    // Try to get stored closing balance for end date (more accurate, includes all transactions)
+    try {
+      const storedClosingBalance = await dailyClosingBalanceService.getClosingBalance(endDate);
+      if (storedClosingBalance) {
+        // Use stored closing balance as it's more accurate (includes all transactions including refunds)
+        closingCash = Number(storedClosingBalance.cashBalance || 0);
+        const storedBanks = (storedClosingBalance.bankBalances as Array<{ bankAccountId: string; balance: number }>) || [];
+        closingBankBalances = storedBanks.map((b) => ({
+          bankAccountId: b.bankAccountId,
+          bankName: bankMap.get(b.bankAccountId)?.bankName || "Unknown",
+          accountNumber: bankMap.get(b.bankAccountId)?.accountNumber || "",
+          balance: Number(b.balance || 0),
+        }));
+        logger.info(`Using stored closing balance for ${endDate}: cash=${closingCash}`);
+      } else {
+        logger.info(`No stored closing balance found for ${endDate}, using calculated balance: cash=${closingCash}`);
+      }
+    } catch (error: any) {
+      logger.warn(`Error fetching stored closing balance for ${endDate}, using calculated balance: ${error.message}`);
+      // Continue with calculated balance if stored balance fetch fails
+    }
 
     // IMPORTANT: For Sales and Purchases, filter by PAYMENT DATES, not sale/purchase dates
     // Fetch all sales and purchases that might have payments in the date range
@@ -1635,6 +1972,8 @@ class ReportService {
       },
       // Generate daily reports for each day in the range for date-wise display
       dailyReports: await this.generateDailyReportsForRange(startDate, endDate),
+      // Include all transactions (steps) for chronological display
+      transactions: steps,
     };
   }
 

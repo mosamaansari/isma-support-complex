@@ -55,10 +55,10 @@ class DailyConfirmationService {
     const todayDate = new Date(todayDateBase.getTime() + pakistanOffset);
     console.log("todayDate for database query (with +5 hours):", todayDate);
 
-    // Check if it's after 12:10 AM or 12:30 AM in Pakistan timezone (cron runs at 12:00 AM)
-    // Show popup after 12:10 AM (10 minutes after cron)
-    const showAfterHour = 0; // 12:00 AM
-    const showAfterMinute = 10; // 10 minutes past midnight
+    // Check if it's after 12:00 PM (noon) in Pakistan timezone
+    // Show popup after 12:00 PM (noon)
+    const showAfterHour = 12; // 12:00 PM (noon)
+    const showAfterMinute = 0; // 0 minutes past noon
     
     const currentHour = pakistanTime.getHours();
     const currentMinute = pakistanTime.getMinutes();
@@ -117,9 +117,8 @@ class DailyConfirmationService {
     }
 
     return {
-      // Show modal if not confirmed AND (after 12:10 AM OR we allow anytime for convenience)
-      // For now, allow showing anytime if not confirmed (remove time restriction for user convenience)
-      needsConfirmation: needsConfirmation, // && shouldShow, // Removed time restriction
+      // Show modal if not confirmed AND it's after 12:00 PM (noon)
+      needsConfirmation: needsConfirmation && shouldShow,
       confirmed: userConfirmed || false,
       date: todayStr,
       previousCashBalance: currentCashBalance, // Current day's running balance (includes opening + additional)

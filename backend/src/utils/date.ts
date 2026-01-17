@@ -19,6 +19,17 @@ export function parseLocalYMD(dateStr: string): Date {
 }
 
 /**
+ * Parse YYYY-MM-DD for DB queries on @db.Date / DateTime columns.
+ * Uses noon (12:00) so that in UTC the calendar date stays correct (Pakistan UTC+5:
+ * 12:00 local = 07:00 UTC, same day). Use this for findUnique/where { date: ... }
+ * on DailyClosingBalance and DailyOpeningBalance to avoid timezone off-by-one.
+ */
+export function parseLocalYMDForDB(dateStr: string): Date {
+  const [y, m, d] = dateStr.split("T")[0].split("-").map((v) => parseInt(v, 10));
+  return new Date(y, (m || 1) - 1, d || 1, 12, 0, 0, 0);
+}
+
+/**
  * Parse a date string that was stored in local ISO format (without timezone conversion)
  * This handles dates like "2026-01-02T19:23:51.614Z" where the Z is just a format marker,
  * not an actual UTC timezone indicator. The date should be treated as local time.
@@ -71,9 +82,7 @@ export function getTodayInPakistan(): Date {
   
   // Create a date using local date components (not UTC)
   // This ensures the date represents the Pakistan date without timezone conversion
-  const today = new Date(year, month, day, 0, 0, 0, 0);
-  console.log("today", today);
-  return today;
+  return new Date(year, month, day, 0, 0, 0, 0);
 }
 
 /**

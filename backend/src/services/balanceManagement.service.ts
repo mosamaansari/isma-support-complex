@@ -31,14 +31,22 @@ class BalanceManagementService {
     const endDate = new Date(year, localDate.getMonth(), localDate.getDate());
     endDate.setHours(23, 59, 59, 999);
 
-    // First, try to get the latest transaction for today
+    // Determine the cutoff time: if viewing today, use current time; otherwise use end of that day
+    const now = new Date();
+    const isToday = now.getFullYear() === year && 
+                    now.getMonth() === localDate.getMonth() && 
+                    now.getDate() === localDate.getDate();
+    const cutoffTime = isToday ? now : endDate;
+
+    // First, try to get the latest transaction up to the cutoff time
+    // Use createdAt to find the most recent transaction, as it represents when the transaction actually occurred
+    // This ensures we get the actual current balance including all transactions up to the cutoff
     const latestTransaction = await prisma.balanceTransaction.findFirst({
       where: {
-        date: {
-          gte: dateObj,
-          lte: endDate,
-        },
         paymentType: "cash",
+        createdAt: {
+          lte: cutoffTime,
+        },
       },
       orderBy: { createdAt: "desc" },
     });
@@ -246,9 +254,13 @@ class BalanceManagementService {
 
       // Create balance transaction record with detailed tracking
       // Use the provided date but with current time to preserve exact transaction time
+      // IMPORTANT: Extract date components first to preserve the calendar date, then set time
+      // This ensures @db.Date column stores the correct date regardless of timezone
       const now = new Date();
-      const transactionDate = new Date(date);
-      transactionDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+      const dateYear = date.getFullYear();
+      const dateMonth = date.getMonth();
+      const dateDay = date.getDate();
+      const transactionDate = new Date(dateYear, dateMonth, dateDay, now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
 
       const transaction = await balanceTransactionService.createTransaction({
         date: transactionDate,
@@ -397,9 +409,13 @@ class BalanceManagementService {
 
       // Create balance transaction record with detailed tracking
       // Use the provided date but with current time to preserve exact transaction time
+      // IMPORTANT: Extract date components first to preserve the calendar date, then set time
+      // This ensures @db.Date column stores the correct date regardless of timezone
       const now = new Date();
-      const transactionDate = new Date(date);
-      transactionDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+      const dateYear = date.getFullYear();
+      const dateMonth = date.getMonth();
+      const dateDay = date.getDate();
+      const transactionDate = new Date(dateYear, dateMonth, dateDay, now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
 
       const transaction = await balanceTransactionService.createTransaction({
         date: transactionDate,
@@ -608,9 +624,13 @@ class BalanceManagementService {
 
       // Create balance transaction record
       // Use the provided date but with current time to preserve exact transaction time
+      // IMPORTANT: Extract date components first to preserve the calendar date, then set time
+      // This ensures @db.Date column stores the correct date regardless of timezone
       const now = new Date();
-      const transactionDate = new Date(date);
-      transactionDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+      const dateYear = date.getFullYear();
+      const dateMonth = date.getMonth();
+      const dateDay = date.getDate();
+      const transactionDate = new Date(dateYear, dateMonth, dateDay, now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
       
       const transaction = await balanceTransactionService.createTransaction({
         date: transactionDate,

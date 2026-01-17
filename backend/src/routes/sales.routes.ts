@@ -66,6 +66,25 @@ router.patch(
       }),
     })
   ),
+  bodyValidator(
+    Joi.object({
+      refundMethod: Joi.string()
+        .valid("cash", "bank_transfer")
+        .optional()
+        .messages({
+          "any.only": "Refund method must be either 'cash' or 'bank_transfer'",
+        }),
+      bankAccountId: Joi.string()
+        .optional()
+        .when("refundMethod", {
+          is: "bank_transfer",
+          then: Joi.required().messages({
+            "any.required": "Bank account ID is required when refund method is bank_transfer",
+          }),
+          otherwise: Joi.optional(),
+        }),
+    })
+  ),
   saleController.cancelSale.bind(saleController)
 );
 
@@ -93,11 +112,11 @@ router.post(
         }),
       amount: Joi.number()
         .min(0)
-        .required()
+        .optional()
+        .allow(null)
         .messages({
           "number.base": "Payment amount must be a number",
           "number.min": "Payment amount cannot be negative",
-          "any.required": "Payment amount is required",
         }),
       cardId: Joi.string()
         .optional()

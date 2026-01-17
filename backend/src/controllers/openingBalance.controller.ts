@@ -7,9 +7,15 @@ import balanceManagementService from "../services/balanceManagement.service";
 class OpeningBalanceController {
   async getOpeningBalance(req: AuthRequest, res: Response) {
     try {
-      const { date } = req.query;
+      const { date, storedOnly } = req.query;
       if (!date || typeof date !== "string") {
         return res.status(400).json({ error: "Date is required" });
+      }
+      // For reports: return only the stored values from DailyOpeningBalance table for this date.
+      // When storedOnly=true, returns null if no record exists (no fallback to previous day closing).
+      if (storedOnly === "true" || storedOnly === true) {
+        const stored = await openingBalanceService.getStoredOpeningBalanceForDate(date);
+        return res.json(stored);
       }
       const openingBalance = await openingBalanceService.getOpeningBalance(date);
       res.json(openingBalance);

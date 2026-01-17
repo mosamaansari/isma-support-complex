@@ -44,10 +44,10 @@ export const createProductSchema = Joi.object({
     }),
   salePrice: Joi.number()
     .required()
-    .min(0.01)
+    .min(0)
     .messages({
       "number.base": "Sale price must be a number",
-      "number.min": "Sale price must be greater than 0",
+      "number.min": "Sale price cannot be negative",
       "any.required": "Sale price is required",
     }),
   shopQuantity: Joi.number()

@@ -79,7 +79,9 @@ export default function TransactionHistorySection({
 
   const loadOpeningAndClosingBalances = async () => {
     try {
-      // Load opening and closing balances for the date range
+      // Load opening and closing balances for the date range.
+      // Opening: use STORED value from DailyOpeningBalance table for that date; fallback to previous day's closing.
+      // Closing: use stored DailyClosingBalance for that date.
       const openingBalancesMap: Record<string, any> = {};
       const closingBalancesMap: Record<string, any> = {};
 
@@ -89,73 +91,62 @@ export default function TransactionHistorySection({
         const current = new Date(start);
 
         while (current <= end) {
-          // Use local date components to avoid timezone issues
           const year = current.getFullYear();
           const month = String(current.getMonth() + 1).padStart(2, '0');
           const day = String(current.getDate()).padStart(2, '0');
           const dateStr = `${year}-${month}-${day}`;
-          
+
+          // OPENING: First try stored opening for THIS date from DailyOpeningBalance table
           try {
-            // Opening balance should ALWAYS be previous day's closing balance
-            // Not the opening balance record (which might have been updated during the day)
-            const previousDate = new Date(current);
-            previousDate.setDate(previousDate.getDate() - 1);
-            const prevYear = previousDate.getFullYear();
-            const prevMonth = String(previousDate.getMonth() + 1).padStart(2, '0');
-            const prevDay = String(previousDate.getDate()).padStart(2, '0');
-            const prevDateStr = `${prevYear}-${prevMonth}-${prevDay}`;
-            
-            try {
+            const storedOpening = await api.getStoredOpeningBalance(dateStr);
+            if (storedOpening) {
+              openingBalancesMap[dateStr] = {
+                cashBalance: storedOpening.cashBalance ?? 0,
+                bankBalances: storedOpening.bankBalances ?? [],
+                cardBalances: storedOpening.cardBalances ?? [],
+              };
+            } else {
+              // No stored opening for this date: use previous day's closing as opening
+              const previousDate = new Date(current);
+              previousDate.setDate(previousDate.getDate() - 1);
+              const prevYear = previousDate.getFullYear();
+              const prevMonth = String(previousDate.getMonth() + 1).padStart(2, '0');
+              const prevDay = String(previousDate.getDate()).padStart(2, '0');
+              const prevDateStr = `${prevYear}-${prevMonth}-${prevDay}`;
               const prevClosing = await api.getClosingBalance(prevDateStr);
               if (prevClosing) {
-                // Use previous day's closing as today's opening (this is the actual opening balance)
                 openingBalancesMap[dateStr] = {
-                  cashBalance: prevClosing.cashBalance || 0,
-                  bankBalances: prevClosing.bankBalances || [],
-                  cardBalances: prevClosing.cardBalances || [],
+                  cashBalance: prevClosing.cashBalance ?? 0,
+                  bankBalances: prevClosing.bankBalances ?? [],
+                  cardBalances: prevClosing.cardBalances ?? [],
                 };
-              } else {
-                // If no previous closing, check if there's an opening balance record set for this date
-                // (for the very first day when there's no previous closing)
-                try {
-                  const openingBalance = await api.getOpeningBalance(dateStr);
-                  if (openingBalance) {
-                    openingBalancesMap[dateStr] = {
-                      cashBalance: openingBalance.cashBalance || 0,
-                      bankBalances: openingBalance.bankBalances || [],
-                      cardBalances: openingBalance.cardBalances || [],
-                    };
-                  }
-                } catch (e) {
-                  // No opening balance record either
-                }
-              }
-            } catch (e) {
-              // Previous day closing not found, try opening balance record for this date
-              try {
-                const openingBalance = await api.getOpeningBalance(dateStr);
-                if (openingBalance) {
-                  openingBalancesMap[dateStr] = {
-                    cashBalance: openingBalance.cashBalance || 0,
-                    bankBalances: openingBalance.bankBalances || [],
-                    cardBalances: openingBalance.cardBalances || [],
-                  };
-                }
-              } catch (e2) {
-                // No opening balance found
               }
             }
           } catch (e) {
-            // Error loading opening balance
+            // Fallback to previous day closing on error
+            try {
+              const previousDate = new Date(current);
+              previousDate.setDate(previousDate.getDate() - 1);
+              const prevDateStr = `${previousDate.getFullYear()}-${String(previousDate.getMonth() + 1).padStart(2, '0')}-${String(previousDate.getDate()).padStart(2, '0')}`;
+              const prevClosing = await api.getClosingBalance(prevDateStr);
+              if (prevClosing) {
+                openingBalancesMap[dateStr] = {
+                  cashBalance: prevClosing.cashBalance ?? 0,
+                  bankBalances: prevClosing.bankBalances ?? [],
+                  cardBalances: prevClosing.cardBalances ?? [],
+                };
+              }
+            } catch (_) {}
           }
 
+          // CLOSING: use DailyClosingBalance for this date
           try {
             const closingBalance = await api.getClosingBalance(dateStr);
             if (closingBalance) {
               closingBalancesMap[dateStr] = closingBalance;
             }
           } catch (e) {
-            // Closing balance not found for this date
+            // Closing not found for this date
           }
 
           current.setDate(current.getDate() + 1);
@@ -217,11 +208,22 @@ export default function TransactionHistorySection({
           startDate || undefined,
           endDate || undefined
         );
-        console.log("Cash transactions:", transactions);
+        console.log("Cash transactions from API:", transactions);
+        console.log("Cash transactions count:", Array.isArray(transactions) ? transactions.length : 0);
+        // Log refund transactions specifically
+        if (Array.isArray(transactions)) {
+          const refunds = transactions.filter(t => t.source === "sale_refund" || t.source === "purchase_refund");
+          console.log("Cash refund transactions:", refunds);
+          const sales = transactions.filter(t => t.source === "sale" || t.source === "sale_payment");
+          console.log("Cash sale transactions:", sales);
+          const purchases = transactions.filter(t => t.source === "purchase" || t.source === "purchase_payment");
+          console.log("Cash purchase transactions:", purchases);
+        }
         // Ensure transactions is an array
         const transactionsArray = Array.isArray(transactions) ? transactions : [];
         const grouped = groupTransactionsByDay(transactionsArray);
         console.log("Grouped cash transactions:", grouped);
+        console.log("Total groups:", grouped.length);
         setDailyGroups(grouped);
       } else if (type === "bank" && bankAccountId) {
         // Get bank transactions for specific bank and group by day
@@ -304,11 +306,19 @@ export default function TransactionHistorySection({
     let filteredTransactions = transactions;
     if (startDate || endDate) {
       filteredTransactions = transactions.filter((transaction) => {
-        // Parse transaction date properly to avoid timezone issues
-        const txDate = new Date(transaction.date);
-        const txYear = txDate.getFullYear();
-        const txMonth = txDate.getMonth();
-        const txDay = txDate.getDate();
+        // For all transactions, prefer createdAt if available (represents when transaction actually occurred)
+        // Fallback to date field if createdAt is not available
+        // This ensures sales, purchases, and refunds are all included based on when they actually occurred
+        let dateToUse: Date;
+        if (transaction.createdAt) {
+          dateToUse = new Date(transaction.createdAt);
+        } else {
+          dateToUse = new Date(transaction.date);
+        }
+        
+        const txYear = dateToUse.getFullYear();
+        const txMonth = dateToUse.getMonth();
+        const txDay = dateToUse.getDate();
         const txDateOnly = `${txYear}-${String(txMonth + 1).padStart(2, '0')}-${String(txDay).padStart(2, '0')}`;
         
         if (startDate && endDate) {
@@ -324,11 +334,19 @@ export default function TransactionHistorySection({
 
     const grouped: Record<string, Transaction[]> = {};
     for (const transaction of filteredTransactions) {
-      // Parse transaction date properly to avoid timezone issues
-      const txDate = new Date(transaction.date);
-      const txYear = txDate.getFullYear();
-      const txMonth = txDate.getMonth();
-      const txDay = txDate.getDate();
+      // For all transactions, prefer createdAt if available (represents when transaction actually occurred)
+      // Fallback to date field if createdAt is not available
+      // This ensures sales, purchases, and refunds are all included based on when they actually occurred
+      let dateToUse: Date;
+      if (transaction.createdAt) {
+        dateToUse = new Date(transaction.createdAt);
+      } else {
+        dateToUse = new Date(transaction.date);
+      }
+      
+      const txYear = dateToUse.getFullYear();
+      const txMonth = dateToUse.getMonth();
+      const txDay = dateToUse.getDate();
       const dateStr = `${txYear}-${String(txMonth + 1).padStart(2, '0')}-${String(txDay).padStart(2, '0')}`;
       
       if (!grouped[dateStr]) {
@@ -446,7 +464,10 @@ export default function TransactionHistorySection({
     const labels: Record<string, string> = {
       sale: "Sale Payment",
       sale_payment: "Sale Payment",
+      sale_refund: "Sale Refund",
+      purchase: "Purchase Payment",
       purchase_payment: "Purchase Payment",
+      purchase_refund: "Purchase Refund",
       expense: "Expense Payment",
       opening_balance: "Opening Balance",
       closing_balance: "Closing Balance",

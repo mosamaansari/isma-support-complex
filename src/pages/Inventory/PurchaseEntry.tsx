@@ -89,10 +89,7 @@ export default function PurchaseEntry() {
     if (bankAccounts.length === 0) {
       refreshBankAccounts();
     }
-    // Add default cash payment
-    if (payments.length === 0 && !isEdit) {
-      setPayments([{ type: "cash", amount: undefined }]);
-    }
+    // Payments are optional, don't add default payment
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -271,16 +268,22 @@ export default function PurchaseEntry() {
 
         if (prevType !== priceType) {
           if (prevType === "single" && priceType === "dozen") {
-            // Switching units -> dozens: only allow if divisible by 12
-            if (shopEntered % 12 !== 0 || warehouseEntered % 12 !== 0) {
-              showError("Shop/Warehouse Qty must be multiple of 12 to switch to Dozen.");
-              return item;
+            // Switching units -> dozens: automatically convert (allow fractional dozens)
+            // Convert total quantity to dozens and distribute proportionally
+            const totalUnits = shopEntered + warehouseEntered;
+            if (totalUnits > 0) {
+              const shopRatio = shopEntered / totalUnits;
+              const warehouseRatio = warehouseEntered / totalUnits;
+              const totalDozens = totalUnits / 12;
+              nextShopQty = totalDozens * shopRatio;
+              nextWarehouseQty = totalDozens * warehouseRatio;
+            } else {
+              nextShopQty = 0;
+              nextWarehouseQty = 0;
             }
-            nextShopQty = shopEntered / 12;
-            nextWarehouseQty = warehouseEntered / 12;
           }
           if (prevType === "dozen" && priceType === "single") {
-            // Switching dozens -> units
+            // Switching dozens -> units: multiply by 12
             nextShopQty = shopEntered * 12;
             nextWarehouseQty = warehouseEntered * 12;
           }
@@ -395,24 +398,23 @@ export default function PurchaseEntry() {
       showError("Please add at least one product");
       return;
     }
-    if (payments.length === 0) {
-      showError("Please add at least one payment method");
-      return;
-    }
+    // Validate payments - payments are optional, but if provided, validate them
+    // Check if total paid exceeds total (only if there are valid payments)
     if (totalPaid > total) {
       showError("Total paid amount cannot exceed total amount");
       return;
     }
-
-    // Validate payments
     for (const payment of payments) {
-      if (payment.amount === undefined || payment.amount === null || payment.amount <= 0) {
-        showError("Please enter a valid amount for all payments");
-        return;
-      }
-      if (payment.type === "bank_transfer" && !payment.bankAccountId) {
-        showError("Please select a bank account for bank transfer payment");
-        return;
+      // Only validate if amount is provided (payments are optional)
+      if (payment.amount !== undefined && payment.amount !== null) {
+        if (payment.amount < 0) {
+          showError("Payment amount cannot be negative");
+          return;
+        }
+        if (payment.type === "bank_transfer" && !payment.bankAccountId) {
+          showError("Please select a bank account for bank transfer payment");
+          return;
+        }
       }
     }
 
@@ -433,17 +435,11 @@ export default function PurchaseEntry() {
           return;
         }
       }
-      const shopUnits = priceType === "dozen" ? shopEntered * 12 : shopEntered;
-      const warehouseUnits = priceType === "dozen" ? warehouseEntered * 12 : warehouseEntered;
-      const totalQty = shopUnits + warehouseUnits;
-
-      if (totalQty <= 0) {
-        showError(`Please enter a valid quantity (shop or warehouse) for ${item.productName || 'product'}`);
-        setIsSubmitting(false);
-        return;
-      }
-      if (item.cost === undefined || item.cost === null || item.cost <= 0) {
-        showError(`Please enter a valid cost for ${item.productName || 'product'}`);
+      // Allow 0 quantity - no validation needed
+      // Validate cost - allow 0 or greater (similar to sales)
+      const effectiveCost = (item as any).costSingle ?? item.cost ?? 0;
+      if (effectiveCost === undefined || effectiveCost === null || effectiveCost < 0) {
+        showError(`Cost for "${item.productName || 'product'}" cannot be negative`);
         setIsSubmitting(false);
         return;
       }
@@ -487,6 +483,16 @@ export default function PurchaseEntry() {
       // Use local ISO format to avoid timezone conversion
       const dateIsoString = formatDateToLocalISO(dateTime);
 
+      // Filter valid payments (with actual amount > 0)
+      const validPayments = payments
+        .filter(p => p.amount !== undefined && p.amount !== null && !isNaN(Number(p.amount)) && Number(p.amount) > 0)
+        .map(p => ({
+          type: p.type,
+          amount: p.amount,
+          bankAccountId: p.bankAccountId,
+          date: dateIsoString, // Always use combined date and time
+        }));
+
       const purchaseData = {
         supplierName: data.supplierName.trim(),
         supplierPhone: data.supplierPhone || undefined,
@@ -495,10 +501,7 @@ export default function PurchaseEntry() {
         tax: tax || 0,
         taxType: taxType,
         total,
-        payments: payments.map(p => ({
-          ...p,
-          date: dateIsoString, // Always use combined date and time
-        })),
+        payments: validPayments,
         remainingBalance,
         date: dateIsoString,
         userId: currentUser!.id,
@@ -661,6 +664,9 @@ export default function PurchaseEntry() {
                             Warehouse Qty
                           </th>
                           <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[140px]">
+                            Total Units
+                          </th>
+                          <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[140px]">
                             Total
                           </th>
                           <th className="p-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[80px]">
@@ -752,6 +758,18 @@ export default function PurchaseEntry() {
                                 className="w-full text-sm"
                                 placeholder="0"
                               />
+                            </td>
+                            <td className="p-3 text-sm text-gray-700 dark:text-gray-300">
+                              <div className="font-semibold">
+                                {(() => {
+                                  const priceType: "single" | "dozen" = (item as any).priceType || "single";
+                                  const shopEntered = Number(item.shopQuantity || 0);
+                                  const warehouseEntered = Number(item.warehouseQuantity || 0);
+                                  const shopUnits = priceType === "dozen" ? shopEntered * 12 : shopEntered;
+                                  const warehouseUnits = priceType === "dozen" ? warehouseEntered * 12 : warehouseEntered;
+                                  return shopUnits + warehouseUnits;
+                                })()}
+                              </div>
                             </td>
                             <td className="p-3">
                               <div className="text-sm font-semibold text-gray-900 dark:text-white break-all">
@@ -880,14 +898,12 @@ export default function PurchaseEntry() {
                         <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
                           Payment {index + 1}
                         </span>
-                        {payments.length > 1 && (
-                          <button
-                            onClick={() => removePayment(index)}
-                            className="text-red-600 hover:text-red-700"
-                          >
-                            <TrashBinIcon className="w-4 h-4" />
-                          </button>
-                        )}
+                        <button
+                          onClick={() => removePayment(index)}
+                          className="text-red-600 hover:text-red-700"
+                        >
+                          <TrashBinIcon className="w-4 h-4" />
+                        </button>
                       </div>
                       <div className="space-y-2">
                         <div>
@@ -940,7 +956,7 @@ export default function PurchaseEntry() {
                           </div>
                         )}
                         <div>
-                          <Label>Amount <span className="text-error-500">*</span></Label>
+                          <Label>Amount (Optional)</Label>
                           <Input
                             type="number"
                             step={0.01}
@@ -956,7 +972,7 @@ export default function PurchaseEntry() {
                                 updatePayment(index, "amount", isNaN(numValue) ? undefined : numValue);
                               }
                             }}
-                            placeholder="Enter amount"
+                            placeholder="Enter amount (optional)"
                           />
                         </div>
                       </div>
@@ -993,7 +1009,7 @@ export default function PurchaseEntry() {
                   className="w-full mt-6"
                   size="sm"
                   loading={isSubmitting}
-                  disabled={selectedProducts.length === 0 || !supplierName || payments.length === 0 || isSubmitting}
+                  disabled={selectedProducts.length === 0 || !supplierName || isSubmitting}
                 >
                   {isEdit ? "Update Purchase" : "Save Purchase"}
                 </Button>

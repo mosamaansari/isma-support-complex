@@ -189,12 +189,12 @@ export const createPurchaseSchema = Joi.object({
             "any.required": "Payment type is required",
           }),
         amount: Joi.number()
-          .min(0.01)
-          .required()
+          .min(0)
+          .optional()
+          .allow(null)
           .messages({
             "number.base": "Payment amount must be a number",
-            "number.min": "Payment amount must be greater than 0",
-            "any.required": "Payment amount is required",
+            "number.min": "Payment amount cannot be negative",
           }),
         date: Joi.string()
           .optional()
@@ -232,11 +232,9 @@ export const createPurchaseSchema = Joi.object({
           }),
       })
     )
-    .min(1)
-    .required()
+    .optional()
     .messages({
-      "array.min": "At least one payment method is required",
-      "any.required": "Payments are required",
+      "array.base": "Payments must be an array",
     }),
   date: Joi.string()
     .optional()
@@ -277,34 +275,143 @@ export const updatePurchaseSchema = Joi.object({
         quantity: Joi.number().integer().min(1).required(),
         shopQuantity: Joi.number().integer().min(0).optional().default(0),
         warehouseQuantity: Joi.number().integer().min(0).optional().default(0),
-        cost: Joi.number().min(0.01).required().messages({
+        cost: Joi.number().min(0).required().messages({
           "number.base": "Cost must be a number",
-          "number.min": "Cost must be greater than 0",
+          "number.min": "Cost cannot be negative",
           "any.required": "Cost is required",
         }),
+        priceType: Joi.string()
+          .optional()
+          .valid("single", "dozen")
+          .default("single")
+          .messages({
+            "any.only": "Price type must be either 'single' or 'dozen'",
+          }),
+        costSingle: Joi.number()
+          .optional()
+          .min(0)
+          .allow(null)
+          .messages({
+            "number.base": "Single price must be a number",
+            "number.min": "Single price cannot be negative",
+          }),
+        costDozen: Joi.number()
+          .optional()
+          .min(0)
+          .allow(null)
+          .messages({
+            "number.base": "Dozen price must be a number",
+            "number.min": "Dozen price cannot be negative",
+          }),
         discount: Joi.number().optional().min(0).max(100).default(0),
         toWarehouse: Joi.boolean().optional().default(true),
       })
     )
     .optional(),
   subtotal: Joi.number().optional().min(0),
-  tax: Joi.number().optional().min(0).default(0),
+  discount: Joi.number()
+    .optional()
+    .min(0)
+    .when("discountType", {
+      is: "percent",
+      then: Joi.number().max(100).messages({
+        "number.max": "Discount percentage cannot exceed 100%",
+      }),
+      otherwise: Joi.number().max(10000000).messages({
+        "number.max": "Discount amount is too large",
+      }),
+    })
+    .default(0)
+    .allow(null)
+    .messages({
+      "number.base": "Discount must be a number",
+      "number.min": "Discount cannot be negative",
+    }),
+  discountType: Joi.string()
+    .optional()
+    .valid("percent", "value")
+    .default("percent")
+    .messages({
+      "any.only": "Discount type must be either 'percent' or 'value'",
+    }),
+  tax: Joi.number()
+    .optional()
+    .min(0)
+    .when("taxType", {
+      is: "percent",
+      then: Joi.number().max(100).messages({
+        "number.max": "Tax percentage cannot exceed 100%",
+      }),
+      otherwise: Joi.number().max(10000000).messages({
+        "number.max": "Tax amount is too large",
+      }),
+    })
+    .default(0)
+    .allow(null)
+    .messages({
+      "number.base": "Tax must be a number",
+      "number.min": "Tax cannot be negative",
+    }),
+  taxType: Joi.string()
+    .optional()
+    .valid("percent", "value")
+    .default("percent")
+    .messages({
+      "any.only": "Tax type must be either 'percent' or 'value'",
+    }),
   total: Joi.number().optional().min(0),
   payments: Joi.array()
     .items(
       Joi.object({
-        type: Joi.string().valid("cash", "card").required(),
-        amount: Joi.number().min(0).required(),
+        type: Joi.string()
+          .valid("cash", "bank_transfer", "card")
+          .required()
+          .messages({
+            "any.only": "Payment type must be cash, bank_transfer, or card",
+            "any.required": "Payment type is required",
+          }),
+        amount: Joi.number()
+          .min(0)
+          .required()
+          .messages({
+            "number.base": "Payment amount must be a number",
+            "number.min": "Payment amount cannot be negative",
+            "any.required": "Payment amount is required",
+          }),
+        date: Joi.string()
+          .optional()
+          .isoDate()
+          .allow("", null)
+          .messages({
+            "string.isoDate": "Payment date must be a valid ISO date",
+          }),
         cardId: Joi.string()
           .optional()
           .uuid()
           .allow("", null)
           .when("type", {
             is: "card",
-            then: Joi.required(),
+            then: Joi.required().messages({
+              "any.required": "Card ID is required when payment type is card",
+            }),
             otherwise: Joi.optional(),
+          })
+          .messages({
+            "string.uuid": "Card ID must be a valid UUID",
           }),
-        bankAccountId: Joi.string().optional().uuid().allow("", null),
+        bankAccountId: Joi.string()
+          .optional()
+          .allow("", null)
+          .custom((value, helpers) => {
+            if (value === "" || value === null || value === undefined) return null;
+            if (typeof value === "string" && value.length > 0 && !value.startsWith("c")) {
+              return helpers.error("string.pattern.base", { message: "Bank account ID must be a valid ID" });
+            }
+            return value;
+          })
+          .messages({
+            "string.pattern.base": "Bank account ID must be a valid ID",
+          }),
       })
     )
     .optional(),
@@ -320,12 +427,12 @@ export const addPaymentSchema = Joi.object({
       "any.required": "Payment type is required",
     }),
   amount: Joi.number()
-    .min(0.01)
-    .required()
+    .min(0)
+    .optional()
+    .allow(null)
     .messages({
       "number.base": "Payment amount must be a number",
-      "number.min": "Payment amount must be greater than 0",
-      "any.required": "Payment amount is required",
+      "number.min": "Payment amount cannot be negative",
     }),
   date: Joi.string()
     .optional()

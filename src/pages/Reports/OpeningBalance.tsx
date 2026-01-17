@@ -9,13 +9,15 @@ import api from "../../services/api";
 import { getTodayDate } from "../../utils/dateHelpers";
 import TransactionHistorySection from "../../components/openingBalance/TransactionHistorySection";
 import AddCashModal from "../../components/modals/AddCashModal";
+import DatePicker from "../../components/form/DatePicker";
+import Label from "../../components/form/Label";
 import { formatCompleteAmount } from "../../utils/priceHelpers";
 
 export default function OpeningBalance() {
   const { showError } = useAlert();
   const { bankAccounts, refreshBankAccounts } = useData();
   const navigate = useNavigate();
-  const [date] = useState(getTodayDate());
+  const [date, setDate] = useState(getTodayDate());
   const [cashBalance, setCashBalance] = useState<number>(0);
   const [bankBalances, setBankBalances] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(false);
@@ -135,21 +137,32 @@ export default function OpeningBalance() {
 
       <div className="max-w-6xl mx-auto">
         <div className="bg-white rounded-lg shadow-sm dark:bg-gray-800 p-6">
-          <div className="flex justify-between items-center mb-6">
+          <div className="flex flex-wrap justify-between items-center gap-4 mb-6">
             <h1 className="text-2xl font-bold text-gray-800 dark:text-white">
               Daily Opening Balance
             </h1>
-            <Button
-              onClick={() => {
-                setShowAddCashModal(true);
-                setTransactionType(undefined);
-                setSelectedBankId(undefined);
-                setSelectedBankName(undefined);
-              }}
-              size="sm"
-            >
-              Add Opening Balance
-            </Button>
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2">
+                <Label className="mb-0 whitespace-nowrap">Select Date:</Label>
+                <DatePicker
+                  name="reportDate"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  required
+                />
+              </div>
+              <Button
+                onClick={() => {
+                  setShowAddCashModal(true);
+                  setTransactionType(undefined);
+                  setSelectedBankId(undefined);
+                  setSelectedBankName(undefined);
+                }}
+                size="sm"
+              >
+                Add Opening Balance
+              </Button>
+            </div>
           </div>
 
           {loading ? (

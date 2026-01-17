@@ -47,7 +47,7 @@ interface DataContextType {
   sales: Sale[];
   salesPagination: { page: number; pageSize: number; total: number; totalPages: number };
   addSale: (sale: Omit<Sale, "id" | "createdAt">) => Promise<Sale>;
-  cancelSale: (id: string) => Promise<void>;
+  cancelSale: (id: string, refundData?: { refundMethod: "cash" | "bank_transfer"; bankAccountId?: string }) => Promise<void>;
   addPaymentToSale: (id: string, payment: SalePayment & { date?: string }) => Promise<void>;
   getSale: (idOrBillNumber: string) => Sale | undefined;
   getSalesByDateRange: (startDate: string, endDate: string) => Sale[];
@@ -67,6 +67,7 @@ interface DataContextType {
   purchasesPagination: { page: number; pageSize: number; total: number; totalPages: number };
   addPurchase: (purchase: Omit<Purchase, "id" | "createdAt">) => Promise<void>;
   updatePurchase: (id: string, purchase: Partial<Purchase>) => Promise<void>;
+  cancelPurchase: (id: string, refundData?: { refundMethod: "cash" | "bank_transfer"; bankAccountId?: string }) => Promise<void>;
   addPaymentToPurchase: (id: string, payment: PurchasePayment & { date?: string }) => Promise<void>;
   getPurchasesByDateRange: (startDate: string, endDate: string) => Purchase[];
   refreshPurchases: (page?: number, pageSize?: number) => Promise<void>;
@@ -495,11 +496,12 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         date: saleData.date,
       };
 
-      // Use new payments array if available, otherwise fall back to old paymentType
-      if (saleData.payments && saleData.payments.length > 0) {
+      // Use new payments array if available (even if empty), otherwise fall back to old paymentType
+      if (saleData.payments !== undefined && Array.isArray(saleData.payments)) {
+        // Always send payments array if it exists (even if empty) to use new format
         apiData.payments = saleData.payments;
       } else {
-        // Backward compatibility
+        // Backward compatibility - only use old format if payments array doesn't exist at all
         apiData.paymentType = saleData.paymentType;
         if (saleData.bankAccountId) {
           apiData.bankAccountId = saleData.bankAccountId;
@@ -520,10 +522,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  const cancelSale = async (id: string) => {
+  const cancelSale = async (id: string, refundData?: { refundMethod: "cash" | "bank_transfer"; bankAccountId?: string }) => {
     try {
       setError(null);
-      const updatedSale = await api.cancelSale(id);
+      const updatedSale = await api.cancelSale(id, refundData);
       setSales(sales.map((s) => (s.id === id ? updatedSale : s)));
       await refreshProducts(productsPagination?.page || 1, productsPagination?.pageSize || 10); // Refresh products to update stock
     } catch (err: any) {
@@ -535,9 +537,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const addPaymentToSale = async (id: string, payment: SalePayment & { date?: string }) => {
     try {
       setError(null);
-      // Ensure amount is provided and valid
-      if (payment.amount === undefined || payment.amount === null || payment.amount <= 0) {
-        throw new Error("Payment amount must be greater than 0");
+      // Ensure amount is provided and valid - allow 0 or greater
+      if (payment.amount === undefined || payment.amount === null || payment.amount < 0) {
+        throw new Error("Payment amount cannot be negative");
       }
       const updatedSale = await api.addPaymentToSale(id, {
         type: payment.type,
@@ -717,20 +719,36 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           costSingle: (item as any).costSingle,
           costDozen: (item as any).costDozen,
           discount: item.discount || 0,
+          toWarehouse: (item as any).toWarehouse !== undefined ? (item as any).toWarehouse : true,
         }));
       }
       if (purchaseData.subtotal !== undefined) apiData.subtotal = purchaseData.subtotal;
+      if ((purchaseData as any).discount !== undefined) apiData.discount = (purchaseData as any).discount;
+      if ((purchaseData as any).discountType !== undefined) apiData.discountType = (purchaseData as any).discountType;
       if (purchaseData.tax !== undefined) apiData.tax = purchaseData.tax;
       if ((purchaseData as any).taxType !== undefined) apiData.taxType = (purchaseData as any).taxType;
       if (purchaseData.total !== undefined) apiData.total = purchaseData.total;
       if (purchaseData.payments !== undefined) apiData.payments = purchaseData.payments;
-      if (purchaseData.date !== undefined) apiData.date = purchaseData.date;
+      // Don't send date when updating - keep original purchase date
+      // if (purchaseData.date !== undefined) apiData.date = purchaseData.date;
 
       const updatedPurchase = await api.updatePurchase(id, apiData);
       setPurchases(purchases.map((p) => (p.id === id ? updatedPurchase : p)));
       await refreshProducts(productsPagination?.page || 1, productsPagination?.pageSize || 10); // Refresh products to update stock
     } catch (err: any) {
       setError(extractErrorMessage(err) || "Failed to update purchase");
+      throw err;
+    }
+  };
+
+  const cancelPurchase = async (id: string, refundData?: { refundMethod: "cash" | "bank_transfer"; bankAccountId?: string }) => {
+    try {
+      setError(null);
+      const updatedPurchase = await api.cancelPurchase(id, refundData);
+      setPurchases(purchases.map((p) => (p.id === id ? updatedPurchase : p)));
+      await refreshProducts(productsPagination?.page || 1, productsPagination?.pageSize || 10); // Refresh products to update stock
+    } catch (err: any) {
+      setError(extractErrorMessage(err) || "Failed to cancel purchase");
       throw err;
     }
   };
@@ -1102,6 +1120,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     purchasesPagination,
     addPurchase,
     updatePurchase,
+    cancelPurchase,
     addPaymentToPurchase,
     getPurchasesByDateRange,
     refreshPurchases,

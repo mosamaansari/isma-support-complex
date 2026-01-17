@@ -9,7 +9,7 @@ import Button from "../../components/ui/button/Button";
 import { DownloadIcon } from "../../icons";
 import api from "../../services/api";
 import { DailyReport, DateRangeReport } from "../../types";
-import { getDateRangeFromType, getTodayDate } from "../../utils/dateHelpers";
+import { getTodayDate } from "../../utils/dateHelpers";
 import { extractErrorMessage } from "../../utils/errorHandler";
 import { formatCompleteAmount } from "../../utils/priceHelpers";
 
@@ -21,9 +21,6 @@ export default function Reports() {
     bankAccounts,
   } = useData();
   const { showError } = useAlert();
-  const [reportType, setReportType] = useState<
-    "daily" | "weekly" | "monthly" | "custom"
-  >("daily");
   const [startDate, setStartDate] = useState(getTodayDate());
   const [endDate, setEndDate] = useState(getTodayDate());
   const printRef = useRef<HTMLDivElement>(null);
@@ -41,7 +38,12 @@ export default function Reports() {
   >([]);
 
   const getDateRange = () => {
-    return getDateRangeFromType(reportType, startDate, endDate);
+    // Always use startDate and endDate directly
+    if (!startDate || !endDate) return null;
+    return {
+      start: startDate,
+      end: endDate,
+    };
   };
 
   // Load reports from backend API
@@ -51,17 +53,20 @@ export default function Reports() {
       if (!dateRange || !currentUser) return;
 
       setLoading(true);
-      let loadedDailyReport: DailyReport | null = null;
       let loadedDateRangeReport: DateRangeReport | null = null;
 
       try {
-        if (reportType === "daily") {
-          const report = await api.getDailyReport(dateRange.start);
-          loadedDailyReport = report;
-          setDailyReport(report);
-          setDateRangeReport(null);
-
-          // Load previous day balance for daily report
+        // Always use date range API - when startDate === endDate, it will show single day data
+        const report = await api.getDateRangeReport(
+          dateRange.start,
+          dateRange.end
+        );
+        loadedDateRangeReport = report;
+        setDateRangeReport(report);
+        setDailyReport(null);
+        
+        // Load previous day balance if startDate === endDate (single day report)
+        if (dateRange.start === dateRange.end) {
           try {
             const prevBalance = await api.getPreviousDayClosingBalance(
               dateRange.start
@@ -79,13 +84,6 @@ export default function Reports() {
             setPreviousDayBalance({ cashBalance: 0, bankBalances: [] });
           }
         } else {
-          const report = await api.getDateRangeReport(
-            dateRange.start,
-            dateRange.end
-          );
-          loadedDateRangeReport = report;
-          setDateRangeReport(report);
-          setDailyReport(null);
           setPreviousDayBalance(null); // For date range, we'll show per-day in the report
         }
       } catch (error: any) {
@@ -101,82 +99,9 @@ export default function Reports() {
 
       // Compute chronological transactions using loaded data directly
       const computeTransactions = (
-        dailyReportData: DailyReport | null,
         dateRangeReportData: DateRangeReport | null
       ) => {
-        const transactions: any[] = [];
-
-        if (reportType === "daily" && dailyReportData) {
-          // For daily reports, create transactions from sales, purchases, expenses, and opening balance additions
-          // Add opening balance additions
-          if (
-            dailyReportData.openingBalanceAdditions &&
-            dailyReportData.openingBalanceAdditions.length > 0
-          ) {
-            dailyReportData.openingBalanceAdditions.forEach((add: any) => {
-              transactions.push({
-                type: "Balance Add",
-                datetime: new Date(
-                  add.time || add.date || dateRange?.start || new Date()
-                ),
-                paymentType: add.paymentType,
-                amount: Number(add.amount || 0),
-                source: "Manual Add",
-                description: add.description || "Opening Balance Addition",
-              });
-            });
-          }
-
-          // Add sales payments
-          // Backend returns sales.items where each item is already a payment row (has paymentAmount, paymentDate, paymentType)
-          if (dailyReportData.sales?.items?.length > 0) {
-            dailyReportData.sales.items.forEach((saleRow: any) => {
-              // Backend already expanded payments into separate rows
-              // Use paymentAmount, paymentDate, paymentType directly
-              const isPaymentRow = saleRow.paymentAmount !== undefined;
-              transactions.push({
-                type: "Sale",
-                datetime: new Date(isPaymentRow ? (saleRow.paymentDate || saleRow.date) : saleRow.date),
-                paymentType: isPaymentRow ? (saleRow.paymentType || "cash") : (saleRow.paymentType || "cash"),
-                amount: Number(isPaymentRow ? saleRow.paymentAmount : (saleRow.total || 0)),
-                source: saleRow.billNumber || "N/A",
-                description: saleRow.customerName || "Walk-in",
-              });
-            });
-          }
-
-          // Add purchase payments
-          // Backend returns purchases.items where each item is already a payment row (has paymentAmount, paymentDate, paymentType)
-          if (dailyReportData.purchases?.items?.length > 0) {
-            dailyReportData.purchases.items.forEach((purchaseRow: any) => {
-              // Backend already expanded payments into separate rows
-              // Use paymentAmount, paymentDate, paymentType directly
-              const isPaymentRow = purchaseRow.paymentAmount !== undefined;
-              transactions.push({
-                type: "Purchase",
-                datetime: new Date(isPaymentRow ? (purchaseRow.paymentDate || purchaseRow.date) : purchaseRow.date),
-                paymentType: isPaymentRow ? (purchaseRow.paymentType || "cash") : "cash",
-                amount: Number(isPaymentRow ? purchaseRow.paymentAmount : (purchaseRow.total || 0)),
-                source: purchaseRow.supplierName || "N/A",
-                description: `Ref ID: ${purchaseRow.id.substring(0, 8)}`,
-              });
-            });
-          }
-
-          // Add expenses
-          if (dailyReportData.expenses?.items?.length > 0) {
-            dailyReportData.expenses.items.forEach((expense: any) => {
-              transactions.push({
-                type: "Expense",
-                datetime: new Date(expense.createdAt || expense.date),
-                paymentType: expense.paymentType || "cash",
-                amount: Number(expense.amount || 0),
-                source: expense.category || "N/A",
-                description: (expense.description || "").substring(0, 20),
-              });
-            });
-          }
-        } else if (dateRangeReportData?.transactions) {
+        if (dateRangeReportData?.transactions) {
           // Date range report has transactions array - use them directly
           // Convert datetime strings to Date objects if needed, then sort
           const sortedTransactions = [...dateRangeReportData.transactions]
@@ -194,20 +119,15 @@ export default function Reports() {
           setChronologicalTransactions(sortedTransactions);
           return;
         }
-
-        // Sort transactions by datetime
-        transactions.sort(
-          (a, b) => a.datetime.getTime() - b.datetime.getTime()
-        );
-        setChronologicalTransactions(transactions);
+        setChronologicalTransactions([]);
       };
 
       // Compute transactions after loading using the directly loaded data
-      computeTransactions(loadedDailyReport, loadedDateRangeReport);
+      computeTransactions(loadedDateRangeReport);
     };
 
     loadReport();
-  }, [reportType, startDate, endDate, currentUser]);
+  }, [startDate, endDate, currentUser]);
 
   if (!currentUser) {
     return (
@@ -222,8 +142,8 @@ export default function Reports() {
   const dateRange = getDateRange();
 
   // Use backend report data if available, otherwise fallback to frontend data
-  const isUsingBackendData =
-    reportType === "daily" ? !!dailyReport : !!dateRangeReport;
+  const isUsingBackendData = !!dateRangeReport;
+  const isSingleDayReport = dateRange && dateRange.start === dateRange.end;
 
   let filteredSales: any[] = [];
   let filteredExpenses: any[] = [];
@@ -252,11 +172,8 @@ export default function Reports() {
   const endDateObj = new Date(endDate);
   endDateObj.setHours(23, 59, 59, 999);
 
-  // Get opening balance additions from daily or date range report
-  let openingBalanceAdditions =
-    reportType === "daily" && dailyReport?.openingBalanceAdditions
-      ? dailyReport.openingBalanceAdditions
-      : dateRangeReport?.openingBalanceAdditions || [];
+  // Get opening balance additions from date range report
+  let openingBalanceAdditions = dateRangeReport?.openingBalanceAdditions || [];
 
   // Filter opening balance additions by date range to ensure only selected dates are shown
   if (openingBalanceAdditions.length > 0) {
@@ -281,215 +198,218 @@ export default function Reports() {
     0
   );
 
-  if (isUsingBackendData && reportType === "daily" && dailyReport) {
-    // For daily reports, backend already filters by creation date, no additional filtering needed
-    filteredSales = dailyReport.sales?.items || [];
-
-    filteredExpenses = (dailyReport.expenses?.items || []).filter((expense: any) => {
-      const expenseDate = new Date(expense.date);
-      expenseDate.setHours(0, 0, 0, 0);
-      return expenseDate.getTime() >= startDateObj.getTime() && expenseDate.getTime() <= endDateObj.getTime();
-    });
-
-    filteredPurchases = (dailyReport.purchases?.items || []).filter((purchase: any) => {
-      if (purchase.payments?.length > 0) {
-        return purchase.payments.some((payment: any) => {
-          const paymentDate = payment.date ? new Date(payment.date) : new Date(purchase.date);
-          paymentDate.setHours(0, 0, 0, 0);
-          return paymentDate.getTime() >= startDateObj.getTime() && paymentDate.getTime() <= endDateObj.getTime();
-        });
-      }
-      // If no payments array, check if purchase date is in range
-      const purchaseDate = new Date(purchase.date);
-      purchaseDate.setHours(0, 0, 0, 0);
-      return purchaseDate.getTime() >= startDateObj.getTime() && purchaseDate.getTime() <= endDateObj.getTime();
-    });
-    totalSales = dailyReport.sales?.total || 0;
-    totalExpenses = dailyReport.expenses?.total || 0;
-    totalPurchases = dailyReport.purchases?.total || 0;
-    openingBalance = dailyReport.openingBalance?.total || 0;
-    openingCash = dailyReport.openingBalance?.cash || 0;
-    // Backend now returns banks properly with bankName and accountNumber
-    const openingBanks = (dailyReport.openingBalance as any)?.banks || [];
-    openingBankTotal = openingBanks.reduce(
-      (sum: number, bank: any) => sum + Number(bank.balance || 0),
-      0
-    );
-    // Map opening banks with details for display
-    openingBankBalances = openingBanks.map((bank: any) => ({
-      bankAccountId: bank.bankAccountId,
-      bankName: bank.bankName || "Unknown",
-      accountNumber: bank.accountNumber || "",
-      balance: Number(bank.balance || 0),
-    }));
-
-    closingBalance = dailyReport.closingBalance?.total || 0;
-    closingCash = dailyReport.closingBalance?.cash || 0;
-    const closingBanks = (dailyReport.closingBalance as any)?.banks || [];
-    closingBankTotal = closingBanks.reduce(
-      (sum: number, bank: any) => sum + Number(bank.balance || 0),
-      0
-    );
-    const closingCards = (dailyReport.closingBalance as any)?.cards || [];
-    closingCardTotal = closingCards.reduce(
-      (sum: number, card: any) => sum + Number(card.balance || 0),
-      0
-    );
-
-    profit = totalSales - totalExpenses - totalPurchases;
-  } else if (isUsingBackendData && dateRangeReport) {
-    // Backend now returns filtered records based on payment dates
-    // Backend returns sales, purchases, expenses as objects with items array
-    filteredSales = dateRangeReport.sales?.items || [];
-    filteredPurchases = dateRangeReport.purchases?.items || [];
-    filteredExpenses = dateRangeReport.expenses?.items || [];
-
-    // Calculate totals from aggregated data (use dailyReports totals which are more accurate)
-    // First try to sum from dailyReports, then fallback to summary or calculate from items
-    const calculatedSalesTotal =
-      dateRangeReport.dailyReports?.reduce(
-        (sum: number, dr: any) => sum + (dr.sales?.total || 0),
-        0
-      ) || 0;
-    const calculatedPurchasesTotal =
-      dateRangeReport.dailyReports?.reduce(
-        (sum: number, dr: any) => sum + (dr.purchases?.total || 0),
-        0
-      ) || 0;
-    const calculatedExpensesTotal =
-      dateRangeReport.dailyReports?.reduce(
-        (sum: number, dr: any) => sum + (dr.expenses?.total || 0),
-        0
-      ) || 0;
-
-    totalSales =
-      calculatedSalesTotal ||
-      dateRangeReport.summary?.sales?.total ||
-      filteredSales.reduce(
-        (sum: number, sale: any) =>
-          sum + Number(sale.paymentAmount || sale.total || 0),
-        0
-      );
-    totalExpenses =
-      calculatedExpensesTotal ||
-      dateRangeReport.summary?.expenses?.total ||
-      filteredExpenses.reduce(
-        (sum: number, expense: any) => sum + Number(expense.amount || 0),
-        0
-      );
-    totalPurchases =
-      calculatedPurchasesTotal ||
-      dateRangeReport.summary?.purchases?.total ||
-      filteredPurchases.reduce(
-        (sum: number, purchase: any) =>
-          sum + Number(purchase.paymentAmount || purchase.total || 0),
-        0
-      );
-
-    // For opening balance, use first daily report's opening balance
-    const firstDailyReport = dateRangeReport.dailyReports?.[0];
-    openingBalance =
-      firstDailyReport?.openingBalance?.total ||
-      dateRangeReport.summary?.openingBalance?.total ||
-      0;
-    openingCash =
-      firstDailyReport?.openingBalance?.cash ||
-      dateRangeReport.summary?.openingBalance?.cash ||
-      0;
-    // For date range report, get banks from summary openingBalance.banks
-    const summaryOpeningBanks =
-      (dateRangeReport.summary?.openingBalance as any)?.banks || [];
-    if (summaryOpeningBanks.length > 0) {
-      openingBankTotal = summaryOpeningBanks.reduce(
+  if (isUsingBackendData && dateRangeReport) {
+    // For single day reports, use the first daily report from the date range
+    // For multi-day reports, aggregate all daily reports
+    const dailyReports = dateRangeReport.dailyReports || [];
+    const reportToUse = isSingleDayReport && dailyReports.length > 0 
+      ? dailyReports[0] 
+      : null;
+    
+    if (reportToUse) {
+      // Single day report - use the daily report data
+      filteredSales = reportToUse.sales?.items || [];
+      filteredExpenses = (reportToUse.expenses?.items || []).filter((expense: any) => {
+        const expenseDate = new Date(expense.date);
+        expenseDate.setHours(0, 0, 0, 0);
+        return expenseDate.getTime() >= startDateObj.getTime() && expenseDate.getTime() <= endDateObj.getTime();
+      });
+      filteredPurchases = (reportToUse.purchases?.items || []).filter((purchase: any) => {
+        if (purchase.payments?.length > 0) {
+          return purchase.payments.some((payment: any) => {
+            const paymentDate = payment.date ? new Date(payment.date) : new Date(purchase.date);
+            paymentDate.setHours(0, 0, 0, 0);
+            return paymentDate.getTime() >= startDateObj.getTime() && paymentDate.getTime() <= endDateObj.getTime();
+          });
+        }
+        const purchaseDate = new Date(purchase.date);
+        purchaseDate.setHours(0, 0, 0, 0);
+        return purchaseDate.getTime() >= startDateObj.getTime() && purchaseDate.getTime() <= endDateObj.getTime();
+      });
+      totalSales = reportToUse.sales?.total || 0;
+      totalExpenses = reportToUse.expenses?.total || 0;
+      totalPurchases = reportToUse.purchases?.total || 0;
+      openingBalance = reportToUse.openingBalance?.total || 0;
+      openingCash = reportToUse.openingBalance?.cash || 0;
+      const openingBanks = (reportToUse.openingBalance as any)?.banks || [];
+      openingBankTotal = openingBanks.reduce(
         (sum: number, bank: any) => sum + Number(bank.balance || 0),
         0
       );
-      openingBankBalances = summaryOpeningBanks.map((bank: any) => ({
+      openingBankBalances = openingBanks.map((bank: any) => ({
         bankAccountId: bank.bankAccountId,
         bankName: bank.bankName || "Unknown",
         accountNumber: bank.accountNumber || "",
         balance: Number(bank.balance || 0),
       }));
-    } else {
-      // Fallback: check first daily report if available
+
+      closingBalance = reportToUse.closingBalance?.total || 0;
+      closingCash = reportToUse.closingBalance?.cash || 0;
+      const closingBanks = (reportToUse.closingBalance as any)?.banks || [];
+      closingBankTotal = closingBanks.reduce(
+        (sum: number, bank: any) => sum + Number(bank.balance || 0),
+        0
+      );
+      const closingCards = (reportToUse.closingBalance as any)?.cards || [];
+      closingCardTotal = closingCards.reduce(
+        (sum: number, card: any) => sum + Number(card.balance || 0),
+        0
+      );
+
+      profit = totalSales - totalExpenses - totalPurchases;
+    } else if (isUsingBackendData && dateRangeReport) {
+      // Backend now returns filtered records based on payment dates
+      // Backend returns sales, purchases, expenses as objects with items array
+      filteredSales = dateRangeReport.sales?.items || [];
+      filteredPurchases = dateRangeReport.purchases?.items || [];
+      filteredExpenses = dateRangeReport.expenses?.items || [];
+
+      // Calculate totals from aggregated data (use dailyReports totals which are more accurate)
+      // First try to sum from dailyReports, then fallback to summary or calculate from items
+      const calculatedSalesTotal =
+        dateRangeReport.dailyReports?.reduce(
+          (sum: number, dr: any) => sum + (dr.sales?.total || 0),
+          0
+        ) || 0;
+      const calculatedPurchasesTotal =
+        dateRangeReport.dailyReports?.reduce(
+          (sum: number, dr: any) => sum + (dr.purchases?.total || 0),
+          0
+        ) || 0;
+      const calculatedExpensesTotal =
+        dateRangeReport.dailyReports?.reduce(
+          (sum: number, dr: any) => sum + (dr.expenses?.total || 0),
+          0
+        ) || 0;
+
+      totalSales =
+        calculatedSalesTotal ||
+        dateRangeReport.summary?.sales?.total ||
+        filteredSales.reduce(
+          (sum: number, sale: any) =>
+            sum + Number(sale.paymentAmount || sale.total || 0),
+          0
+        );
+      totalExpenses =
+        calculatedExpensesTotal ||
+        dateRangeReport.summary?.expenses?.total ||
+        filteredExpenses.reduce(
+          (sum: number, expense: any) => sum + Number(expense.amount || 0),
+          0
+        );
+      totalPurchases =
+        calculatedPurchasesTotal ||
+        dateRangeReport.summary?.purchases?.total ||
+        filteredPurchases.reduce(
+          (sum: number, purchase: any) =>
+            sum + Number(purchase.paymentAmount || purchase.total || 0),
+          0
+        );
+
+      // For opening balance, use first daily report's opening balance
       const firstDailyReport = dateRangeReport.dailyReports?.[0];
-      if (firstDailyReport?.openingBalance?.banks) {
-        const openingBanks = firstDailyReport.openingBalance.banks || [];
-        openingBankTotal = openingBanks.reduce(
+      openingBalance =
+        firstDailyReport?.openingBalance?.total ||
+        dateRangeReport.summary?.openingBalance?.total ||
+        0;
+      openingCash =
+        firstDailyReport?.openingBalance?.cash ||
+        dateRangeReport.summary?.openingBalance?.cash ||
+        0;
+      // For date range report, get banks from summary openingBalance.banks
+      const summaryOpeningBanks =
+        (dateRangeReport.summary?.openingBalance as any)?.banks || [];
+      if (summaryOpeningBanks.length > 0) {
+        openingBankTotal = summaryOpeningBanks.reduce(
           (sum: number, bank: any) => sum + Number(bank.balance || 0),
           0
         );
-        openingBankBalances = openingBanks.map((bank: any) => ({
+        openingBankBalances = summaryOpeningBanks.map((bank: any) => ({
           bankAccountId: bank.bankAccountId,
           bankName: bank.bankName || "Unknown",
           accountNumber: bank.accountNumber || "",
           balance: Number(bank.balance || 0),
         }));
       } else {
-        // Fallback to cards if banks not available (legacy)
-        openingBankTotal = dateRangeReport.summary?.openingBalance?.cards || 0;
+        // Fallback: check first daily report if available
+        const firstDailyReport = dateRangeReport.dailyReports?.[0];
+        if (firstDailyReport?.openingBalance?.banks) {
+          const openingBanks = firstDailyReport.openingBalance.banks || [];
+          openingBankTotal = openingBanks.reduce(
+            (sum: number, bank: any) => sum + Number(bank.balance || 0),
+            0
+          );
+          openingBankBalances = openingBanks.map((bank: any) => ({
+            bankAccountId: bank.bankAccountId,
+            bankName: bank.bankName || "Unknown",
+            accountNumber: bank.accountNumber || "",
+            balance: Number(bank.balance || 0),
+          }));
+        } else {
+          // Fallback to cards if banks not available (legacy)
+          openingBankTotal = dateRangeReport.summary?.openingBalance?.cards || 0;
+        }
       }
-    }
-    // Calculate closing balance from last daily report or use summary
-    const lastDailyReport =
-      dateRangeReport.dailyReports && dateRangeReport.dailyReports.length > 0
-        ? dateRangeReport.dailyReports[dateRangeReport.dailyReports.length - 1]
-        : null;
+      // Calculate closing balance from last daily report or use summary
+      const lastDailyReport =
+        dateRangeReport.dailyReports && dateRangeReport.dailyReports.length > 0
+          ? dateRangeReport.dailyReports[dateRangeReport.dailyReports.length - 1]
+          : null;
 
-    closingBalance =
-      lastDailyReport?.closingBalance?.total ||
-      dateRangeReport.summary?.closingBalance?.total ||
-      0;
-    closingCash =
-      lastDailyReport?.closingBalance?.cash ||
-      dateRangeReport.summary?.closingBalance?.cash ||
-      0;
+      closingBalance =
+        lastDailyReport?.closingBalance?.total ||
+        dateRangeReport.summary?.closingBalance?.total ||
+        0;
+      closingCash =
+        lastDailyReport?.closingBalance?.cash ||
+        dateRangeReport.summary?.closingBalance?.cash ||
+        0;
 
-    // For date range report, get closing bank balance from last daily report or summary
-    if (
-      lastDailyReport?.closingBalance?.banks &&
-      lastDailyReport.closingBalance.banks.length > 0
-    ) {
-      const closingBanks = lastDailyReport.closingBalance.banks || [];
-      closingBankTotal = closingBanks.reduce(
-        (sum: number, bank: any) => sum + Number(bank.balance || 0),
-        0
-      );
-    } else {
-      const summaryClosingBanks =
-        (dateRangeReport.summary?.closingBalance as any)?.banks || [];
-      if (summaryClosingBanks.length > 0) {
-        closingBankTotal = summaryClosingBanks.reduce(
+      // For date range report, get closing bank balance from last daily report or summary
+      if (
+        lastDailyReport?.closingBalance?.banks &&
+        lastDailyReport.closingBalance.banks.length > 0
+      ) {
+        const closingBanks = lastDailyReport.closingBalance.banks || [];
+        closingBankTotal = closingBanks.reduce(
           (sum: number, bank: any) => sum + Number(bank.balance || 0),
           0
         );
       } else {
-        // Fallback to cards if banks not available (legacy)
-        closingBankTotal = dateRangeReport.summary?.closingBalance?.cards || 0;
+        const summaryClosingBanks =
+          (dateRangeReport.summary?.closingBalance as any)?.banks || [];
+        if (summaryClosingBanks.length > 0) {
+          closingBankTotal = summaryClosingBanks.reduce(
+            (sum: number, bank: any) => sum + Number(bank.balance || 0),
+            0
+          );
+        } else {
+          // Fallback to cards if banks not available (legacy)
+          closingBankTotal = dateRangeReport.summary?.closingBalance?.cards || 0;
+        }
       }
-    }
 
-    // Calculate closing card balance from last daily report or summary
-    if (
-      lastDailyReport?.closingBalance?.cards &&
-      lastDailyReport.closingBalance.cards.length > 0
-    ) {
-      const closingCards = lastDailyReport.closingBalance.cards || [];
-      closingCardTotal = closingCards.reduce(
-        (sum: number, card: any) => sum + Number(card.balance || 0),
-        0
-      );
-    } else {
-      const summaryClosingCards =
-        (dateRangeReport.summary?.closingBalance as any)?.cards || [];
-      if (summaryClosingCards.length > 0) {
-        closingCardTotal = summaryClosingCards.reduce(
+      // Calculate closing card balance from last daily report or summary
+      if (
+        lastDailyReport?.closingBalance?.cards &&
+        lastDailyReport.closingBalance.cards.length > 0
+      ) {
+        const closingCards = lastDailyReport.closingBalance.cards || [];
+        closingCardTotal = closingCards.reduce(
           (sum: number, card: any) => sum + Number(card.balance || 0),
           0
         );
+      } else {
+        const summaryClosingCards =
+          (dateRangeReport.summary?.closingBalance as any)?.cards || [];
+        if (summaryClosingCards.length > 0) {
+          closingCardTotal = summaryClosingCards.reduce(
+            (sum: number, card: any) => sum + Number(card.balance || 0),
+            0
+          );
+        }
       }
-    }
-    profit = totalSales - totalExpenses - totalPurchases;
+      profit = totalSales - totalExpenses - totalPurchases;
   } else if (dateRange) {
     // Fallback to frontend data
     filteredSales = getSalesByDateRange(dateRange.start, dateRange.end) || [];
@@ -566,8 +486,8 @@ export default function Reports() {
   const exportToPDF = async () => {
     if (!dateRange) return;
 
-    // For daily reports, use backend PDF generation
-    if (reportType === "daily" && dailyReport) {
+    // For single day reports, use backend PDF generation
+    if (isSingleDayReport && dateRangeReport) {
       try {
         const blob = await api.generateDailyReportPDF(dateRange.start);
         const url = URL.createObjectURL(blob);
@@ -636,10 +556,7 @@ export default function Reports() {
     }
 
     // Build comprehensive chronological report for print
-    const reportsToProcess =
-      reportType === "daily" && dailyReport
-        ? [dailyReport]
-        : dateRangeReport?.dailyReports || [];
+    const reportsToProcess = dateRangeReport?.dailyReports || [];
 
     // If no reports to process, show error
     if (!reportsToProcess || reportsToProcess.length === 0) {
@@ -650,8 +567,7 @@ export default function Reports() {
     let printContent = "";
 
     reportsToProcess.forEach((report: any, reportIdx: number) => {
-      const reportDate =
-        report.date || (reportType === "daily" ? dateRange.start : "");
+      const reportDate = report.date || dateRange?.start || "";
 
       // Calculate opening bank total once per report
       const openingBankTotal =
@@ -1261,83 +1177,23 @@ export default function Reports() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 mb-6 md:grid-cols-3 no-print">
+        <div className="grid grid-cols-1 gap-4 mb-6 md:grid-cols-2 no-print">
           <div>
-            <Label>Report Type</Label>
-            <select
-              value={reportType}
-              onChange={(e) =>
-                setReportType(
-                  e.target.value as "daily" | "weekly" | "monthly" | "custom"
-                )
-              }
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg dark:bg-gray-800 dark:border-gray-700 dark:text-white"
-            >
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-              <option value="monthly">Monthly</option>
-              <option value="custom">Custom Range</option>
-            </select>
+            <Label>Start Date</Label>
+            <DatePicker
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              max={getTodayDate()}
+            />
           </div>
-          {reportType === "daily" && (
-            <div>
-              <Label>Select Date</Label>
-              <DatePicker
-                value={startDate}
-                onChange={(e) => {
-                  setStartDate(e.target.value);
-                  setEndDate(e.target.value);
-                }}
-                max={getTodayDate()}
-              />
-            </div>
-          )}
-          {reportType === "weekly" && (
-            <div>
-              <Label>Reference Date (7 days prior)</Label>
-              <DatePicker
-                value={startDate}
-                onChange={(e) => {
-                  setStartDate(e.target.value);
-                  setEndDate(e.target.value);
-                }}
-                max={getTodayDate()}
-              />
-            </div>
-          )}
-          {reportType === "monthly" && (
-            <div>
-              <Label>Select Month (any date in month)</Label>
-              <DatePicker
-                value={startDate}
-                onChange={(e) => {
-                  setStartDate(e.target.value);
-                  setEndDate(e.target.value);
-                }}
-                max={getTodayDate()}
-              />
-            </div>
-          )}
-          {reportType === "custom" && (
-            <>
-              <div>
-                <Label>Start Date</Label>
-                <DatePicker
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  max={getTodayDate()}
-                />
-              </div>
-              <div>
-                <Label>End Date</Label>
-                <DatePicker
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  max={getTodayDate()}
-                />
-              </div>
-            </>
-          )}
+          <div>
+            <Label>End Date</Label>
+            <DatePicker
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              max={getTodayDate()}
+            />
+          </div>
         </div>
 
         {dateRange && loading ? (
@@ -1346,8 +1202,8 @@ export default function Reports() {
           </div>
         ) : (
           <div>
-            {/* Previous Day Balance Section - Only for daily reports */}
-            {reportType === "daily" && previousDayBalance && (
+            {/* Previous Day Balance Section - Only for single day reports */}
+            {isSingleDayReport && previousDayBalance && (
               <div className="mb-6 p-4 sm:p-6 bg-gray-50 dark:bg-gray-900/20 rounded-lg border-2 border-gray-200 dark:border-gray-800">
                 <h2 className="text-base sm:text-lg font-bold text-gray-800 dark:text-white mb-3 sm:mb-4">
                   Previous Day Closing Balance (Opening Balance)
@@ -1535,8 +1391,8 @@ export default function Reports() {
                 <table className="responsive-table text-xs sm:text-sm">
                   <thead>
                     <tr className="border-b border-gray-200 dark:border-gray-700">
-                      <th className="p-2 text-left text-xs font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
-                        Time
+                      <th className="p-2 text-left text-xs font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[180px]">
+                        Date & Time
                       </th>
                       <th className="p-2 text-left text-xs font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[80px]">
                         Type
@@ -1558,9 +1414,15 @@ export default function Reports() {
                   <tbody>
                     {chronologicalTransactions.map(
                       (transaction: any, index: number) => {
-                        const isIncome =
-                          transaction.type === "Sale" ||
-                          transaction.type === "Balance Add";
+                        // Determine if transaction is income or expense
+                        // Use transactionType if available (from backend), otherwise infer from type name
+                        const isIncome = transaction.transactionType === "income" || 
+                          (transaction.transactionType === undefined && (
+                            transaction.type === "Sale" ||
+                            transaction.type === "Balance Add" ||
+                            transaction.type === "Opening Balance Addition" ||
+                            transaction.type === "Purchase Refund"
+                          ));
                         return (
                           <tr
                             key={`${
@@ -1575,10 +1437,40 @@ export default function Reports() {
                             }`}
                           >
                             <td className="p-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                              {transaction.datetime.toLocaleTimeString([], {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
+                              {(() => {
+                                let dt: Date;
+                                if (transaction.datetime instanceof Date) {
+                                  dt = transaction.datetime;
+                                } else if (transaction.datetime) {
+                                  // If it's a string (ISO format from backend), parse it
+                                  // The backend sends datetime which may be in UTC or local format
+                                  dt = new Date(transaction.datetime);
+                                } else if (transaction.date) {
+                                  dt = new Date(transaction.date);
+                                } else {
+                                  return "-";
+                                }
+                                
+                                // Check if date is valid
+                                if (isNaN(dt.getTime())) {
+                                  return "-";
+                                }
+                                
+                                // Format: Date and Time with seconds in local timezone
+                                // JavaScript's toLocaleString automatically converts to local timezone
+                                const dateStr = dt.toLocaleDateString("en-US", {
+                                  year: "numeric",
+                                  month: "2-digit",
+                                  day: "2-digit",
+                                });
+                                const timeStr = dt.toLocaleTimeString("en-US", {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                  second: "2-digit",
+                                  hour12: true,
+                                });
+                                return `${dateStr} ${timeStr}`;
+                              })()}
                             </td>
                             <td className="p-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">
                               {transaction.type}
@@ -1614,7 +1506,7 @@ export default function Reports() {
 
         {/* Date-wise Financial Flow - For Daily, Custom Range, Weekly/Monthly */}
         {isUsingBackendData &&
-          ((reportType === "daily" && dailyReport) ||
+          (dateRangeReport &&
             (dateRangeReport &&
               dateRangeReport.dailyReports &&
               dateRangeReport.dailyReports.length > 0)) && (
@@ -1656,17 +1548,12 @@ export default function Reports() {
                       : ""
                   }`}
                 >
-                  {(reportType === "daily" && dailyReport
-                    ? [dailyReport]
-                    : dateRangeReport?.dailyReports || []
+                  {(dateRangeReport?.dailyReports || []
                   ).map((dailyReportItem: any, idx: number) => {
                     // For daily reports, use the current dailyReport
                     const reportToUse =
-                      reportType === "daily" ? dailyReport : dailyReportItem;
-                    const dailyReports =
-                      reportType === "daily"
-                        ? [dailyReport]
-                        : dateRangeReport?.dailyReports || [];
+                      dailyReportItem;
+                    const dailyReports = dateRangeReport?.dailyReports || [];
 
                     const prevDayClosing =
                       idx > 0 ? dailyReports[idx - 1]?.closingBalance : null;
@@ -2430,4 +2317,5 @@ export default function Reports() {
       </div>
     </div>
   );
+}
 }

@@ -169,11 +169,11 @@ export const createSaleSchema = Joi.object({
           }),
         amount: Joi.number()
           .min(0)
-          .required()
+          .optional()
+          .allow(null)
           .messages({
             "number.base": "Payment amount must be a number",
             "number.min": "Payment amount cannot be negative",
-            "any.required": "Payment amount is required",
           }),
         date: Joi.string()
           .optional()

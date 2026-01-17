@@ -35,10 +35,30 @@ class BalanceTransactionService {
         const start = new Date(startYear, startMonth, startDay, 0, 0, 0, 0);
         const end = new Date(endYear, endMonth, endDay, 23, 59, 59, 999);
 
-        where.date = {
-          gte: start,
-          lte: end,
-        };
+        // For sales, purchases, and refunds, also check createdAt to ensure they're included if they occurred in the date range
+        // This handles cases where date field might not match the actual transaction date
+        // Use OR to include transactions where either:
+        // 1. date field is in range (for regular transactions with correct date)
+        // 2. createdAt is in range AND source is sale/purchase/refund (for transactions where date might be wrong)
+        where.OR = [
+          // All transactions where date field is in range
+          {
+            date: {
+              gte: start,
+              lte: end,
+            },
+          },
+          // Sales, purchases, and refunds where createdAt is in range (even if date field is outside range)
+          {
+            createdAt: {
+              gte: start,
+              lte: end,
+            },
+            source: {
+              in: ["sale", "sale_payment", "purchase", "purchase_payment", "sale_refund", "purchase_refund"],
+            },
+          },
+        ];
       } else {
         // Fallback to old method if date format is invalid
         const start = new Date(filters.startDate);
@@ -79,11 +99,11 @@ class BalanceTransactionService {
   /**
    * Get cash transactions
    */
-  async getCashTransactions(startDate?: string, endDate?: string) {
-    const where: any = {
-      paymentType: "cash",
-    };
+  async getCashTransactions(startDate?: string, endDate?: string, excludeRefunds: boolean = false) {
+    const where: any = {};
 
+    // Build date filter conditions
+    let dateFilter: any = null;
     if (startDate && endDate) {
       // Parse date strings (YYYY-MM-DD) properly using local timezone (Pakistan)
       const startParts = startDate.split("-");
@@ -103,9 +123,30 @@ class BalanceTransactionService {
         const start = new Date(startYear, startMonth, startDay, 0, 0, 0, 0);
         const end = new Date(endYear, endMonth, endDay, 23, 59, 59, 999);
 
-        where.date = {
-          gte: start,
-          lte: end,
+        // For sales, purchases, and refunds, check both date and createdAt to ensure they're included
+        // This handles cases where date field might not match due to timezone or other issues
+        // Use OR to include transactions where either date OR createdAt is in range
+        dateFilter = {
+          OR: [
+            // All transactions where date field is in range
+            {
+              date: {
+                gte: start,
+                lte: end,
+              },
+            },
+            // Sales, purchases, and refunds where createdAt is in range (even if date field is outside range)
+            // This ensures these transactions are included based on when they actually occurred
+            {
+              createdAt: {
+                gte: start,
+                lte: end,
+              },
+              source: {
+                in: ["sale", "sale_payment", "purchase", "purchase_payment", "sale_refund", "purchase_refund"],
+              },
+            },
+          ],
         };
       } else {
         // Fallback to old method if date format is invalid
@@ -114,9 +155,45 @@ class BalanceTransactionService {
         const end = new Date(endDate);
         end.setHours(23, 59, 59, 999);
 
-        where.date = {
-          gte: start,
-          lte: end,
+        dateFilter = {
+          date: {
+            gte: start,
+            lte: end,
+          },
+        };
+      }
+    }
+
+    // Build the where clause with AND conditions
+    where.paymentType = "cash";
+
+    // Add date filter if provided
+    if (dateFilter) {
+      // If we have date filter, we need to use AND to combine with paymentType
+      const andConditions: any[] = [
+        { paymentType: "cash" },
+        dateFilter,
+      ];
+
+      // Exclude refund transactions if requested (for opening balance)
+      if (excludeRefunds) {
+        andConditions.push({
+          source: {
+            not: {
+              in: ["sale_refund", "purchase_refund"],
+            },
+          },
+        });
+      }
+
+      where.AND = andConditions;
+    } else {
+      // No date filter, just add excludeRefunds if needed
+      if (excludeRefunds) {
+        where.source = {
+          not: {
+            in: ["sale_refund", "purchase_refund"],
+          },
         };
       }
     }
@@ -135,11 +212,20 @@ class BalanceTransactionService {
   /**
    * Get bank account transactions
    */
-  async getBankTransactions(bankAccountId: string, startDate?: string, endDate?: string) {
+  async getBankTransactions(bankAccountId: string, startDate?: string, endDate?: string, excludeRefunds: boolean = false) {
     const where: any = {
       paymentType: "bank_transfer",
       bankAccountId,
     };
+
+    // Exclude refund transactions if requested (for opening balance)
+    if (excludeRefunds) {
+      where.source = {
+        not: {
+          in: ["sale_refund", "purchase_refund"],
+        },
+      };
+    }
 
     if (startDate && endDate) {
       // Parse date strings (YYYY-MM-DD) properly using local timezone (Pakistan)
@@ -160,10 +246,32 @@ class BalanceTransactionService {
         const start = new Date(startYear, startMonth, startDay, 0, 0, 0, 0);
         const end = new Date(endYear, endMonth, endDay, 23, 59, 59, 999);
 
-        where.date = {
-          gte: start,
-          lte: end,
-        };
+        // For refunds, also check createdAt to ensure they're included if they occurred in the date range
+        // Use OR to include transactions where either date OR createdAt (for refunds) is in range
+        // Note: paymentType: "bank_transfer" and bankAccountId are already set at top level
+        where.OR = [
+          // All bank transactions where date field is in range
+          {
+            date: {
+              gte: start,
+              lte: end,
+            },
+            paymentType: "bank_transfer", // Explicitly include paymentType in OR branch
+            bankAccountId, // Explicitly include bankAccountId in OR branch
+          },
+          // Bank refunds where createdAt is in range (even if date field is outside range)
+          {
+            createdAt: {
+              gte: start,
+              lte: end,
+            },
+            source: {
+              in: ["sale_refund", "purchase_refund"],
+            },
+            paymentType: "bank_transfer", // Explicitly include paymentType in OR branch
+            bankAccountId, // Explicitly include bankAccountId in OR branch
+          },
+        ];
       } else {
         // Fallback to old method if date format is invalid
         const start = new Date(startDate);
@@ -249,20 +357,39 @@ class BalanceTransactionService {
    * Get all transactions grouped by day with daily breaks
    * Includes cash, all banks, and total
    */
-  async getAllTransactionsGroupedByDay(startDate?: string, endDate?: string) {
+  async getAllTransactionsGroupedByDay(startDate?: string, endDate?: string, excludeRefunds: boolean = false) {
     const where: any = {};
 
-    if (startDate && endDate) {
-      // Parse dates properly to avoid timezone issues
-      const start = new Date(startDate);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(endDate);
-      end.setHours(23, 59, 59, 999);
-
-      where.date = {
-        gte: start,
-        lte: end,
+    // Exclude refund transactions if requested (for opening balance)
+    if (excludeRefunds) {
+      where.source = {
+        not: {
+          in: ["sale_refund", "purchase_refund"],
+        },
       };
+    }
+
+    if (startDate && endDate) {
+      const [sy, sm, sd] = startDate.split("-").map((v) => parseInt(v, 10));
+      const [ey, em, ed] = endDate.split("-").map((v) => parseInt(v, 10));
+      const start = new Date(sy, sm - 1, sd, 0, 0, 0, 0);
+      const endPlus1 = new Date(ey, em - 1, ed + 1, 23, 59, 59, 999);
+
+      // For refunds, also check createdAt to ensure they're included if they occurred in the date range
+      // Use OR to include transactions where either date OR createdAt (for refunds) is in range
+      where.OR = [
+        // All transactions where date field is in range
+        {
+          date: { gte: start, lte: endPlus1 },
+        },
+        // Refunds where createdAt is in range (even if date field is outside range)
+        {
+          createdAt: { gte: start, lte: endPlus1 },
+          source: {
+            in: ["sale_refund", "purchase_refund"],
+          },
+        },
+      ];
     }
 
     const transactions = await prisma.balanceTransaction.findMany({
@@ -276,11 +403,10 @@ class BalanceTransactionService {
       ],
     });
 
-    // Group by date - use local date to avoid timezone issues
+    // Group by createdAt's local date (when the txn actually occurred) to match closing balance logic
     const groupedByDate: Record<string, any[]> = {};
     for (const transaction of transactions) {
-      // Get local date components to avoid timezone shifts
-      const txDate = new Date(transaction.date);
+      const txDate = new Date(transaction.createdAt);
       const year = txDate.getFullYear();
       const month = String(txDate.getMonth() + 1).padStart(2, '0');
       const day = String(txDate.getDate()).padStart(2, '0');
@@ -293,7 +419,12 @@ class BalanceTransactionService {
     }
 
     // Calculate daily totals
-    const result = Object.entries(groupedByDate).map(([date, dayTransactions]) => {
+    let entries = (startDate && endDate)
+      ? Object.entries(groupedByDate).filter(([d]) => d >= startDate && d <= endDate)
+      : Object.entries(groupedByDate);
+    entries = entries.sort((a, b) => a[0].localeCompare(b[0]));
+
+    const result = entries.map(([date, dayTransactions]) => {
       let cashIncome = 0;
       let cashExpense = 0;
       const bankTotals: Record<string, { income: number; expense: number }> = {};

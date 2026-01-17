@@ -263,8 +263,8 @@ class ApiClient {
     return normalizeSale(sale);
   }
 
-  async cancelSale(id: string) {
-    const response = await this.client.patch(`/sales/${id}/cancel`);
+  async cancelSale(id: string, refundData?: { refundMethod: "cash" | "bank_transfer"; bankAccountId?: string }) {
+    const response = await this.client.patch(`/sales/${id}/cancel`, refundData || {});
     // Response is already transformed by interceptor
     const sale = response.data?.data || response.data;
     return normalizeSale(sale);
@@ -400,6 +400,13 @@ class ApiClient {
     return normalizePurchase(purchase);
   }
 
+  async cancelPurchase(id: string, refundData?: { refundMethod: "cash" | "bank_transfer"; bankAccountId?: string }) {
+    const response = await this.client.patch(`/purchases/${id}/cancel`, refundData || {});
+    // Response is already transformed by interceptor
+    const purchase = response.data?.data || response.data;
+    return normalizePurchase(purchase);
+  }
+
   async addPaymentToPurchase(id: string, payment: any) {
     const response = await this.client.post(`/purchases/${id}/payments`, payment);
     // Response is already transformed by interceptor
@@ -410,6 +417,12 @@ class ApiClient {
   // Opening Balance endpoints
   async getOpeningBalance(date: string) {
     const response = await this.client.get("/opening-balances/date", { params: { date } });
+    return response.data;
+  }
+
+  /** Get STORED opening balance for a date from DailyOpeningBalance table only (no running calc). Returns null if no record. */
+  async getStoredOpeningBalance(date: string) {
+    const response = await this.client.get("/opening-balances/date", { params: { date, storedOnly: "true" } });
     return response.data;
   }
 
@@ -827,25 +840,25 @@ class ApiClient {
   }
 
   // Balance Transaction endpoints
-  async getCashTransactions(startDate?: string, endDate?: string) {
+  async getCashTransactions(startDate?: string, endDate?: string, excludeRefunds: boolean = false) {
     const response = await this.client.get("/balance-transactions/cash", {
-      params: { startDate, endDate },
+      params: { startDate, endDate, excludeRefunds },
     });
     // After interceptor, response.data is response.response, which contains { data: [...] }
     return response.data?.data || response.data || [];
   }
 
-  async getBankTransactions(bankAccountId: string, startDate?: string, endDate?: string) {
+  async getBankTransactions(bankAccountId: string, startDate?: string, endDate?: string, excludeRefunds: boolean = false) {
     const response = await this.client.get("/balance-transactions/bank", {
-      params: { bankAccountId, startDate, endDate },
+      params: { bankAccountId, startDate, endDate, excludeRefunds },
     });
     // After interceptor, response.data is response.response, which contains { data: [...] }
     return response.data?.data || response.data || [];
   }
 
-  async getAllTransactionsGroupedByDay(startDate?: string, endDate?: string) {
+  async getAllTransactionsGroupedByDay(startDate?: string, endDate?: string, excludeRefunds: boolean = false) {
     const response = await this.client.get("/balance-transactions/grouped", {
-      params: { startDate, endDate },
+      params: { startDate, endDate, excludeRefunds },
     });
     // After interceptor, response.data is response.response, which contains { data: [...] }
     return response.data?.data || response.data || [];

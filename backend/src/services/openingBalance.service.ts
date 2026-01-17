@@ -14,19 +14,17 @@ interface BankBalance {
 
 class OpeningBalanceService {
   async getOpeningBalance(date: string) {
-    // Parse date string (YYYY-MM-DD) and create date object for comparison
-    const dateParts = date.split("-");
-    const targetDate = new Date(
-      parseInt(dateParts[0]),
-      parseInt(dateParts[1]) - 1,
-      parseInt(dateParts[2])
-    );
+    // Parse date (YYYY-MM-DD) and create at noon for @db.Date column matching (consistent with other services)
+    const dateParts = date.split("-").map((v) => parseInt(v, 10));
+    if (dateParts.length !== 3 || dateParts.some((n) => isNaN(n))) {
+      return null;
+    }
+    const [year, month, day] = dateParts;
+    const targetDate = new Date(year, month - 1, day, 12, 0, 0, 0);
 
-    // Get opening balance for the date (compare only date part, ignore time)
-    const startOfDay = new Date(targetDate);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(targetDate);
-    endOfDay.setHours(23, 59, 59, 999);
+    // Get opening balance for the date - use noon for @db.Date compatibility
+    const startOfDay = new Date(year, month - 1, day, 0, 0, 0, 0);
+    const endOfDay = new Date(year, month - 1, day, 23, 59, 59, 999);
 
     let openingBalance = await prisma.dailyOpeningBalance.findFirst({
       where: {
@@ -109,6 +107,32 @@ class OpeningBalanceService {
       ...openingBalance,
       cashBalance: currentCash,
       bankBalances: runningBankBalances,
+    };
+  }
+
+  /**
+   * Get the STORED opening balance for a date from DailyOpeningBalance table only.
+   * Returns raw cashBalance, bankBalances, cardBalances as stored - no running balance calculation.
+   * Use this for reports where each date must show the opening value stored for that date.
+   * Returns null if no DailyOpeningBalance record exists for the date.
+   */
+  async getStoredOpeningBalanceForDate(date: string) {
+    const { parseLocalYMDForDB } = await import("../utils/date");
+    const dateObj = parseLocalYMDForDB(date);
+
+    const openingBalance = await prisma.dailyOpeningBalance.findFirst({
+      where: { date: dateObj },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (!openingBalance) {
+      return null;
+    }
+
+    return {
+      cashBalance: Number(openingBalance.cashBalance) || 0,
+      bankBalances: (openingBalance.bankBalances as Array<{ bankAccountId: string; balance: number }>) || [],
+      cardBalances: (openingBalance.cardBalances as Array<{ cardId: string; balance: number }>) || [],
     };
   }
 

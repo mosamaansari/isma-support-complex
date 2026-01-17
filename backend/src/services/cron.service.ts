@@ -20,34 +20,44 @@ class CronService {
    * Runs daily at 12:00 AM (midnight) to handle previous day's closing and current day's opening
    */
   start() {
-    // Run every day at 12:00 AM (midnight)
+    // Run every day at 12:00 AM (midnight) Pakistan time
     this.cronJob = cron.schedule("0 0 * * *", async () => {
       try {
-        logger.info("Cron job started at midnight: Calculating previous day closing balance and creating today's opening balance");
+        const cronStartTime = new Date();
+        logger.info(`Cron job started at ${cronStartTime.toISOString()} (Pakistan time: ${getTodayInPakistan().toISOString()}): Calculating previous day closing balance and creating today's opening balance`);
         
         // Step 1: Calculate and store previous day's closing balance
         // Use Pakistan timezone to get yesterday's date
         const today = getTodayInPakistan();
-        const yesterdayStr = formatLocalYMD(today);
+        const todayStr = formatLocalYMD(today);
         // Parse date string to get components and create at noon (12:00:00)
-        const [year, month, day] = yesterdayStr.split("-").map(v => parseInt(v, 10));
+        const [year, month, day] = todayStr.split("-").map(v => parseInt(v, 10));
         const yesterday = new Date(year, month - 1, day, 12, 0, 0, 0);
         yesterday.setDate(yesterday.getDate() - 1); // Get previous day
+        const yesterdayStr = formatLocalYMD(yesterday);
         
+        logger.info(`Calculating closing balance for previous day: ${yesterdayStr}`);
         try {
           await dailyClosingBalanceService.calculateAndStoreClosingBalance(yesterday);
-          logger.info(`Successfully calculated and stored closing balance for ${yesterdayStr}`);
-        } catch (error) {
+          logger.info(`Successfully calculated and stored closing balance for ${yesterdayStr} at ${new Date().toISOString()}`);
+        } catch (error: any) {
           logger.error(`Error calculating closing balance for ${yesterdayStr}:`, error);
+          // Don't throw - continue to opening balance creation
         }
         
         // Step 2: Create today's opening balance from previous day's closing
+        logger.info(`Creating opening balance for today: ${todayStr}`);
         await this.autoCreateOpeningBalanceFromPreviousDay();
-      } catch (error) {
-        logger.error("Error in cron job:", error);
+        
+        const cronEndTime = new Date();
+        const duration = cronEndTime.getTime() - cronStartTime.getTime();
+        logger.info(`Cron job completed successfully in ${duration}ms at ${cronEndTime.toISOString()}`);
+      } catch (error: any) {
+        logger.error(`Error in cron job at ${new Date().toISOString()}:`, error);
       }
     }, {
       timezone: "Asia/Karachi",
+      scheduled: true,
     });
 
     logger.info("Cron service started - will run daily at 12:00 AM (midnight)");
@@ -115,13 +125,24 @@ class CronService {
       const cardBalancesArray = (previousClosing.cardBalances as Array<{ cardId: string; balance: number }>) || [];
 
       // Create opening balance record directly (without creating transactions)
-      await prisma.dailyOpeningBalance.create({
-        data: {
+      // Use upsert to prevent duplicate entries if cron runs multiple times
+      await prisma.dailyOpeningBalance.upsert({
+        where: { date: todayDateObj },
+        update: {
+          cashBalance: Number(previousClosing.cashBalance) || 0,
+          bankBalances: bankBalancesArray as any,
+          cardBalances: cardBalancesArray as any,
+          notes: "Auto-created from previous day's closing balance (via cron job) - updated",
+          userName: "System Auto",
+          updatedBy: null,
+          updatedByType: "admin",
+        },
+        create: {
           date: todayDateObj,
           cashBalance: Number(previousClosing.cashBalance) || 0,
           bankBalances: bankBalancesArray as any,
           cardBalances: cardBalancesArray as any,
-          notes: "Auto-created from previous day's closing balance (via cron job)",
+          notes: `Auto-created from previous day's closing balance (via cron job) at ${new Date().toISOString()}`,
           userName: "System Auto",
           createdBy: null,
           createdByType: "admin",

@@ -175,7 +175,20 @@ class SaleController {
   async cancelSale(req: AuthRequest, res: Response) {
     try {
       const { id } = req.params;
-      const sale = await saleService.cancelSale(id);
+      const { refundMethod, bankAccountId } = req.body;
+      
+      const refundData = refundMethod ? {
+        refundMethod: refundMethod as "cash" | "bank_transfer",
+        bankAccountId: bankAccountId,
+      } : undefined;
+
+      const sale = await saleService.cancelSale(
+        id,
+        refundData,
+        req.user!.id,
+        req.user!.username || req.user!.name || "Unknown"
+      );
+      
       return res.status(200).json({
         message: "Sale cancelled successfully",
         response: {
@@ -196,7 +209,21 @@ class SaleController {
             error: "Sale not found",
           });
         }
-        if (error.message === "Sale is already cancelled") {
+        if (error.message === "Sale already cancelled" || error.message.includes("already cancelled")) {
+          return res.status(400).json({
+            message: error.message,
+            response: null,
+            error: error.message,
+          });
+        }
+        if (error.message.includes("7 days") || error.message.includes("within")) {
+          return res.status(400).json({
+            message: error.message,
+            response: null,
+            error: error.message,
+          });
+        }
+        if (error.message.includes("Refund method") || error.message.includes("refund")) {
           return res.status(400).json({
             message: error.message,
             response: null,

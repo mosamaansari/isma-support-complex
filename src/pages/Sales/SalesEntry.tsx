@@ -97,10 +97,7 @@ export default function SalesEntry() {
     if (cards.length === 0) {
       refreshCards();
     }
-    // Add default cash payment
-    if (payments.length === 0) {
-      setPayments([{ type: "cash", amount: undefined as any }]);
-    }
+    // Payments are optional, don't add default payment
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -161,9 +158,8 @@ export default function SalesEntry() {
   };
 
   const removePayment = (index: number) => {
-    if (payments.length > 1) {
-      setPayments(payments.filter((_, i) => i !== index));
-    }
+    // Allow removing payments even if it's the last one (payments are optional)
+    setPayments(payments.filter((_, i) => i !== index));
   };
 
   const updatePayment = (index: number, field: keyof SalePayment, value: any) => {
@@ -200,19 +196,19 @@ export default function SalesEntry() {
     const qtyMultiplier = priceType === "dozen" ? 12 : 1;
     const quantityUnits = (enteredShopQty + enteredWarehouseQty) * qtyMultiplier;
 
-    // Use customPrice if set and > 0, otherwise fall back to unitPrice for calculations
+    // Use customPrice if set (even if 0), otherwise fall back to unitPrice for calculations
     // But keep customPrice as null if it was cleared (to show empty in input)
-    // Round effectivePrice only for calculations, don't modify customPrice
-    const rawPrice = updated.customPrice !== null && updated.customPrice !== undefined && updated.customPrice > 0
+    // Don't round price early - round only the final result to avoid precision loss
+    const rawPrice = updated.customPrice !== null && updated.customPrice !== undefined
       ? updated.customPrice
       : updated.unitPrice;
-    const effectivePrice = Math.round(rawPrice * 100) / 100; // Round to 2 decimals for calculations only
+    const effectivePrice = rawPrice || 0; // Don't round here, round final result
 
     // Ensure discount and discountType are properly set
     const discount = updated.discount ?? 0;
     const discountType = updated.discountType || "percent";
 
-    // Calculate subtotal first (rounded to 2 decimals)
+    // Calculate subtotal first (rounded to 2 decimals at the end)
     const subtotal = Math.round((effectivePrice * quantityUnits) * 100) / 100;
 
     // Calculate discount amount based on type
@@ -317,23 +313,42 @@ export default function SalesEntry() {
         if (item.productId !== productId) return item;
 
         const unitPrice = item.unitPrice || 0;
-        // If customPrice is null, keep it null (user cleared the price)
-        // Otherwise use customPrice or fall back to unitPrice
         const currentSingle =
-          item.customPrice !== undefined && item.customPrice !== null && item.customPrice > 0
+          item.customPrice !== undefined && item.customPrice !== null
             ? item.customPrice
             : (item.customPrice === null ? undefined : unitPrice);
         const currentDozen = currentSingle !== undefined && currentSingle !== null ? (item.priceDozen ?? currentSingle * 12) : undefined;
 
+        const prevType: "single" | "dozen" = item.priceType || "single";
+        const shopEntered = Number(item.shopQuantity || 0);
+        const warehouseEntered = Number(item.warehouseQuantity || 0);
+        let nextShop = item.shopQuantity;
+        let nextWarehouse = item.warehouseQuantity;
+
+        if (prevType === "single" && priceType === "dozen") {
+          const shopRem = shopEntered % 12;
+          const whRem = warehouseEntered % 12;
+          if (shopRem !== 0 || whRem !== 0) {
+            const parts: string[] = [];
+            if (shopRem !== 0) parts.push(`Shop: ${shopEntered} (${shopRem} extra)`);
+            if (whRem !== 0) parts.push(`Warehouse: ${warehouseEntered} (${whRem} extra)`);
+            showError("Dozen requires multiples of 12. " + parts.join(". "));
+            return item;
+          }
+          nextShop = shopEntered / 12;
+          nextWarehouse = warehouseEntered / 12;
+        } else if (prevType === "dozen" && priceType === "single") {
+          nextShop = shopEntered * 12;
+          nextWarehouse = warehouseEntered * 12;
+        }
+
         return recalcItemTotals(item, {
           priceType,
-          customPrice: item.customPrice, // Preserve customPrice (null if cleared)
+          customPrice: item.customPrice,
           priceSingle: currentSingle,
           priceDozen: currentDozen,
-          // Keep entered qty the same; meaning changes based on priceType (single vs dozen)
-          // (Dozen mode: 1 means 1 dozen; Single mode: 1 means 1 unit)
-          shopQuantity: item.shopQuantity,
-          warehouseQuantity: item.warehouseQuantity,
+          shopQuantity: nextShop,
+          warehouseQuantity: nextWarehouse,
         } as any);
       })
     );
@@ -344,9 +359,18 @@ export default function SalesEntry() {
       selectedProducts.map((item: any) => {
         if (item.productId === productId) {
           const priceType: "single" | "dozen" = item.priceType || "single";
+          // Allow 0 price - user can intentionally set price to 0
+          if (price === 0) {
+            // Allow 0 price
+            return recalcItemTotals(item as any, {
+              customPrice: 0, // Set to 0 to accept user's 0 price
+              priceSingle: 0,
+              priceDozen: 0,
+            } as any);
+          }
           // Allow null/undefined/empty during editing - validation happens on submit
-          // Set to null if value is invalid (undefined, null, NaN, negative, or 0)
-          if (price === undefined || price === null || price === 0 || isNaN(Number(price)) || price < 0) {
+          // Reject negative or invalid values
+          if (price === undefined || price === null || isNaN(Number(price)) || price < 0) {
             return recalcItemTotals(item as any, {
               customPrice: null, // Set to null to allow clearing, will use unitPrice for calculations
               priceSingle: undefined, // Set to undefined so input shows empty
@@ -506,10 +530,10 @@ export default function SalesEntry() {
         return;
       }
 
-      // Validate price - must be greater than 0
+      // Validate price - allow 0 or greater
       const effectivePrice = item.customPrice ?? item.unitPrice ?? 0;
-      if (!effectivePrice || effectivePrice <= 0) {
-        showError(`Price for "${item.productName}" must be greater than 0`);
+      if (effectivePrice === undefined || effectivePrice === null || effectivePrice < 0) {
+        showError(`Price for "${item.productName}" cannot be negative`);
         return;
       }
 
@@ -535,15 +559,18 @@ export default function SalesEntry() {
       return;
     }
 
-    // Validate payments
+    // Validate payments - payments are optional, but if provided, validate them
     for (const payment of payments) {
-      if (payment.amount === undefined || payment.amount === null || payment.amount <= 0) {
-        showError("Payment amount must be greater than 0");
-        return;
-      }
-      if (payment.type === "bank_transfer" && !payment.bankAccountId) {
-        showError("Please select a bank account for bank transfer payment");
-        return;
+      // Only validate if amount is provided (payments are optional)
+      if (payment.amount !== undefined && payment.amount !== null) {
+        if (payment.amount < 0) {
+          showError("Payment amount cannot be negative");
+          return;
+        }
+        if (payment.type === "bank_transfer" && !payment.bankAccountId) {
+          showError("Please select a bank account for bank transfer payment");
+          return;
+        }
       }
     }
 
@@ -605,7 +632,18 @@ export default function SalesEntry() {
       // Use local ISO format to avoid timezone conversion
       const dateIsoString = formatDateToLocalISO(dateTime);
 
-      const createdSale = await addSale({
+      // Filter valid payments (with actual amount > 0)
+      const validPayments = payments
+        .filter(p => p.amount !== undefined && p.amount !== null && !isNaN(Number(p.amount)) && Number(p.amount) > 0)
+        .map(p => ({
+          type: p.type,
+          amount: p.amount,
+          bankAccountId: p.bankAccountId,
+          date: dateIsoString, // Always use combined date and time
+        }));
+
+      // Build sale object - conditionally include paymentType only if there are valid payments
+      const saleData: any = {
         billNumber,
         items: saleItems,
         subtotal,
@@ -614,13 +652,7 @@ export default function SalesEntry() {
         tax: globalTax || 0,
         taxType: globalTaxType,
         total,
-        paymentType: payments[0]?.type || "cash", // Required for backward compatibility
-        payments: payments.map(p => ({
-          type: p.type,
-          amount: p.amount,
-          bankAccountId: p.bankAccountId,
-          date: dateIsoString, // Always use combined date and time
-        })),
+        payments: validPayments.length > 0 ? validPayments : [], // Always send payments array (even if empty)
         customerName: data.customerName.trim(),
         customerPhone: data.customerPhone || undefined,
         customerCity: data.customerCity || undefined,
@@ -628,7 +660,14 @@ export default function SalesEntry() {
         userId: currentUser!.id,
         userName: currentUser!.name,
         status: "completed",
-      });
+      };
+
+      // Only include paymentType if there are valid payments (to avoid triggering old format in backend)
+      if (validPayments.length > 0) {
+        saleData.paymentType = validPayments[0]?.type || "cash";
+      }
+
+      const createdSale = await addSale(saleData);
 
       // Redirect to bill print page using the bill number from the backend
       navigate(`/sales/bill/${createdSale.billNumber}`);
@@ -809,7 +848,7 @@ export default function SalesEntry() {
                                 // Pass the raw value, rounding will happen in updateItemPrice
                                 updateItemPrice(item.productId, numValue);
                               }}
-                              className="w-full text-sm"
+                              className="w-full text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             />
                             <div className="text-xs text-gray-500 dark:text-gray-400">
                               Unit: Rs. {(((item as any).priceSingle ?? (item.customPrice ?? item.unitPrice)) || 0).toFixed(2)}
@@ -827,7 +866,7 @@ export default function SalesEntry() {
                               ).toString()}
                               value={item.shopQuantity !== null && item.shopQuantity !== undefined ? item.shopQuantity : ""}
                               onChange={(e) => updateItemLocationQuantity(item.productId, "shop", e.target.value)}
-                              className="w-full text-sm"
+                              className="w-full text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                               placeholder={((item as any).priceType || "single") === "dozen" ? "Dozen" : "Units"}
                             />
                             {((item as any).priceType || "single") === "dozen" && (
@@ -848,7 +887,7 @@ export default function SalesEntry() {
                               ).toString()}
                               value={item.warehouseQuantity !== null && item.warehouseQuantity !== undefined ? item.warehouseQuantity : ""}
                               onChange={(e) => updateItemLocationQuantity(item.productId, "warehouse", e.target.value)}
-                              className="w-full text-sm"
+                              className="w-full text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                               placeholder={((item as any).priceType || "single") === "dozen" ? "Dozen" : "Units"}
                             />
                             {((item as any).priceType || "single") === "dozen" && (
@@ -856,6 +895,7 @@ export default function SalesEntry() {
                                 Units: {((item.warehouseQuantity || 0) * 12).toFixed(0)}
                               </div>
                             )}
+                    
                           </div>
                         </td>
                         <td className="p-3" colSpan={2}>
@@ -972,14 +1012,12 @@ export default function SalesEntry() {
                 <div key={index} className="p-4 border border-gray-200 rounded-lg dark:border-gray-700">
                   <div className="flex items-center justify-between mb-3">
                     <Label>Payment {index + 1}</Label>
-                    {payments.length > 1 && (
-                      <button
-                        onClick={() => removePayment(index)}
-                        className="p-1 text-red-600 hover:bg-red-50 rounded dark:hover:bg-red-900/20"
-                      >
-                        <TrashBinIcon className="w-4 h-4" />
-                      </button>
-                    )}
+                    <button
+                      onClick={() => removePayment(index)}
+                      className="p-1 text-red-600 hover:bg-red-50 rounded dark:hover:bg-red-900/20"
+                    >
+                      <TrashBinIcon className="w-4 h-4" />
+                    </button>
                   </div>
                   <div className="space-y-3">
                     <div>
@@ -996,7 +1034,7 @@ export default function SalesEntry() {
                       />
                     </div>
                     <div>
-                      <Label>Amount  <span className="text-error-500">*</span></Label>
+                      <Label>Amount (Optional)</Label>
                       <Input
                         type="number"
                         min="0"
@@ -1006,15 +1044,14 @@ export default function SalesEntry() {
                           const value = e.target.value === "" ? undefined : parseFloat(e.target.value);
                           updatePayment(index, "amount", isNaN(value as any) || value === null ? undefined : value);
                         }}
-                        placeholder="Enter amount"
-                        required
+                        placeholder="Enter amount (optional)"
                         error={
-                          (showErrors && (payment.amount === undefined || payment.amount === null || payment.amount <= 0)) ||
+                          (showErrors && payment.amount !== undefined && payment.amount !== null && payment.amount < 0) ||
                           !!backendErrors[`payments.${index}.amount`]
                         }
                         hint={
-                          (showErrors && (payment.amount === undefined || payment.amount === null || payment.amount <= 0)
-                            ? "Amount must be greater than 0"
+                          (showErrors && payment.amount !== undefined && payment.amount !== null && payment.amount < 0
+                            ? "Amount cannot be negative"
                             : undefined) ||
                           backendErrors[`payments.${index}.amount`]
                         }
