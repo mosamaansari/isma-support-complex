@@ -57,7 +57,6 @@ class CronService {
       }
     }, {
       timezone: "Asia/Karachi",
-      scheduled: true,
     });
 
     logger.info("Cron service started - will run daily at 12:00 AM (midnight)");

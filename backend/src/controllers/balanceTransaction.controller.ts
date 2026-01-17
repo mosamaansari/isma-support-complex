@@ -41,7 +41,7 @@ class BalanceTransactionController {
       const transactions = await balanceTransactionService.getCashTransactions(
         startDate as string | undefined,
         endDate as string | undefined,
-        excludeRefunds === "true" || excludeRefunds === true
+        excludeRefunds === "true" || (typeof excludeRefunds === "boolean" && excludeRefunds)
       );
       return res.status(200).json({
         message: "Cash transactions retrieved successfully",
@@ -76,7 +76,7 @@ class BalanceTransactionController {
         bankAccountId as string,
         startDate as string | undefined,
         endDate as string | undefined,
-        excludeRefunds === "true" || excludeRefunds === true
+        excludeRefunds === "true" || (typeof excludeRefunds === "boolean" && excludeRefunds)
       );
       return res.status(200).json({
         message: "Bank transactions retrieved successfully",
@@ -103,7 +103,7 @@ class BalanceTransactionController {
       const grouped = await balanceTransactionService.getAllTransactionsGroupedByDay(
         startDate as string | undefined,
         endDate as string | undefined,
-        excludeRefunds === "true" || excludeRefunds === true
+        excludeRefunds === "true" || (typeof excludeRefunds === "boolean" && excludeRefunds)
       );
       return res.status(200).json({
         message: "Transactions grouped by day retrieved successfully",

@@ -13,7 +13,7 @@ class OpeningBalanceController {
       }
       // For reports: return only the stored values from DailyOpeningBalance table for this date.
       // When storedOnly=true, returns null if no record exists (no fallback to previous day closing).
-      if (storedOnly === "true" || storedOnly === true) {
+      if (storedOnly === "true" || (typeof storedOnly === "boolean" && storedOnly)) {
         const stored = await openingBalanceService.getStoredOpeningBalanceForDate(date);
         return res.json(stored);
       }
