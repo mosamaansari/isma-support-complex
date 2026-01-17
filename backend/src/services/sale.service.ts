@@ -844,7 +844,7 @@ class SaleService {
       throw new Error("Sale cannot be cancelled. Only sales within 7 days of creation can be cancelled.");
     }
 
-    // Calculate total paid amount and process refunds to original sources
+    // Calculate total paid amount
     const payments = (sale.payments as Array<{
       type: string;
       amount: number;
@@ -853,7 +853,7 @@ class SaleService {
     }>) || [];
     const totalPaid = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
 
-    // If there are payments, process refund to original sources
+    // If there are payments, process refund based on refundData
     if (totalPaid > 0) {
       if (!userId || !userName) {
         throw new Error("User information is required for refund processing");
@@ -863,71 +863,116 @@ class SaleService {
       // Use Pakistan calendar date so refund transaction appears in Reports on the correct date
       const refundDateForBalance = parseLocalYMDForDB(formatLocalYMD(getTodayInPakistan()));
 
-      try {
-        // Process each payment refund to its original source
-        for (const payment of payments) {
-          const paymentAmount = payment.amount || 0;
-          if (paymentAmount <= 0) continue;
+      // Determine refund method: use refundData if provided, otherwise refund to original sources
+      const refundMethod = refundData?.refundMethod || null;
+      const refundBankAccountId = refundData?.bankAccountId || null;
 
-          if (payment.type === "cash") {
-            // Refund to cash balance (deduct as expense)
-            await balanceManagementService.updateCashBalance(
-              refundDateForBalance,
-              paymentAmount,
-              "expense",
-              {
-                description: `Sale Refund - Bill #${sale.billNumber}${sale.customerName ? ` - ${sale.customerName}` : ""}`,
-                source: "sale_refund",
-                sourceId: sale.id,
-                userId: userId,
-                userName: userName,
-              }
-            );
-            logger.info(`Refunded cash: -${paymentAmount} for cancelled sale ${sale.billNumber}`);
-          } else if (payment.type === "card" && payment.cardId) {
-            // Refund to card balance (deduct as expense)
-            await balanceManagementService.updateCardBalance(
-              payment.cardId,
-              refundDateForBalance,
-              paymentAmount,
-              "expense",
-              {
-                description: `Sale Refund - Bill #${sale.billNumber}${sale.customerName ? ` - ${sale.customerName}` : ""}`,
-                source: "sale_refund",
-                sourceId: sale.id,
-                userId: userId,
-                userName: userName,
-              }
-            );
-            logger.info(`Refunded card: -${paymentAmount} for cancelled sale ${sale.billNumber}, card: ${payment.cardId}`);
-          } else if (payment.type === "bank_transfer" && payment.bankAccountId) {
-            // Refund to bank account balance (deduct as expense)
-            await balanceManagementService.updateBankBalance(
-              payment.bankAccountId,
-              refundDateForBalance,
-              paymentAmount,
-              "expense",
-              {
-                description: `Sale Refund - Bill #${sale.billNumber}${sale.customerName ? ` - ${sale.customerName}` : ""}`,
-                source: "sale_refund",
-                sourceId: sale.id,
-                userId: userId,
-                userName: userName,
-              }
-            );
-            logger.info(`Refunded bank transfer: -${paymentAmount} for cancelled sale ${sale.billNumber}, bank: ${payment.bankAccountId}`);
-          } else if (payment.type === "credit") {
-            // For credit payments, update customer due amount
-            if (sale.customerId) {
-              const customer = await prisma.customer.findUnique({ where: { id: sale.customerId } });
-              if (customer) {
-                const oldDue = Number(customer.dueAmount || 0);
-                const newDue = oldDue + paymentAmount;
-                await prisma.customer.update({
-                  where: { id: sale.customerId },
-                  data: { dueAmount: newDue },
-                });
-                logger.info(`Restored credit: +${paymentAmount} to customer due for cancelled sale ${sale.billNumber}`);
+      // If bank transfer refund is requested, check balance first
+      if (refundMethod === "bank_transfer" && refundBankAccountId) {
+        const currentBalance = await balanceManagementService.getCurrentBankBalance(refundBankAccountId, refundDateForBalance);
+        if (currentBalance < totalPaid) {
+          throw new Error(`Insufficient bank balance. Available: Rs. ${currentBalance.toFixed(2)}, Required: Rs. ${totalPaid.toFixed(2)}`);
+        }
+      }
+
+      try {
+        if (refundMethod === "cash") {
+          // Refund entire amount to cash
+          await balanceManagementService.updateCashBalance(
+            refundDateForBalance,
+            totalPaid,
+            "expense",
+            {
+              description: `Sale Refund - Bill #${sale.billNumber}${sale.customerName ? ` - ${sale.customerName}` : ""}`,
+              source: "sale_refund",
+              sourceId: sale.id,
+              userId: userId,
+              userName: userName,
+            }
+          );
+          logger.info(`Refunded cash: -${totalPaid} for cancelled sale ${sale.billNumber}`);
+        } else if (refundMethod === "bank_transfer" && refundBankAccountId) {
+          // Refund entire amount to specified bank account
+          await balanceManagementService.updateBankBalance(
+            refundBankAccountId,
+            refundDateForBalance,
+            totalPaid,
+            "expense",
+            {
+              description: `Sale Refund - Bill #${sale.billNumber}${sale.customerName ? ` - ${sale.customerName}` : ""}`,
+              source: "sale_refund",
+              sourceId: sale.id,
+              userId: userId,
+              userName: userName,
+            }
+          );
+          logger.info(`Refunded bank transfer: -${totalPaid} for cancelled sale ${sale.billNumber}, bank: ${refundBankAccountId}`);
+        } else {
+          // Default: Process each payment refund to its original source
+          for (const payment of payments) {
+            const paymentAmount = payment.amount || 0;
+            if (paymentAmount <= 0) continue;
+
+            if (payment.type === "cash") {
+              // Refund to cash balance (deduct as expense)
+              await balanceManagementService.updateCashBalance(
+                refundDateForBalance,
+                paymentAmount,
+                "expense",
+                {
+                  description: `Sale Refund - Bill #${sale.billNumber}${sale.customerName ? ` - ${sale.customerName}` : ""}`,
+                  source: "sale_refund",
+                  sourceId: sale.id,
+                  userId: userId,
+                  userName: userName,
+                }
+              );
+              logger.info(`Refunded cash: -${paymentAmount} for cancelled sale ${sale.billNumber}`);
+            } else if (payment.type === "card" && payment.cardId) {
+              // Refund to card balance (deduct as expense)
+              await balanceManagementService.updateCardBalance(
+                payment.cardId,
+                refundDateForBalance,
+                paymentAmount,
+                "expense",
+                {
+                  description: `Sale Refund - Bill #${sale.billNumber}${sale.customerName ? ` - ${sale.customerName}` : ""}`,
+                  source: "sale_refund",
+                  sourceId: sale.id,
+                  userId: userId,
+                  userName: userName,
+                }
+              );
+              logger.info(`Refunded card: -${paymentAmount} for cancelled sale ${sale.billNumber}, card: ${payment.cardId}`);
+            } else if (payment.type === "bank_transfer" && payment.bankAccountId) {
+              // Refund to bank account balance (deduct as expense)
+              await balanceManagementService.updateBankBalance(
+                payment.bankAccountId,
+                refundDateForBalance,
+                paymentAmount,
+                "expense",
+                {
+                  description: `Sale Refund - Bill #${sale.billNumber}${sale.customerName ? ` - ${sale.customerName}` : ""}`,
+                  source: "sale_refund",
+                  sourceId: sale.id,
+                  userId: userId,
+                  userName: userName,
+                }
+              );
+              logger.info(`Refunded bank transfer: -${paymentAmount} for cancelled sale ${sale.billNumber}, bank: ${payment.bankAccountId}`);
+            } else if (payment.type === "credit") {
+              // For credit payments, update customer due amount
+              if (sale.customerId) {
+                const customer = await prisma.customer.findUnique({ where: { id: sale.customerId } });
+                if (customer) {
+                  const oldDue = Number(customer.dueAmount || 0);
+                  const newDue = oldDue + paymentAmount;
+                  await prisma.customer.update({
+                    where: { id: sale.customerId },
+                    data: { dueAmount: newDue },
+                  });
+                  logger.info(`Restored credit: +${paymentAmount} to customer due for cancelled sale ${sale.billNumber}`);
+                }
               }
             }
           }

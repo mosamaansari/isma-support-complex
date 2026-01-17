@@ -864,6 +864,13 @@ class ApiClient {
     return response.data?.data || response.data || [];
   }
 
+  async getCurrentBankBalance(bankAccountId: string) {
+    const response = await this.client.get("/balance-transactions/bank-balance", {
+      params: { bankAccountId },
+    });
+    return response.data?.response || response.data;
+  }
+
   // Daily Closing Balance endpoints
   async getClosingBalance(date: string) {
     const response = await this.client.get("/daily-closing-balance", {

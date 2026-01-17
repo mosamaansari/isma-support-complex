@@ -1,5 +1,6 @@
 import { Response } from "express";
 import balanceTransactionService from "../services/balanceTransaction.service";
+import balanceManagementService from "../services/balanceManagement.service";
 import logger from "../utils/logger";
 import { AuthRequest } from "../middleware/auth";
 
@@ -115,6 +116,40 @@ class BalanceTransactionController {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
       logger.error("Get grouped transactions error:", error);
+      return res.status(500).json({
+        message: errorMessage,
+        response: null,
+        error: errorMessage,
+      });
+    }
+  }
+
+  async getCurrentBankBalance(req: AuthRequest, res: Response) {
+    try {
+      const { bankAccountId } = req.query;
+      if (!bankAccountId) {
+        return res.status(400).json({
+          message: "Bank account ID is required",
+          response: null,
+          error: "Bank account ID is required",
+        });
+      }
+      const today = new Date();
+      const balance = await balanceManagementService.getCurrentBankBalance(
+        bankAccountId as string,
+        today
+      );
+      return res.status(200).json({
+        message: "Bank balance retrieved successfully",
+        response: {
+          balance,
+        },
+        error: null,
+      });
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
+      logger.error("Get bank balance error:", error);
       return res.status(500).json({
         message: errorMessage,
         response: null,

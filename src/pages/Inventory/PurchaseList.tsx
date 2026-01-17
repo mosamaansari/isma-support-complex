@@ -9,8 +9,8 @@ import Input from "../../components/form/input/InputField";
 import DatePicker from "../../components/form/DatePicker";
 import Pagination from "../../components/ui/Pagination";
 import PageSizeSelector from "../../components/ui/PageSizeSelector";
-import { PencilIcon, DownloadIcon, TrashBinIcon } from "../../icons";
-import { FaEye, FaListAlt, FaCreditCard } from "react-icons/fa";
+import { PencilIcon, DownloadIcon } from "../../icons";
+import { FaEye, FaListAlt, FaCreditCard, FaUndo } from "react-icons/fa";
 import Select from "../../components/form/Select";
 import Label from "../../components/form/Label";
 import { Modal } from "../../components/ui/modal";
@@ -446,10 +446,10 @@ export default function PurchaseList() {
                             currentUser?.id === purchase.userId) && (
                             <button
                               onClick={() => handleCancelPurchaseClick(purchase)}
-                              className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded dark:hover:bg-red-900/20 border border-red-200 dark:border-red-800 flex-shrink-0"
-                              title="Cancel Purchase"
+                              className="p-1.5 sm:p-2 text-orange-600 hover:bg-orange-50 rounded dark:hover:bg-orange-900/20 border border-orange-200 dark:border-orange-800 flex-shrink-0"
+                              title="Refund Purchase"
                             >
-                              <TrashBinIcon className="w-3 h-3 sm:w-4 sm:h-4" />
+                              <FaUndo className="w-3 h-3 sm:w-4 sm:h-4" />
                             </button>
                           )}
                         <Link to={`/inventory/purchase/edit/${purchase.id}`}>
@@ -845,11 +845,11 @@ export default function PurchaseList() {
         <div className="p-6">
           <div className="flex items-center gap-4 mb-4">
             <div className="flex items-center justify-center w-12 h-12 bg-orange-100 rounded-full dark:bg-orange-900/20">
-              <TrashBinIcon className="w-6 h-6 text-orange-600 dark:text-orange-400" />
+              <FaUndo className="w-6 h-6 text-orange-600 dark:text-orange-400" />
             </div>
             <div>
               <h3 className="text-lg font-semibold text-gray-800 dark:text-white">
-                Cancel Purchase
+                Refund Purchase
               </h3>
               <p className="text-sm text-gray-500 dark:text-gray-400">
                 This action cannot be undone

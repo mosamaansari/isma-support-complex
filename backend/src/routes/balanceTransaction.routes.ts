@@ -38,5 +38,13 @@ router.get(
   balanceTransactionController.getAllTransactionsGroupedByDay.bind(balanceTransactionController)
 );
 
+// Get current bank balance
+router.get(
+  "/bank-balance",
+  authenticate,
+  requirePermission(PERMISSIONS.BALANCE_TRANSACTIONS_VIEW),
+  balanceTransactionController.getCurrentBankBalance.bind(balanceTransactionController)
+);
+
 export default router;
 
