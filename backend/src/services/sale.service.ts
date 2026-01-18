@@ -736,8 +736,8 @@ class SaleService {
             Number(paymentAmount),
             "income",
             {
-              description: `Sale - Bill #${sale.billNumber}${sale.customerName ? ` - ${sale.customerName}` : ""}`,
-              source: "sale",
+              description: `Sale Payment - Bill #${sale.billNumber}${sale.customerName ? ` - ${sale.customerName}` : ""}`,
+              source: "sale_payment",
               sourceId: sale.id,
               userId: user.id,
               userName: user.name,
@@ -753,8 +753,8 @@ class SaleService {
               Number(paymentAmount),
               "income",
               {
-                description: `Sale - Bill #${sale.billNumber}${sale.customerName ? ` - ${sale.customerName}` : ""}`,
-                source: "sale",
+                description: `Sale Payment - Bill #${sale.billNumber}${sale.customerName ? ` - ${sale.customerName}` : ""}`,
+                source: "sale_payment",
                 sourceId: sale.id,
                 userId: user.id,
                 userName: user.name,
@@ -771,8 +771,8 @@ class SaleService {
               Number(paymentAmount),
               "income",
               {
-                description: `Sale - Bill #${sale.billNumber}${sale.customerName ? ` - ${sale.customerName}` : ""} (Card)`,
-                source: "sale",
+                description: `Sale Payment - Bill #${sale.billNumber}${sale.customerName ? ` - ${sale.customerName}` : ""} (Card)`,
+                source: "sale_payment",
                 sourceId: sale.id,
                 userId: user.id,
                 userName: user.name,

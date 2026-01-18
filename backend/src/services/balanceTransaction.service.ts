@@ -35,11 +35,11 @@ class BalanceTransactionService {
         const start = new Date(startYear, startMonth, startDay, 0, 0, 0, 0);
         const end = new Date(endYear, endMonth, endDay, 23, 59, 59, 999);
 
-        // For sales, purchases, and refunds, also check createdAt to ensure they're included if they occurred in the date range
+        // For sales, purchases, expenses, and refunds, also check createdAt to ensure they're included if they occurred in the date range
         // This handles cases where date field might not match the actual transaction date
         // Use OR to include transactions where either:
         // 1. date field is in range (for regular transactions with correct date)
-        // 2. createdAt is in range AND source is sale/purchase/refund (for transactions where date might be wrong)
+        // 2. createdAt is in range AND source is sale/purchase/expense/refund (for transactions where date might be wrong)
         where.OR = [
           // All transactions where date field is in range
           {
@@ -48,14 +48,14 @@ class BalanceTransactionService {
               lte: end,
             },
           },
-          // Sales, purchases, and refunds where createdAt is in range (even if date field is outside range)
+          // Sales, purchases, expenses, and refunds where createdAt is in range (even if date field is outside range)
           {
             createdAt: {
               gte: start,
               lte: end,
             },
             source: {
-              in: ["sale", "sale_payment", "purchase", "purchase_payment", "sale_refund", "purchase_refund"],
+              in: ["sale", "sale_payment", "purchase", "purchase_payment", "expense", "sale_refund", "purchase_refund"],
             },
           },
         ];
