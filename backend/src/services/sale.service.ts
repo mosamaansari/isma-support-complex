@@ -553,7 +553,7 @@ class SaleService {
       amount: number;
       cardId?: string;
       bankAccountId?: string;
-      date?: Date;
+      date?: string | Date;
     }> = [];
     let remainingBalance = total;
 
