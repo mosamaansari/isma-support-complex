@@ -1098,9 +1098,9 @@ class SaleService {
 
     const paymentWithDate = {
       ...payment,
-      date: paymentDate ? (typeof paymentDate === 'string' ? paymentDate : formatDateToLocalISO(parseLocalISO(paymentDate))) : formatDateToLocalISO(getCurrentLocalDateTime())
+      date: paymentDate
     };
-
+    console.log("paymentWithDate", paymentWithDate)
     const newPayments = [...currentPayments, paymentWithDate];
     const newTotalPaid = totalPaid + paymentAmount;
     const newRemainingBalance = Number(sale.total) - newTotalPaid;
