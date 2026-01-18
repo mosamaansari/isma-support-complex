@@ -89,18 +89,44 @@ export const parseUTCDateString = (dateString: string | Date | null | undefined)
 
 /**
  * Format date from backend (UTC ISO string) to display string without timezone shift
+ * Directly formats UTC components to ensure exact time from backend is displayed
  */
 export const formatBackendDate = (dateString: string | Date | null | undefined): string => {
-  const date = parseUTCDateString(dateString);
-  if (!date) return "";
+  if (!dateString) return "";
   
-  return date.toLocaleString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  let year: number, month: number, day: number, hours: number, minutes: number;
+  
+  if (dateString instanceof Date) {
+    year = dateString.getUTCFullYear();
+    month = dateString.getUTCMonth();
+    day = dateString.getUTCDate();
+    hours = dateString.getUTCHours();
+    minutes = dateString.getUTCMinutes();
+  } else if (typeof dateString === 'string') {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return "";
+    year = date.getUTCFullYear();
+    month = date.getUTCMonth();
+    day = date.getUTCDate();
+    hours = date.getUTCHours();
+    minutes = date.getUTCMinutes();
+  } else {
+    return "";
+  }
+  
+  // Format date: "Jan 18, 2026"
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const dateStr = `${monthNames[month]} ${day}, ${year}`;
+  
+  // Format time: HH:MM AM/PM
+  const isPM = hours >= 12;
+  const displayHours = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+  const hoursStr = String(displayHours).padStart(2, "0");
+  const minutesStr = String(minutes).padStart(2, "0");
+  const ampm = isPM ? "PM" : "AM";
+  const timeStr = `${hoursStr}:${minutesStr} ${ampm}`;
+  
+  return `${dateStr} ${timeStr}`;
 };
 
 /**
@@ -128,6 +154,52 @@ export const formatBackendDateShort = (dateString: string | Date | null | undefi
     month: "short",
     day: "numeric",
   });
+};
+
+/**
+ * Format date with time (including seconds) from backend (UTC ISO string) without timezone shift
+ * Directly formats UTC components to ensure exact time from backend is displayed
+ */
+export const formatBackendDateWithTime = (dateString: string | Date | null | undefined): string => {
+  if (!dateString) return "";
+  
+  let year: number, month: number, day: number, hours: number, minutes: number, seconds: number;
+  
+  if (dateString instanceof Date) {
+    year = dateString.getUTCFullYear();
+    month = dateString.getUTCMonth();
+    day = dateString.getUTCDate();
+    hours = dateString.getUTCHours();
+    minutes = dateString.getUTCMinutes();
+    seconds = dateString.getUTCSeconds();
+  } else if (typeof dateString === 'string') {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return "";
+    year = date.getUTCFullYear();
+    month = date.getUTCMonth();
+    day = date.getUTCDate();
+    hours = date.getUTCHours();
+    minutes = date.getUTCMinutes();
+    seconds = date.getUTCSeconds();
+  } else {
+    return "";
+  }
+  
+  // Format date: MM/DD/YYYY
+  const monthStr = String(month + 1).padStart(2, "0");
+  const dayStr = String(day).padStart(2, "0");
+  const dateStr = `${monthStr}/${dayStr}/${year}`;
+  
+  // Format time: HH:MM:SS AM/PM
+  const isPM = hours >= 12;
+  const displayHours = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+  const hoursStr = String(displayHours).padStart(2, "0");
+  const minutesStr = String(minutes).padStart(2, "0");
+  const secondsStr = String(seconds).padStart(2, "0");
+  const ampm = isPM ? "PM" : "AM";
+  const timeStr = `${hoursStr}:${minutesStr}:${secondsStr} ${ampm}`;
+  
+  return `${dateStr} ${timeStr}`;
 };
 
 /**

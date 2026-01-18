@@ -375,18 +375,18 @@ class BalanceTransactionService {
       const start = new Date(sy, sm - 1, sd, 0, 0, 0, 0);
       const endPlus1 = new Date(ey, em - 1, ed + 1, 23, 59, 59, 999);
 
-      // For refunds, also check createdAt to ensure they're included if they occurred in the date range
-      // Use OR to include transactions where either date OR createdAt (for refunds) is in range
+      // For payments and refunds, also check createdAt to ensure they're included if they occurred in the date range
+      // Use OR to include transactions where either date OR createdAt (for payments/refunds) is in range
       where.OR = [
         // All transactions where date field is in range
         {
           date: { gte: start, lte: endPlus1 },
         },
-        // Refunds where createdAt is in range (even if date field is outside range)
+        // Payments and refunds where createdAt is in range (even if date field is outside range)
         {
           createdAt: { gte: start, lte: endPlus1 },
           source: {
-            in: ["sale_refund", "purchase_refund"],
+            in: ["sale_payment", "purchase_payment", "sale_refund", "purchase_refund"],
           },
         },
       ];

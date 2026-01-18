@@ -824,6 +824,16 @@ class PurchaseService {
     if (data.tax !== undefined) updateData.tax = data.tax;
     if (data.taxType !== undefined) updateData.taxType = data.taxType;
     if (data.total !== undefined) updateData.total = data.total;
+    
+    // Track old payments to detect new ones
+    const oldPayments = (purchase.payments as Array<{
+      type: string;
+      amount: number;
+      cardId?: string;
+      bankAccountId?: string;
+      date?: string | Date;
+    }>) || [];
+    
     if (data.payments) {
       // Allow payment removal and editing - no restrictions
       updateData.payments = data.payments as any;
@@ -854,6 +864,122 @@ class PurchaseService {
         supplier: true,
       },
     });
+
+    // Create balance transactions for new payments added during edit
+    if (data.payments) {
+      // Find new payments by comparing with old payments
+      // New payments are those at indices >= oldPayments.length
+      const newPayments: Array<{
+        type: "cash" | "card" | "bank_transfer";
+        amount: number;
+        cardId?: string;
+        bankAccountId?: string;
+        date?: string | Date;
+      }> = [];
+      
+      if (data.payments.length > oldPayments.length) {
+        // There are new payments - get payments beyond the old array length
+        newPayments.push(...data.payments.slice(oldPayments.length));
+        logger.info(`Found ${newPayments.length} new payment(s) for purchase ${purchase.id} (old: ${oldPayments.length}, new: ${data.payments.length})`);
+      }
+      
+      // Process new payments if any
+      if (newPayments.length > 0) {
+        try {
+          const balanceManagementService = (await import("./balanceManagement.service")).default;
+          
+          // Get user info
+          let user: any = null;
+          let userName = "System";
+          if (userId) {
+            user = await prisma.user.findUnique({
+              where: { id: userId },
+              select: { id: true, name: true, username: true },
+            });
+            if (!user) {
+              const adminUser = await prisma.adminUser.findUnique({
+                where: { id: userId },
+                select: { id: true, name: true, username: true },
+              });
+              if (adminUser) {
+                user = adminUser;
+              }
+            }
+            if (user) {
+              userName = user.name || user.username || "System";
+            }
+          }
+        
+          for (const payment of newPayments) {
+            const paymentAmount = payment.amount ?? 0;
+            if (paymentAmount === null || paymentAmount === undefined || isNaN(Number(paymentAmount)) || paymentAmount <= 0) {
+              logger.warn(`Skipping invalid payment amount: ${payment.amount} for purchase ${purchase.id}`);
+              continue;
+            }
+
+            // Use payment date if available, otherwise use today's date
+            const paymentDate = (payment as any).date 
+              ? parseLocalISO((payment as any).date) 
+              : parseLocalYMDForDB(formatLocalYMD(getTodayInPakistan()));
+            const amount = Number(paymentAmount);
+
+            if (payment.type === "cash") {
+              await balanceManagementService.updateCashBalance(
+                paymentDate,
+                amount,
+                "expense",
+                {
+                  description: `Purchase Payment - ${updatedPurchase.supplierName || "N/A"}`,
+                  source: "purchase_payment",
+                  sourceId: purchase.id,
+                  userId: userId,
+                  userName: userName,
+                }
+              );
+              logger.info(`Updated cash balance: -${amount} for purchase payment ${purchase.id}`);
+            } else if (payment.type === "bank_transfer" && payment.bankAccountId) {
+              await balanceManagementService.updateBankBalance(
+                payment.bankAccountId,
+                paymentDate,
+                amount,
+                "expense",
+                {
+                  description: `Purchase Payment - ${updatedPurchase.supplierName || "N/A"}`,
+                  source: "purchase_payment",
+                  sourceId: purchase.id,
+                  userId: userId,
+                  userName: userName,
+                }
+              );
+              logger.info(`Updated bank balance: -${amount} for purchase payment ${purchase.id}, bank: ${payment.bankAccountId}`);
+            } else if (payment.type === "card" && (payment.cardId || payment.bankAccountId)) {
+              const cardId = payment.cardId || payment.bankAccountId;
+              if (cardId) {
+                await balanceManagementService.updateCardBalance(
+                  cardId,
+                  paymentDate,
+                  amount,
+                  "expense",
+                  {
+                    description: `Purchase Payment - ${updatedPurchase.supplierName || "N/A"} (Card)`,
+                    source: "purchase_payment",
+                    sourceId: purchase.id,
+                    userId: userId,
+                    userName: userName,
+                  }
+                );
+                logger.info(`Updated card balance: -${amount} for purchase payment ${purchase.id}, card: ${cardId}`);
+              }
+            } else if ((payment.type === "bank_transfer" || payment.type === "card") && !payment.bankAccountId && !payment.cardId) {
+              logger.warn(`Skipping ${payment.type} payment without account ID for purchase ${purchase.id}`);
+            }
+          }
+        } catch (error: any) {
+          logger.error("Error updating balance for purchase payment during edit:", error);
+          // Don't throw error - payment was already saved, just log the issue
+        }
+      }
+    }
 
     // Convert Decimals to numbers for easier frontend handling (and provide price defaults)
     return {

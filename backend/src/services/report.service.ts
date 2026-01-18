@@ -1210,14 +1210,26 @@ class ReportService {
     });
 
     // Track which transactions we've already added from BalanceTransactions
-    // Use a combination of source, sourceId, amount, and date to identify unique payments
+    // Use a combination of source, sourceId, amount, date, and payment index to identify unique payments
+    // Include payment index to handle multiple payments with same amount/date
     const addedTransactionKeys = new Set<string>();
+    const paymentIndexMap = new Map<string, number>(); // Track payment index per purchase/sale
+    
+    // Track transactions by sourceId to count payment indices
+    const transactionCounts = new Map<string, number>();
+    
     transactions.forEach((tx: any) => {
       if (tx.source === "sale_payment" || tx.source === "purchase_payment") {
         const txDate = new Date(tx.date || tx.createdAt);
         const { year, month, day } = extractDateComponents(txDate);
         const dateStr = `${year}-${month}-${day}`;
-        const key = `${tx.source}-${tx.sourceId || ""}-${Number(tx.amount || 0).toFixed(2)}-${dateStr}`;
+        const baseKey = `${tx.source}-${tx.sourceId || ""}`;
+        // Count how many transactions we've seen for this purchase/sale
+        const count = transactionCounts.get(baseKey) || 0;
+        transactionCounts.set(baseKey, count + 1);
+        // Include payment index in key to handle multiple payments with same amount/date
+        // Use count as index (0-based)
+        const key = `${tx.source}-${tx.sourceId || ""}-${Number(tx.amount || 0).toFixed(2)}-${dateStr}-${count}`;
         addedTransactionKeys.add(key);
       }
     });
@@ -1247,13 +1259,48 @@ class ReportService {
         }
 
         // Check if we already added this from BalanceTransactions
-        // Use amount and date to match with BalanceTransaction
+        // Use amount, date, and payment index to match with BalanceTransaction
         const dateStr = `${year}-${month}-${day}`;
         const amount = Number(payment.amount || 0);
-        const transactionKey = `sale_payment-${sale.id}-${amount.toFixed(2)}-${dateStr}`;
-        if (addedTransactionKeys.has(transactionKey)) {
-          continue;
+        
+        // Count how many payments have the same amount and date
+        const paymentsWithSameAmountDate = payments.filter((p: any, pIdx: number) => {
+          const pDate = p.date ? parsePaymentDate(p.date) : null;
+          let pDateStr: string;
+          if (!pDate) {
+            const saleDate = new Date(sale.date);
+            const { year: pYear, month: pMonth, day: pDay } = extractDateComponents(saleDate);
+            pDateStr = `${pYear}-${pMonth}-${pDay}`;
+          } else {
+            const { year: pYear, month: pMonth, day: pDay } = extractDateComponents(pDate);
+            pDateStr = `${pYear}-${pMonth}-${pDay}`;
+          }
+          return pDateStr === dateStr && Number(p.amount || 0).toFixed(2) === amount.toFixed(2);
+        });
+        
+        // Check if this exact payment index was already added
+        const exactKey = `sale_payment-${sale.id}-${amount.toFixed(2)}-${dateStr}-${paymentIndex}`;
+        if (addedTransactionKeys.has(exactKey)) {
+          continue; // This exact payment was already added
         }
+        
+        // If there are multiple payments with same amount/date, don't skip based on generic match
+        // Only skip if this is the ONLY payment with this amount/date AND it was already added
+        if (paymentsWithSameAmountDate.length === 1) {
+          // This is the only payment with this amount/date, check if it was added (any index)
+          let foundMatch = false;
+          for (let idx = 0; idx < payments.length; idx++) {
+            const transactionKey = `sale_payment-${sale.id}-${amount.toFixed(2)}-${dateStr}-${idx}`;
+            if (addedTransactionKeys.has(transactionKey)) {
+              foundMatch = true;
+              break;
+            }
+          }
+          if (foundMatch) {
+            continue;
+          }
+        }
+        // If multiple payments have same amount/date, add all of them (don't skip)
 
         // Only add if payment type is cash, bank_transfer, or card (not credit)
         const paymentType = payment.type || sale.paymentType || "cash";
@@ -1341,13 +1388,48 @@ class ReportService {
         }
 
         // Check if we already added this from BalanceTransactions
-        // Use amount and date to match with BalanceTransaction
+        // Use amount, date, and payment index to match with BalanceTransaction
         const dateStr = `${year}-${month}-${day}`;
         const amount = Number(payment.amount || 0);
-        const transactionKey = `purchase_payment-${purchase.id}-${amount.toFixed(2)}-${dateStr}`;
-        if (addedTransactionKeys.has(transactionKey)) {
-          continue;
+        
+        // Count how many payments have the same amount and date
+        const paymentsWithSameAmountDate = payments.filter((p: any, pIdx: number) => {
+          const pDate = p.date ? parsePaymentDate(p.date) : null;
+          let pDateStr: string;
+          if (!pDate) {
+            const purchaseDate = new Date(purchase.date);
+            const { year: pYear, month: pMonth, day: pDay } = extractDateComponents(purchaseDate);
+            pDateStr = `${pYear}-${pMonth}-${pDay}`;
+          } else {
+            const { year: pYear, month: pMonth, day: pDay } = extractDateComponents(pDate);
+            pDateStr = `${pYear}-${pMonth}-${pDay}`;
+          }
+          return pDateStr === dateStr && Number(p.amount || 0).toFixed(2) === amount.toFixed(2);
+        });
+        
+        // Check if this exact payment index was already added
+        const exactKey = `purchase_payment-${purchase.id}-${amount.toFixed(2)}-${dateStr}-${paymentIndex}`;
+        if (addedTransactionKeys.has(exactKey)) {
+          continue; // This exact payment was already added
         }
+        
+        // If there are multiple payments with same amount/date, don't skip based on generic match
+        // Only skip if this is the ONLY payment with this amount/date AND it was already added
+        if (paymentsWithSameAmountDate.length === 1) {
+          // This is the only payment with this amount/date, check if it was added (any index)
+          let foundMatch = false;
+          for (let idx = 0; idx < payments.length; idx++) {
+            const transactionKey = `purchase_payment-${purchase.id}-${amount.toFixed(2)}-${dateStr}-${idx}`;
+            if (addedTransactionKeys.has(transactionKey)) {
+              foundMatch = true;
+              break;
+            }
+          }
+          if (foundMatch) {
+            continue;
+          }
+        }
+        // If multiple payments have same amount/date, add all of them (don't skip)
 
         const paymentType = payment.type || "cash";
         const type = "expense";

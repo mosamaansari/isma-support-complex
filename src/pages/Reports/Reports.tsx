@@ -9,7 +9,7 @@ import Button from "../../components/ui/button/Button";
 import { DownloadIcon } from "../../icons";
 import api from "../../services/api";
 import { DailyReport, DateRangeReport } from "../../types";
-import { getTodayDate, formatBackendDate, parseUTCDateString } from "../../utils/dateHelpers";
+import { getTodayDate, formatBackendDate, parseUTCDateString, formatBackendDateWithTime } from "../../utils/dateHelpers";
 import { extractErrorMessage } from "../../utils/errorHandler";
 import { formatCompleteAmount } from "../../utils/priceHelpers";
 
@@ -104,16 +104,31 @@ export default function Reports() {
         if (dateRangeReportData?.transactions) {
           // Date range report has transactions array - use them directly
           // Convert datetime strings to Date objects if needed, then sort
+          // Use parseUTCDateString to avoid timezone conversion issues
           const sortedTransactions = [...dateRangeReportData.transactions]
-            .map((t: any) => ({
-              ...t,
-              datetime: t.datetime instanceof Date 
-                ? t.datetime 
-                : new Date(t.datetime || t.date || 0)
-            }))
+            .map((t: any) => {
+              const dateInput = t.datetime || t.date;
+              let parsedDate: Date | null = null;
+              
+              if (dateInput) {
+                if (dateInput instanceof Date) {
+                  // If already a Date, parse it using UTC components
+                  parsedDate = parseUTCDateString(dateInput);
+                } else {
+                  // If it's a string, parse it
+                  parsedDate = parseUTCDateString(dateInput);
+                }
+              }
+              
+              return {
+                ...t,
+                datetime: parsedDate || (dateInput instanceof Date ? dateInput : new Date(dateInput || 0))
+              };
+            })
+            .filter((t: any) => t.datetime && !isNaN(t.datetime.getTime())) // Filter out invalid dates
             .sort((a, b) => {
-              const dateA = a.datetime instanceof Date ? a.datetime : new Date(a.datetime);
-              const dateB = b.datetime instanceof Date ? b.datetime : new Date(b.datetime);
+              const dateA = a.datetime instanceof Date ? a.datetime : parseUTCDateString(a.datetime) || new Date(0);
+              const dateB = b.datetime instanceof Date ? b.datetime : parseUTCDateString(b.datetime) || new Date(0);
               return dateA.getTime() - dateB.getTime();
             });
           setChronologicalTransactions(sortedTransactions);
@@ -1437,30 +1452,7 @@ export default function Reports() {
                             }`}
                           >
                             <td className="p-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                              {(() => {
-                                const dateInput = transaction.datetime || transaction.date;
-                                if (!dateInput) return "-";
-                                
-                                // Parse UTC date string without timezone conversion
-                                const dt = parseUTCDateString(dateInput);
-                                if (!dt || isNaN(dt.getTime())) {
-                                  return "-";
-                                }
-                                
-                                // Format: Date and Time using the correctly parsed date
-                                const dateStr = dt.toLocaleDateString("en-US", {
-                                  year: "numeric",
-                                  month: "2-digit",
-                                  day: "2-digit",
-                                });
-                                const timeStr = dt.toLocaleTimeString("en-US", {
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                  second: "2-digit",
-                                  hour12: true,
-                                });
-                                return `${dateStr} ${timeStr}`;
-                              })()}
+                              {formatBackendDateWithTime(transaction.datetime || transaction.date)}
                             </td>
                             <td className="p-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">
                               {transaction.type}

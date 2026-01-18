@@ -56,6 +56,9 @@ router.get(
         "string.isoDate": "Date must be a valid ISO date",
         "any.required": "Date is required",
       }),
+      storedOnly: Joi.string().optional().valid("true", "false").messages({
+        "any.only": "storedOnly must be either 'true' or 'false'",
+      }),
     })
   ),
   openingBalanceController.getOpeningBalance.bind(openingBalanceController)
