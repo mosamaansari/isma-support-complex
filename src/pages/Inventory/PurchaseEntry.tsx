@@ -258,43 +258,16 @@ export default function PurchaseEntry() {
         const currentSingle = item.costSingle ?? item.cost ?? undefined;
         const currentDozen = item.costDozen ?? (currentSingle !== undefined ? currentSingle * 12 : undefined);
 
-        // Convert entered quantities when switching between modes
-        const prevType: "single" | "dozen" = item.priceType || "single";
-        const shopEntered = Number(item.shopQuantity || 0);
-        const warehouseEntered = Number(item.warehouseQuantity || 0);
-
-        let nextShopQty = shopEntered;
-        let nextWarehouseQty = warehouseEntered;
-
-        if (prevType !== priceType) {
-          if (prevType === "single" && priceType === "dozen") {
-            // Switching units -> dozens: automatically convert (allow fractional dozens)
-            // Convert total quantity to dozens and distribute proportionally
-            const totalUnits = shopEntered + warehouseEntered;
-            if (totalUnits > 0) {
-              const shopRatio = shopEntered / totalUnits;
-              const warehouseRatio = warehouseEntered / totalUnits;
-              const totalDozens = totalUnits / 12;
-              nextShopQty = totalDozens * shopRatio;
-              nextWarehouseQty = totalDozens * warehouseRatio;
-            } else {
-              nextShopQty = 0;
-              nextWarehouseQty = 0;
-            }
-          }
-          if (prevType === "dozen" && priceType === "single") {
-            // Switching dozens -> units: multiply by 12
-            nextShopQty = shopEntered * 12;
-            nextWarehouseQty = warehouseEntered * 12;
-          }
-        }
-
+        // Don't change qty values when switching price type
+        // Keep the same qty values, only update priceType
+        // Units will be calculated automatically in recalcItem based on priceType
         return recalcItem(item, {
           priceType,
           costSingle: currentSingle,
           costDozen: currentDozen,
-          shopQuantity: nextShopQty,
-          warehouseQuantity: nextWarehouseQty,
+          // Keep existing qty values - don't change them
+          shopQuantity: item.shopQuantity,
+          warehouseQuantity: item.warehouseQuantity,
         } as any);
       })
     );
@@ -724,40 +697,54 @@ export default function PurchaseEntry() {
                               Rs. {(((item as any).costSingle ?? item.cost) || 0).toFixed(2)}
                             </td>
                             <td className="p-3">
-                              <Input
-                                type="number"
-                                min="0"
-                                value={item.shopQuantity === undefined || item.shopQuantity === null ? "" : item.shopQuantity}
-                                onChange={(e) => {
-                                  const value = e.target.value;
-                                  if (value === "" || value === null || value === undefined) {
-                                    updateItemShopQuantity(item.productId, undefined);
-                                  } else {
-                                    const numValue = parseInt(value);
-                                    updateItemShopQuantity(item.productId, isNaN(numValue) ? undefined : numValue);
-                                  }
-                                }}
-                                className="w-full text-sm"
-                                placeholder="0"
-                              />
+                              <div className="space-y-1">
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  value={item.shopQuantity === undefined || item.shopQuantity === null ? "" : item.shopQuantity}
+                                  onChange={(e) => {
+                                    const value = e.target.value;
+                                    if (value === "" || value === null || value === undefined) {
+                                      updateItemShopQuantity(item.productId, undefined);
+                                    } else {
+                                      const numValue = parseInt(value);
+                                      updateItemShopQuantity(item.productId, isNaN(numValue) ? undefined : numValue);
+                                    }
+                                  }}
+                                  className="w-full text-sm"
+                                  placeholder={((item as any).priceType || "single") === "dozen" ? "Dozen" : "Units"}
+                                />
+                                {((item as any).priceType || "single") === "dozen" && (
+                                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                                    Units: {((item.shopQuantity || 0) * 12).toFixed(0)}
+                                  </div>
+                                )}
+                              </div>
                             </td>
                             <td className="p-3">
-                              <Input
-                                type="number"
-                                min="0"
-                                value={item.warehouseQuantity === undefined || item.warehouseQuantity === null ? "" : item.warehouseQuantity}
-                                onChange={(e) => {
-                                  const value = e.target.value;
-                                  if (value === "" || value === null || value === undefined) {
-                                    updateItemWarehouseQuantity(item.productId, undefined);
-                                  } else {
-                                    const numValue = parseInt(value);
-                                    updateItemWarehouseQuantity(item.productId, isNaN(numValue) ? undefined : numValue);
-                                  }
-                                }}
-                                className="w-full text-sm"
-                                placeholder="0"
-                              />
+                              <div className="space-y-1">
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  value={item.warehouseQuantity === undefined || item.warehouseQuantity === null ? "" : item.warehouseQuantity}
+                                  onChange={(e) => {
+                                    const value = e.target.value;
+                                    if (value === "" || value === null || value === undefined) {
+                                      updateItemWarehouseQuantity(item.productId, undefined);
+                                    } else {
+                                      const numValue = parseInt(value);
+                                      updateItemWarehouseQuantity(item.productId, isNaN(numValue) ? undefined : numValue);
+                                    }
+                                  }}
+                                  className="w-full text-sm"
+                                  placeholder={((item as any).priceType || "single") === "dozen" ? "Dozen" : "Units"}
+                                />
+                                {((item as any).priceType || "single") === "dozen" && (
+                                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                                    Units: {((item.warehouseQuantity || 0) * 12).toFixed(0)}
+                                  </div>
+                                )}
+                              </div>
                             </td>
                             <td className="p-3 text-sm text-gray-700 dark:text-gray-300">
                               <div className="font-semibold">

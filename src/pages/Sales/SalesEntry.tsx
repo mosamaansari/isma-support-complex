@@ -289,8 +289,8 @@ export default function SalesEntry() {
         productId: product.id,
         productName: product.name,
         quantity: 1,
-        shopQuantity: 1,
-        warehouseQuantity: 0,
+        shopQuantity: null as any,
+        warehouseQuantity: null as any,
         unitPrice: product.salePrice || 0,
         customPrice: undefined,
         priceType: "single",
@@ -298,7 +298,7 @@ export default function SalesEntry() {
         priceDozen: (product.salePrice || 0) * 12,
         discount: undefined,
         discountType: "percent",
-        total: (product.salePrice || 0) * 1,
+        total: 0,
         product,
       } as SaleItem & { product: Product };
 
@@ -319,36 +319,17 @@ export default function SalesEntry() {
             : (item.customPrice === null ? undefined : unitPrice);
         const currentDozen = currentSingle !== undefined && currentSingle !== null ? (item.priceDozen ?? currentSingle * 12) : undefined;
 
-        const prevType: "single" | "dozen" = item.priceType || "single";
-        const shopEntered = Number(item.shopQuantity || 0);
-        const warehouseEntered = Number(item.warehouseQuantity || 0);
-        let nextShop = item.shopQuantity;
-        let nextWarehouse = item.warehouseQuantity;
-
-        if (prevType === "single" && priceType === "dozen") {
-          const shopRem = shopEntered % 12;
-          const whRem = warehouseEntered % 12;
-          if (shopRem !== 0 || whRem !== 0) {
-            const parts: string[] = [];
-            if (shopRem !== 0) parts.push(`Shop: ${shopEntered} (${shopRem} extra)`);
-            if (whRem !== 0) parts.push(`Warehouse: ${warehouseEntered} (${whRem} extra)`);
-            showError("Dozen requires multiples of 12. " + parts.join(". "));
-            return item;
-          }
-          nextShop = shopEntered / 12;
-          nextWarehouse = warehouseEntered / 12;
-        } else if (prevType === "dozen" && priceType === "single") {
-          nextShop = shopEntered * 12;
-          nextWarehouse = warehouseEntered * 12;
-        }
-
+        // Don't change qty values when switching price type
+        // Keep the same qty values, only update priceType
+        // Units will be calculated automatically in recalcItemTotals based on priceType
         return recalcItemTotals(item, {
           priceType,
           customPrice: item.customPrice,
           priceSingle: currentSingle,
           priceDozen: currentDozen,
-          shopQuantity: nextShop,
-          warehouseQuantity: nextWarehouse,
+          // Keep existing qty values - don't change them
+          shopQuantity: item.shopQuantity,
+          warehouseQuantity: item.warehouseQuantity,
         } as any);
       })
     );
