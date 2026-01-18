@@ -401,6 +401,15 @@ export default function PurchaseEntry() {
       const priceType: "single" | "dozen" = (item as any).priceType || "single";
       const shopEntered = Number(item.shopQuantity || 0);
       const warehouseEntered = Number(item.warehouseQuantity || 0);
+      const totalQty = (shopEntered + warehouseEntered) * (priceType === "dozen" ? 12 : 1);
+      
+      // Validate quantity > 0
+      if (!totalQty || totalQty <= 0) {
+        showError(`Quantity for "${item.productName || 'product'}" must be greater than 0. Please enter shop or warehouse quantity.`);
+        setIsSubmitting(false);
+        return;
+      }
+      
       if (priceType === "dozen") {
         if (!Number.isInteger(shopEntered) || !Number.isInteger(warehouseEntered)) {
           showError(`Dozen quantity must be a whole number for ${item.productName || 'product'}`);
@@ -408,7 +417,7 @@ export default function PurchaseEntry() {
           return;
         }
       }
-      // Allow 0 quantity - no validation needed
+      
       // Validate cost - allow 0 or greater (similar to sales)
       const effectiveCost = (item as any).costSingle ?? item.cost ?? 0;
       if (effectiveCost === undefined || effectiveCost === null || effectiveCost < 0) {
