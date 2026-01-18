@@ -568,11 +568,13 @@ class SaleService {
       
       if (validPayments.length > 0) {
         // We have valid payments - process them
-        // Store dates as-is without parsing (no timezone conversion)
+        // Store dates as ISO strings without UTC conversion (no "Z" suffix)
         const saleDate = data.date || formatDateToLocalISO(getCurrentLocalDateTime());
         payments = validPayments.map((payment: any) => ({
           ...payment,
-          date: data.date ? parseLocalISO(data.date) : getCurrentLocalDateTime(), // Use payment date if provided, otherwise use sale date (no parsing)
+          // Use formatDateToLocalISO to ensure date is stored as string without "Z" suffix
+          // This matches how addPaymentToSale stores dates
+          date: data.date ? (typeof data.date === 'string' ? data.date : formatDateToLocalISO(parseLocalISO(data.date))) : formatDateToLocalISO(getCurrentLocalDateTime()),
         }));
         const totalPaid = payments.reduce((sum, payment) => sum + (payment.amount || 0), 0);
         remainingBalance = total - totalPaid;
@@ -594,14 +596,16 @@ class SaleService {
       const paymentType = (data.paymentType || "cash") as "cash" | "bank_transfer";
       const paymentAmount = total;
       remainingBalance = 0;
-      // Store date as-is without parsing (no timezone conversion)
+      // Store date as ISO string without UTC conversion (no "Z" suffix)
       const saleDate = data.date || formatDateToLocalISO(getCurrentLocalDateTime());
 
       payments = [{
         type: paymentType,
         amount: paymentAmount,
         bankAccountId: data.bankAccountId || undefined,
-        date: data.date ? parseLocalISO(data.date) : getCurrentLocalDateTime(), // Use sale date as-is (no parsing)
+        // Use formatDateToLocalISO to ensure date is stored as string without "Z" suffix
+        // This matches how addPaymentToSale stores dates
+        date: data.date ? (typeof data.date === 'string' ? data.date : formatDateToLocalISO(parseLocalISO(data.date))) : formatDateToLocalISO(getCurrentLocalDateTime()),
       }];
     } else {
       // No payments array provided (or payments is null) - user hasn't made any payment

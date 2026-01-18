@@ -173,9 +173,18 @@ class ExpenseService {
     // Update balance atomically for expense using balance management service
     // Balance already validated above, now update after successful creation
     try {
+      // Extract date components from expense.date in local timezone to avoid timezone conversion issues
+      // This ensures the same date that was intended is stored in balance_transactions
+      const expenseDate = new Date(expense.date);
+      const dateYear = expenseDate.getFullYear();
+      const dateMonth = expenseDate.getMonth();
+      const dateDay = expenseDate.getDate();
+      // Create a date object using local date components (will be normalized by balance management service)
+      const expenseDateForBalance = new Date(dateYear, dateMonth, dateDay);
+
       if (expense.paymentType === "cash") {
         await balanceManagementService.updateCashBalance(
-          expense.date,
+          expenseDateForBalance,
           Number(expense.amount),
           "expense",
           {
@@ -189,7 +198,7 @@ class ExpenseService {
       } else if (expense.bankAccountId) {
         await balanceManagementService.updateBankBalance(
           expense.bankAccountId,
-          expense.date,
+          expenseDateForBalance,
           Number(expense.amount),
           "expense",
           {
@@ -203,7 +212,7 @@ class ExpenseService {
       } else if (expense.cardId) {
         await balanceManagementService.updateCardBalance(
           expense.cardId,
-          expense.date,
+          expenseDateForBalance,
           Number(expense.amount),
           "expense",
           {

@@ -244,9 +244,14 @@ class BalanceManagementService {
       if (!todayBalance) {
         // Create new opening balance record - this should represent the balance at START of day
         // We use beforeBalance if it's the first transaction
+        // IMPORTANT: Use noon (12:00:00) for @db.Date column to avoid timezone conversion issues
+        // Parse dateStr (YYYY-MM-DD) and create date at noon
+        const [year, month, day] = dateStr.split("-").map(v => parseInt(v, 10));
+        const dateObjForDB = new Date(year, month - 1, day, 12, 0, 0, 0);
+        
         await tx.dailyOpeningBalance.create({
           data: {
-            date: new Date(dateStr),
+            date: dateObjForDB,
             cashBalance: beforeBalance,
             bankBalances: [],
             userId: actualUserId,
@@ -261,14 +266,14 @@ class BalanceManagementService {
       // Running balance is tracked via BalanceTransactions and latest transaction afterBalance.
 
       // Create balance transaction record with detailed tracking
-      // Use the provided date but with current time to preserve exact transaction time
-      // IMPORTANT: Extract date components first to preserve the calendar date, then set time
-      // This ensures @db.Date column stores the correct date regardless of timezone
-      const now = new Date();
+      // IMPORTANT: Use noon (12:00:00) for @db.Date column to avoid timezone conversion issues
+      // When Prisma stores as DATE type, it extracts the date part
+      // Using noon ensures that even if converted to UTC, the date part remains correct
+      // Pakistan is UTC+5, so 12:00 PKT = 07:00 UTC (same date)
       const dateYear = date.getFullYear();
       const dateMonth = date.getMonth();
       const dateDay = date.getDate();
-      const transactionDate = new Date(dateYear, dateMonth, dateDay, now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+      const transactionDate = new Date(dateYear, dateMonth, dateDay, 12, 0, 0, 0);
 
       const transaction = await balanceTransactionService.createTransaction({
         date: transactionDate,
@@ -398,9 +403,14 @@ class BalanceManagementService {
 
       if (!todayBalance) {
         // Create new opening balance
+        // IMPORTANT: Use noon (12:00:00) for @db.Date column to avoid timezone conversion issues
+        // Parse dateStr (YYYY-MM-DD) and create date at noon
+        const [year, month, day] = dateStr.split("-").map(v => parseInt(v, 10));
+        const dateObjForDB = new Date(year, month - 1, day, 12, 0, 0, 0);
+        
         await tx.dailyOpeningBalance.create({
           data: {
-            date: new Date(dateStr),
+            date: dateObjForDB,
             cashBalance: 0,
             bankBalances: updatedBankBalances.map(b =>
               b.bankAccountId === bankAccountId ? { ...b, balance: beforeBalance } : b
@@ -416,14 +426,14 @@ class BalanceManagementService {
       // It stays as the initial opening balance for the day.
 
       // Create balance transaction record with detailed tracking
-      // Use the provided date but with current time to preserve exact transaction time
-      // IMPORTANT: Extract date components first to preserve the calendar date, then set time
-      // This ensures @db.Date column stores the correct date regardless of timezone
-      const now = new Date();
+      // IMPORTANT: Use noon (12:00:00) for @db.Date column to avoid timezone conversion issues
+      // When Prisma stores as DATE type, it extracts the date part
+      // Using noon ensures that even if converted to UTC, the date part remains correct
+      // Pakistan is UTC+5, so 12:00 PKT = 07:00 UTC (same date)
       const dateYear = date.getFullYear();
       const dateMonth = date.getMonth();
       const dateDay = date.getDate();
-      const transactionDate = new Date(dateYear, dateMonth, dateDay, now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+      const transactionDate = new Date(dateYear, dateMonth, dateDay, 12, 0, 0, 0);
 
       const transaction = await balanceTransactionService.createTransaction({
         date: transactionDate,
@@ -616,9 +626,14 @@ class BalanceManagementService {
 
       if (!todayBalance) {
         // Create new opening balance record
+        // IMPORTANT: Use noon (12:00:00) for @db.Date column to avoid timezone conversion issues
+        // Parse dateStr (YYYY-MM-DD) and create date at noon
+        const [year, month, day] = dateStr.split("-").map(v => parseInt(v, 10));
+        const dateObjForDB = new Date(year, month - 1, day, 12, 0, 0, 0);
+        
         await tx.dailyOpeningBalance.create({
           data: {
-            date: new Date(dateStr),
+            date: dateObjForDB,
             cashBalance: 0,
             bankBalances: [],
             cardBalances: updatedCardBalances,
@@ -631,14 +646,14 @@ class BalanceManagementService {
       }
 
       // Create balance transaction record
-      // Use the provided date but with current time to preserve exact transaction time
-      // IMPORTANT: Extract date components first to preserve the calendar date, then set time
-      // This ensures @db.Date column stores the correct date regardless of timezone
-      const now = new Date();
+      // IMPORTANT: Use noon (12:00:00) for @db.Date column to avoid timezone conversion issues
+      // When Prisma stores as DATE type, it extracts the date part
+      // Using noon ensures that even if converted to UTC, the date part remains correct
+      // Pakistan is UTC+5, so 12:00 PKT = 07:00 UTC (same date)
       const dateYear = date.getFullYear();
       const dateMonth = date.getMonth();
       const dateDay = date.getDate();
-      const transactionDate = new Date(dateYear, dateMonth, dateDay, now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+      const transactionDate = new Date(dateYear, dateMonth, dateDay, 12, 0, 0, 0);
       
       const transaction = await balanceTransactionService.createTransaction({
         date: transactionDate,

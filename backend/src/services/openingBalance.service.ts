@@ -206,8 +206,15 @@ class OpeningBalanceService {
     }
 
     // Check if opening balance already exists for this date
-    const dateObj = new Date(data.date);
-    dateObj.setHours(0, 0, 0, 0);
+    // IMPORTANT: Use noon (12:00:00) for @db.Date column to avoid timezone conversion issues
+    // Parse date string (YYYY-MM-DD) and create date at noon
+    const dateParts = data.date.split("T")[0].split("-").map(v => parseInt(v, 10));
+    if (dateParts.length !== 3 || dateParts.some(n => isNaN(n))) {
+      throw new Error("Invalid date format. Expected YYYY-MM-DD");
+    }
+    const [year, month, day] = dateParts;
+    const dateObj = new Date(year, month - 1, day, 12, 0, 0, 0);
+    
     const existing = await prisma.dailyOpeningBalance.findUnique({
       where: { date: dateObj },
     });
