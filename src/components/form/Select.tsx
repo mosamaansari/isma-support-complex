@@ -12,6 +12,7 @@ interface SelectProps {
   className?: string;
   defaultValue?: string;
   value?: string;
+  disabled?: boolean;
 }
 
 const Select: React.FC<SelectProps> = ({
@@ -21,6 +22,7 @@ const Select: React.FC<SelectProps> = ({
   className = "",
   defaultValue = "",
   value,
+  disabled = false,
 }) => {
   // Manage the selected value - use controlled value if provided, otherwise use state
   const [internalValue, setInternalValue] = useState<string>(value || defaultValue);
@@ -40,9 +42,10 @@ const Select: React.FC<SelectProps> = ({
         selectedValue
           ? "text-gray-800 dark:text-white/90"
           : "text-gray-400 dark:text-gray-400"
-      } ${className}`}
+      } ${disabled ? "cursor-not-allowed opacity-50" : ""} ${className}`}
       value={selectedValue}
       onChange={handleChange}
+      disabled={disabled}
     >
       {/* Placeholder option */}
       <option

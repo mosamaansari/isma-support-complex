@@ -51,6 +51,10 @@ export default function PurchaseEntry() {
   const [selectedProducts, setSelectedProducts] = useState<
     (PurchaseItem & { product: Product })[]
   >([]);
+  // Store original quantities for edit mode to track changes
+  const [originalQuantities, setOriginalQuantities] = useState<Map<string, { shopQty: number; warehouseQty: number }>>(new Map());
+  // Track original payment count to identify old payments
+  const [originalPaymentCount, setOriginalPaymentCount] = useState<number>(0);
   const [searchTerm, setSearchTerm] = useState("");
   const [date, setDate] = useState(getTodayDate());
   const [tax, setTax] = useState<number | null>(null);
@@ -107,7 +111,10 @@ export default function PurchaseEntry() {
           setValue("date", purchaseDate);
           setTaxType((purchase.taxType as "percent" | "value") || "percent");
           setTax(purchase.tax ? Number(purchase.tax) : null);
-          setPayments((purchase.payments || []) as PurchasePayment[]);
+          const loadedPayments = (purchase.payments || []) as PurchasePayment[];
+          setPayments(loadedPayments);
+          // Track original payment count to identify old payments
+          setOriginalPaymentCount(loadedPayments.length);
 
           // Load products for items
           const itemsWithProducts = purchase.items.map((item: any) => {
@@ -136,6 +143,20 @@ export default function PurchaseEntry() {
             };
           });
           setSelectedProducts(itemsWithProducts);
+          
+          // Store original quantities for edit mode (in units, not display units)
+          const originalQtyMap = new Map<string, { shopQty: number; warehouseQty: number }>();
+          purchase.items.forEach((item: any) => {
+            const priceType: "single" | "dozen" = item.priceType || "single";
+            const rawShopQty = Number(item.shopQuantity || 0);
+            const rawWarehouseQty = Number(item.warehouseQuantity || 0);
+            // Store in units (not display units)
+            originalQtyMap.set(item.productId, {
+              shopQty: rawShopQty,
+              warehouseQty: rawWarehouseQty,
+            });
+          });
+          setOriginalQuantities(originalQtyMap);
         })
         .catch((err) => {
           console.error("Error loading purchase:", err);
@@ -232,6 +253,21 @@ export default function PurchaseEntry() {
     setSelectedProducts(
       selectedProducts.map((item) => {
         if (item.productId === productId) {
+          // Check if this is an old product (from backend)
+          const isOldProduct = originalQuantities.has(productId);
+          if (isOldProduct && shopQuantity !== undefined && shopQuantity !== null) {
+            // Get original quantity in display units
+            const originalQty = originalQuantities.get(productId);
+            if (originalQty) {
+              const priceType: "single" | "dozen" = (item as any).priceType || "single";
+              const originalDisplayShopQty = priceType === "dozen" ? originalQty.shopQty / 12 : originalQty.shopQty;
+              // Prevent decrease below original quantity
+              if (shopQuantity < originalDisplayShopQty) {
+                showError(`Cannot decrease shop quantity below original (${originalDisplayShopQty}). You can only increase it.`);
+                return item; // Return unchanged item
+              }
+            }
+          }
           return recalcItem(item as any, { shopQuantity });
         }
         return item;
@@ -243,6 +279,21 @@ export default function PurchaseEntry() {
     setSelectedProducts(
       selectedProducts.map((item) => {
         if (item.productId === productId) {
+          // Check if this is an old product (from backend)
+          const isOldProduct = originalQuantities.has(productId);
+          if (isOldProduct && warehouseQuantity !== undefined && warehouseQuantity !== null) {
+            // Get original quantity in display units
+            const originalQty = originalQuantities.get(productId);
+            if (originalQty) {
+              const priceType: "single" | "dozen" = (item as any).priceType || "single";
+              const originalDisplayWarehouseQty = priceType === "dozen" ? originalQty.warehouseQty / 12 : originalQty.warehouseQty;
+              // Prevent decrease below original quantity
+              if (warehouseQuantity < originalDisplayWarehouseQty) {
+                showError(`Cannot decrease warehouse quantity below original (${originalDisplayWarehouseQty}). You can only increase it.`);
+                return item; // Return unchanged item
+              }
+            }
+          }
           return recalcItem(item as any, { warehouseQuantity });
         }
         return item;
@@ -251,6 +302,12 @@ export default function PurchaseEntry() {
   };
 
   const updateItemPriceType = (productId: string, priceType: "single" | "dozen") => {
+    // Check if this is an old product (from backend)
+    const isOldProduct = originalQuantities.has(productId);
+    if (isOldProduct) {
+      showError("Cannot change price type for old products.");
+      return;
+    }
     setSelectedProducts(
       selectedProducts.map((item: any) => {
         if (item.productId !== productId) return item;
@@ -274,6 +331,12 @@ export default function PurchaseEntry() {
   };
 
   const updateItemPrice = (productId: string, price: number | undefined) => {
+    // Check if this is an old product (from backend)
+    const isOldProduct = originalQuantities.has(productId);
+    if (isOldProduct) {
+      showError("Cannot change price for old products.");
+      return;
+    }
     setSelectedProducts(
       selectedProducts.map((item) => {
         if (item.productId === productId) {
@@ -291,6 +354,12 @@ export default function PurchaseEntry() {
   };
 
   const removeItem = (productId: string) => {
+    // Check if this is an old product (from backend)
+    const isOldProduct = originalQuantities.has(productId);
+    if (isOldProduct) {
+      showError("Cannot remove old products. You can only add new products or increase quantities of existing ones.");
+      return;
+    }
     setSelectedProducts(
       selectedProducts.filter((item) => item.productId !== productId)
     );
@@ -321,10 +390,22 @@ export default function PurchaseEntry() {
   };
 
   const removePayment = (index: number) => {
+    // Check if this is an old payment (from backend)
+    const isOldPayment = index < originalPaymentCount;
+    if (isOldPayment) {
+      showError("Cannot remove old payments. You can only add new payments.");
+      return;
+    }
     setPayments(payments.filter((_, i) => i !== index));
   };
 
   const updatePayment = (index: number, field: keyof PurchasePayment, value: any) => {
+    // Check if this is an old payment (from backend)
+    const isOldPayment = index < originalPaymentCount;
+    if (isOldPayment) {
+      showError("Cannot edit old payments. You can only add new payments.");
+      return;
+    }
     setPayments(
       payments.map((payment, i) => {
         if (i === index) {
@@ -670,89 +751,135 @@ export default function PurchaseEntry() {
                               </div>
                             </td>
                             <td className="p-3">
-                              <Select
-                                value={((item as any).priceType || "single") as any}
-                                onChange={(value) => updateItemPriceType(item.productId, value as any)}
-                                options={[
-                                  { value: "single", label: "Per Qty" },
-                                  { value: "dozen", label: "Dozen" },
-                                ]}
-                              />
+                              {(() => {
+                                const isOldProduct = originalQuantities.has(item.productId);
+                                return (
+                                  <Select
+                                    value={((item as any).priceType || "single") as any}
+                                    onChange={(value) => updateItemPriceType(item.productId, value as any)}
+                                    disabled={isOldProduct}
+                                    options={[
+                                      { value: "single", label: "Per Qty" },
+                                      { value: "dozen", label: "Dozen" },
+                                    ]}
+                                  />
+                                );
+                              })()}
                             </td>
                             <td className="p-3">
-                              <Input
-                                type="number"
-                                step={0.01}
-                                min="0"
-                                value={
-                                  ((item as any).priceType || "single") === "dozen"
-                                    ? ((item as any).costDozen ?? "")
-                                    : ((item as any).costSingle ?? "")
-                                }
-                                onChange={(e) => {
-                                  const value = e.target.value;
-                                  if (value === "" || value === null || value === undefined) {
-                                    updateItemPrice(item.productId, undefined);
-                                  } else {
-                                    const numValue = parseFloat(value);
-                                    updateItemPrice(item.productId, isNaN(numValue) ? undefined : numValue);
-                                  }
-                                }}
-                                className="w-full text-sm"
-                                placeholder="0"
-                              />
+                              {(() => {
+                                const isOldProduct = originalQuantities.has(item.productId);
+                                return (
+                                  <Input
+                                    type="number"
+                                    step={0.01}
+                                    min="0"
+                                    value={
+                                      ((item as any).priceType || "single") === "dozen"
+                                        ? ((item as any).costDozen ?? "")
+                                        : ((item as any).costSingle ?? "")
+                                    }
+                                    onChange={(e) => {
+                                      const value = e.target.value;
+                                      if (value === "" || value === null || value === undefined) {
+                                        updateItemPrice(item.productId, undefined);
+                                      } else {
+                                        const numValue = parseFloat(value);
+                                        updateItemPrice(item.productId, isNaN(numValue) ? undefined : numValue);
+                                      }
+                                    }}
+                                    disabled={isOldProduct}
+                                    className="w-full text-sm"
+                                    placeholder="0"
+                                  />
+                                );
+                              })()}
                             </td>
                             <td className="p-3 text-sm text-gray-700 dark:text-gray-300">
                               Rs. {(((item as any).costSingle ?? item.cost) || 0).toFixed(2)}
                             </td>
                             <td className="p-3">
                               <div className="space-y-1">
-                                <Input
-                                  type="number"
-                                  min="0"
-                                  value={item.shopQuantity === undefined || item.shopQuantity === null ? "" : item.shopQuantity}
-                                  onChange={(e) => {
-                                    const value = e.target.value;
-                                    if (value === "" || value === null || value === undefined) {
-                                      updateItemShopQuantity(item.productId, undefined);
-                                    } else {
-                                      const numValue = parseInt(value);
-                                      updateItemShopQuantity(item.productId, isNaN(numValue) ? undefined : numValue);
-                                    }
-                                  }}
-                                  className="w-full text-sm"
-                                  placeholder={((item as any).priceType || "single") === "dozen" ? "Dozen" : "Units"}
-                                />
-                                {((item as any).priceType || "single") === "dozen" && (
-                                  <div className="text-xs text-gray-500 dark:text-gray-400">
-                                    Units: {((item.shopQuantity || 0) * 12).toFixed(0)}
-                                  </div>
-                                )}
+                                {(() => {
+                                  const isOldProduct = originalQuantities.has(item.productId);
+                                  const originalQty = isOldProduct ? originalQuantities.get(item.productId) : null;
+                                  const priceType: "single" | "dozen" = (item as any).priceType || "single";
+                                  const minValue = isOldProduct && originalQty 
+                                    ? (priceType === "dozen" ? originalQty.shopQty / 12 : originalQty.shopQty)
+                                    : 0;
+                                  return (
+                                    <>
+                                      <Input
+                                        type="number"
+                                        min={String(minValue)}
+                                        value={item.shopQuantity === undefined || item.shopQuantity === null ? "" : item.shopQuantity}
+                                        onChange={(e) => {
+                                          const value = e.target.value;
+                                          if (value === "" || value === null || value === undefined) {
+                                            updateItemShopQuantity(item.productId, undefined);
+                                          } else {
+                                            const numValue = parseInt(value);
+                                            updateItemShopQuantity(item.productId, isNaN(numValue) ? undefined : numValue);
+                                          }
+                                        }}
+                                        className="w-full text-sm"
+                                        placeholder={priceType === "dozen" ? "Dozen" : "Units"}
+                                      />
+                                      {isOldProduct && (
+                                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                                          Min: {minValue.toFixed(priceType === "dozen" ? 0 : 2)}
+                                        </div>
+                                      )}
+                                      {priceType === "dozen" && (
+                                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                                          Units: {((item.shopQuantity || 0) * 12).toFixed(0)}
+                                        </div>
+                                      )}
+                                    </>
+                                  );
+                                })()}
                               </div>
                             </td>
                             <td className="p-3">
                               <div className="space-y-1">
-                                <Input
-                                  type="number"
-                                  min="0"
-                                  value={item.warehouseQuantity === undefined || item.warehouseQuantity === null ? "" : item.warehouseQuantity}
-                                  onChange={(e) => {
-                                    const value = e.target.value;
-                                    if (value === "" || value === null || value === undefined) {
-                                      updateItemWarehouseQuantity(item.productId, undefined);
-                                    } else {
-                                      const numValue = parseInt(value);
-                                      updateItemWarehouseQuantity(item.productId, isNaN(numValue) ? undefined : numValue);
-                                    }
-                                  }}
-                                  className="w-full text-sm"
-                                  placeholder={((item as any).priceType || "single") === "dozen" ? "Dozen" : "Units"}
-                                />
-                                {((item as any).priceType || "single") === "dozen" && (
-                                  <div className="text-xs text-gray-500 dark:text-gray-400">
-                                    Units: {((item.warehouseQuantity || 0) * 12).toFixed(0)}
-                                  </div>
-                                )}
+                                {(() => {
+                                  const isOldProduct = originalQuantities.has(item.productId);
+                                  const originalQty = isOldProduct ? originalQuantities.get(item.productId) : null;
+                                  const priceType: "single" | "dozen" = (item as any).priceType || "single";
+                                  const minValue = isOldProduct && originalQty 
+                                    ? (priceType === "dozen" ? originalQty.warehouseQty / 12 : originalQty.warehouseQty)
+                                    : 0;
+                                  return (
+                                    <>
+                                      <Input
+                                        type="number"
+                                        min={String(minValue)}
+                                        value={item.warehouseQuantity === undefined || item.warehouseQuantity === null ? "" : item.warehouseQuantity}
+                                        onChange={(e) => {
+                                          const value = e.target.value;
+                                          if (value === "" || value === null || value === undefined) {
+                                            updateItemWarehouseQuantity(item.productId, undefined);
+                                          } else {
+                                            const numValue = parseInt(value);
+                                            updateItemWarehouseQuantity(item.productId, isNaN(numValue) ? undefined : numValue);
+                                          }
+                                        }}
+                                        className="w-full text-sm"
+                                        placeholder={priceType === "dozen" ? "Dozen" : "Units"}
+                                      />
+                                      {isOldProduct && (
+                                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                                          Min: {minValue.toFixed(priceType === "dozen" ? 0 : 2)}
+                                        </div>
+                                      )}
+                                      {priceType === "dozen" && (
+                                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                                          Units: {((item.warehouseQuantity || 0) * 12).toFixed(0)}
+                                        </div>
+                                      )}
+                                    </>
+                                  );
+                                })()}
                               </div>
                             </td>
                             <td className="p-3 text-sm text-gray-700 dark:text-gray-300">
@@ -773,12 +900,23 @@ export default function PurchaseEntry() {
                               </div>
                             </td>
                             <td className="p-3 text-center">
-                              <button
-                                onClick={() => removeItem(item.productId)}
-                                className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 transition-colors"
-                              >
-                                <TrashBinIcon className="w-5 h-5" />
-                              </button>
+                              {(() => {
+                                const isOldProduct = originalQuantities.has(item.productId);
+                                return (
+                                  <button
+                                    onClick={() => removeItem(item.productId)}
+                                    disabled={isOldProduct}
+                                    className={`transition-colors ${
+                                      isOldProduct
+                                        ? "text-gray-400 cursor-not-allowed dark:text-gray-600"
+                                        : "text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
+                                    }`}
+                                    title={isOldProduct ? "Cannot remove old products" : "Remove product"}
+                                  >
+                                    <TrashBinIcon className="w-5 h-5" />
+                                  </button>
+                                );
+                              })()}
                             </td>
                           </tr>
                         ))}
@@ -888,92 +1026,107 @@ export default function PurchaseEntry() {
                   Payment Methods
                 </h2>
                 <div className="space-y-3">
-                  {payments.map((payment, index) => (
-                    <div key={index} className="p-3 border border-gray-200 rounded-lg dark:border-gray-700">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                          Payment {index + 1}
-                        </span>
-                        <button
-                          onClick={() => removePayment(index)}
-                          className="text-red-600 hover:text-red-700"
-                        >
-                          <TrashBinIcon className="w-4 h-4" />
-                        </button>
-                      </div>
-                      <div className="space-y-2">
-                        <div>
-                          <Label>Payment Type <span className="text-error-500">*</span></Label>
-                          <Select
-                            value={payment.type}
-                            onChange={(value) => updatePayment(index, "type", value)}
-                            options={[
-                              { value: "cash", label: "Cash" },
-                              { value: "bank_transfer", label: "Bank Transfer" },
-                            ]}
-                          />
-                        </div>
-                        {payment.type === "bank_transfer" && (
-                          <div className="mt-2">
-                            <Label>
-                              Select Bank Account <span className="text-error-500">*</span>
-                            </Label>
-                            {bankAccounts.filter((acc) => acc.isActive).length === 0 ? (
-                              <div className="p-2 text-sm text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 rounded">
-                                No active bank accounts available. Please add a bank account in Settings.
-                              </div>
-                            ) : (
-                              <>
-                                <Select
-                                  value={payment.bankAccountId || ""}
-                                  onChange={(value) => updatePayment(index, "bankAccountId", value)}
-                                  options={[
-                                    { value: "", label: "Select a bank account" },
-                                    ...bankAccounts
-                                      .filter((acc) => acc.isActive)
-                                      .map((acc) => ({
-                                        value: acc.id,
-                                        label: `${acc.accountName} - ${acc.bankName}${acc.isDefault ? " (Default)" : ""}`,
-                                      })),
-                                  ]}
-                                />
-                                {!payment.bankAccountId && (
-                                  <p className="mt-1 text-xs text-error-500">
-                                    Please select a bank account for this payment
-                                  </p>
-                                )}
-                                {payment.bankAccountId && (
-                                  <p className="mt-1 text-xs text-green-600 dark:text-green-400">
-                                    Bank account selected: {bankAccounts.find(acc => acc.id === payment.bankAccountId)?.accountName}
-                                  </p>
-                                )}
-                              </>
+                  {payments.map((payment, index) => {
+                    const isOldPayment = index < originalPaymentCount;
+                    return (
+                      <div key={index} className="p-3 border border-gray-200 rounded-lg dark:border-gray-700">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                            Payment {index + 1}
+                            {isOldPayment && (
+                              <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">(Old)</span>
                             )}
+                          </span>
+                          <button
+                            onClick={() => removePayment(index)}
+                            disabled={isOldPayment}
+                            className={`${
+                              isOldPayment
+                                ? "text-gray-400 cursor-not-allowed dark:text-gray-600"
+                                : "text-red-600 hover:text-red-700"
+                            }`}
+                            title={isOldPayment ? "Cannot remove old payments" : "Remove payment"}
+                          >
+                            <TrashBinIcon className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <div className="space-y-2">
+                          <div>
+                            <Label>Payment Type <span className="text-error-500">*</span></Label>
+                            <Select
+                              value={payment.type}
+                              onChange={(value) => updatePayment(index, "type", value)}
+                              disabled={isOldPayment}
+                              options={[
+                                { value: "cash", label: "Cash" },
+                                { value: "bank_transfer", label: "Bank Transfer" },
+                              ]}
+                            />
                           </div>
-                        )}
-                        <div>
-                          <Label>Amount (Optional)</Label>
-                          <Input
-                            type="number"
-                            step={0.01}
-                            min="0"
-                            max={String(total - totalPaid + (payment.amount || 0))}
-                            value={payment.amount === undefined || payment.amount === null ? "" : payment.amount}
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              if (value === "" || value === null || value === undefined) {
-                                updatePayment(index, "amount", undefined);
-                              } else {
-                                const numValue = parseFloat(value);
-                                updatePayment(index, "amount", isNaN(numValue) ? undefined : numValue);
-                              }
-                            }}
-                            placeholder="Enter amount (optional)"
-                          />
+                          {payment.type === "bank_transfer" && (
+                            <div className="mt-2">
+                              <Label>
+                                Select Bank Account <span className="text-error-500">*</span>
+                              </Label>
+                              {bankAccounts.filter((acc) => acc.isActive).length === 0 ? (
+                                <div className="p-2 text-sm text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 rounded">
+                                  No active bank accounts available. Please add a bank account in Settings.
+                                </div>
+                              ) : (
+                                <>
+                                  <Select
+                                    value={payment.bankAccountId || ""}
+                                    onChange={(value) => updatePayment(index, "bankAccountId", value)}
+                                    disabled={isOldPayment}
+                                    options={[
+                                      { value: "", label: "Select a bank account" },
+                                      ...bankAccounts
+                                        .filter((acc) => acc.isActive)
+                                        .map((acc) => ({
+                                          value: acc.id,
+                                          label: `${acc.accountName} - ${acc.bankName}${acc.isDefault ? " (Default)" : ""}`,
+                                        })),
+                                    ]}
+                                  />
+                                  {!payment.bankAccountId && (
+                                    <p className="mt-1 text-xs text-error-500">
+                                      Please select a bank account for this payment
+                                    </p>
+                                  )}
+                                  {payment.bankAccountId && (
+                                    <p className="mt-1 text-xs text-green-600 dark:text-green-400">
+                                      Bank account selected: {bankAccounts.find(acc => acc.id === payment.bankAccountId)?.accountName}
+                                    </p>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          )}
+                          <div>
+                            <Label>Amount (Optional)</Label>
+                            <Input
+                              type="number"
+                              step={0.01}
+                              min="0"
+                              max={String(total - totalPaid + (payment.amount || 0))}
+                              value={payment.amount === undefined || payment.amount === null ? "" : payment.amount}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                if (value === "" || value === null || value === undefined) {
+                                  updatePayment(index, "amount", undefined);
+                                } else {
+                                  const numValue = parseFloat(value);
+                                  updatePayment(index, "amount", isNaN(numValue) ? undefined : numValue);
+                                }
+                              }}
+                              disabled={isOldPayment}
+                              placeholder="Enter amount (optional)"
+                            />
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                   <Button
                     onClick={addPayment}
                     variant="outline"

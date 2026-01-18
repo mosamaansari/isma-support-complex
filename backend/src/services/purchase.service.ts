@@ -653,21 +653,13 @@ class PurchaseService {
             (oldItem.toWarehouse === false ? 0 : oldItem.quantity)
           );
 
-          // Check if item is being removed or quantity decreased
+          // Check if item is being removed or quantity changed
           const newItem = data.items.find((item: any) => item.productId === oldItem.productId);
           if (!newItem) {
-            // Item is being removed - check if we have enough stock to remove
-            const currentShopStock = Number(product.shopQuantity || 0);
-            const currentWarehouseStock = Number(product.warehouseQuantity || 0);
-            
-            if (currentShopStock < revertShopQty) {
-              throw new Error(`Cannot remove item "${product.name}". Shop stock (${currentShopStock}) is less than purchased quantity (${revertShopQty}).`);
-            }
-            if (currentWarehouseStock < revertWarehouseQty) {
-              throw new Error(`Cannot remove item "${product.name}". Warehouse stock (${currentWarehouseStock}) is less than purchased quantity (${revertWarehouseQty}).`);
-            }
+            // Item is being removed - allow removal (stock will be reverted)
+            // No validation needed - we're reverting the stock that was added
           } else {
-            // Item quantity is being changed - check if decrease is valid
+            // Item quantity is being changed - allow both increase and decrease
             const newShopQty = Number((newItem as any).shopQuantity || 0);
             const newWarehouseQty = Number((newItem as any).warehouseQuantity || 0);
             const priceType = (newItem as any).priceType || "single";
@@ -678,13 +670,7 @@ class PurchaseService {
             const shopDiff = newShopUnits - revertShopQty;
             const warehouseDiff = newWarehouseUnits - revertWarehouseQty;
             
-            // Prevent quantity decrease - only allow increase
-            if (shopDiff < 0) {
-              throw new Error(`Cannot decrease shop quantity for "${product.name}". You can only increase quantities, not decrease them.`);
-            }
-            if (warehouseDiff < 0) {
-              throw new Error(`Cannot decrease warehouse quantity for "${product.name}". You can only increase quantities, not decrease them.`);
-            }
+            // Allow quantity decreases - no validation needed as we're reverting stock (adding it back)
             
             // Prevent cost/price updates - check if cost has changed
             const oldCost = Number(oldItem.cost || 0);
@@ -839,34 +825,7 @@ class PurchaseService {
     if (data.taxType !== undefined) updateData.taxType = data.taxType;
     if (data.total !== undefined) updateData.total = data.total;
     if (data.payments) {
-      // When editing, only allow adding new payments, not modifying or removing existing ones
-      const existingPayments = (purchase.payments as any[]) || [];
-      
-      // Prevent payment removal
-      if (data.payments.length < existingPayments.length) {
-        throw new Error("Cannot remove existing payments. You can only add new payments.");
-      }
-      
-      // Check if any existing payment amount, type, or IDs are being changed
-      for (let i = 0; i < existingPayments.length; i++) {
-        const existingPayment = existingPayments[i];
-        const newPayment = data.payments[i];
-        if (existingPayment && newPayment) {
-          if (existingPayment.amount !== newPayment.amount) {
-            throw new Error("Cannot modify existing payment amounts. You can only add new payments.");
-          }
-          if (existingPayment.type !== newPayment.type) {
-            throw new Error("Cannot modify existing payment types. You can only add new payments.");
-          }
-          if (existingPayment.cardId !== newPayment.cardId) {
-            throw new Error("Cannot modify existing payment card IDs. You can only add new payments.");
-          }
-          if (existingPayment.bankAccountId !== newPayment.bankAccountId) {
-            throw new Error("Cannot modify existing payment bank account IDs. You can only add new payments.");
-          }
-        }
-      }
-
+      // Allow payment removal and editing - no restrictions
       updateData.payments = data.payments as any;
       // Recalculate remaining balance
       const totalPaid = data.payments.reduce((sum, payment) => sum + (payment.amount || 0), 0);
