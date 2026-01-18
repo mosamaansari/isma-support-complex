@@ -1078,7 +1078,7 @@ class SaleService {
       amount: number;
       cardId?: string;
       bankAccountId?: string;
-      date?: string;
+      date?: string | Date;
     }>) || [];
 
     const totalPaid = currentPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
@@ -1098,7 +1098,7 @@ class SaleService {
 
     const paymentWithDate = {
       ...payment,
-      date: paymentDate
+      date: paymentDate ? (typeof paymentDate === 'string' ? paymentDate : formatDateToLocalISO(parseLocalISO(paymentDate))) : formatDateToLocalISO(getCurrentLocalDateTime())
     };
 
     const newPayments = [...currentPayments, paymentWithDate];
