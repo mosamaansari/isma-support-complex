@@ -5,6 +5,7 @@ import api from "../../services/api";
 import { Purchase, PurchasePayment } from "../../types";
 import Button from "../../components/ui/button/Button";
 import { ChevronLeftIcon, DownloadIcon } from "../../icons";
+import { formatBackendDateOnly, formatBackendDate } from "../../utils/dateHelpers";
 
 export default function PurchaseView() {
   const { id } = useParams<{ id: string }>();
@@ -118,7 +119,7 @@ export default function PurchaseView() {
             <div>
               <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-2">Purchase Information</h3>
               <p className="text-gray-600 dark:text-gray-400 text-sm">
-                Date: {new Date(purchase.date).toLocaleDateString()}
+                Date: {formatBackendDateOnly(purchase.date)}
               </p>
               <p className="text-gray-600 dark:text-gray-400 text-sm">
                 Status:{" "}
@@ -216,7 +217,7 @@ export default function PurchaseView() {
                     <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">Payment History:</p>
                     {payments.map((p, idx) => (
                       <div key={idx} className="text-xs text-gray-600 dark:text-gray-400 mb-1">
-                        {new Date(p.date || purchase.date).toLocaleDateString()} - {p.type.toUpperCase()}: Rs.{" "}
+                        {formatBackendDateOnly(p.date || purchase.date)} - {p.type.toUpperCase()}: Rs.{" "}
                         {(p.amount || 0).toFixed(2)}
                       </div>
                     ))}
@@ -231,7 +232,7 @@ export default function PurchaseView() {
         <div className="hidden print:block p-6">
           <div className="text-center mb-6">
             <h2 className="text-2xl font-bold mb-2">Purchase Receipt</h2>
-            <p className="text-gray-600">Date: {new Date(purchase.date).toLocaleDateString()}</p>
+            <p className="text-gray-600">Date: {formatBackendDateOnly(purchase.date)}</p>
           </div>
 
           <div className="mb-6">

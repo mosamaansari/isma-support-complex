@@ -9,7 +9,7 @@ import Button from "../../components/ui/button/Button";
 import { DownloadIcon } from "../../icons";
 import api from "../../services/api";
 import { DailyReport, DateRangeReport } from "../../types";
-import { getTodayDate } from "../../utils/dateHelpers";
+import { getTodayDate, formatBackendDate, parseUTCDateString } from "../../utils/dateHelpers";
 import { extractErrorMessage } from "../../utils/errorHandler";
 import { formatCompleteAmount } from "../../utils/priceHelpers";
 
@@ -1438,26 +1438,16 @@ export default function Reports() {
                           >
                             <td className="p-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">
                               {(() => {
-                                let dt: Date;
-                                if (transaction.datetime instanceof Date) {
-                                  dt = transaction.datetime;
-                                } else if (transaction.datetime) {
-                                  // If it's a string (ISO format from backend), parse it
-                                  // The backend sends datetime which may be in UTC or local format
-                                  dt = new Date(transaction.datetime);
-                                } else if (transaction.date) {
-                                  dt = new Date(transaction.date);
-                                } else {
+                                const dateInput = transaction.datetime || transaction.date;
+                                if (!dateInput) return "-";
+                                
+                                // Parse UTC date string without timezone conversion
+                                const dt = parseUTCDateString(dateInput);
+                                if (!dt || isNaN(dt.getTime())) {
                                   return "-";
                                 }
                                 
-                                // Check if date is valid
-                                if (isNaN(dt.getTime())) {
-                                  return "-";
-                                }
-                                
-                                // Format: Date and Time with seconds in local timezone
-                                // JavaScript's toLocaleString automatically converts to local timezone
+                                // Format: Date and Time using the correctly parsed date
                                 const dateStr = dt.toLocaleDateString("en-US", {
                                   year: "numeric",
                                   month: "2-digit",
@@ -1867,21 +1857,13 @@ export default function Reports() {
                     if (!add || !add.id) return null;
 
                     const addDate = add.time || add.date || add.createdAt;
-                    const addDateTime = addDate ? new Date(addDate) : new Date();
-                    
                     return (
                       <tr
                         key={add.id || index}
                         className="border-b border-gray-100 dark:border-gray-700"
                       >
                         <td className="p-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                          {addDateTime.toLocaleString("en-US", {
-                            year: "numeric",
-                            month: "short",
-                            day: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
+                          {formatBackendDate(addDate || add.time || add.date)}
                         </td>
                         <td className="p-2 text-gray-700 dark:text-gray-300 whitespace-nowrap capitalize">
                           {add.paymentType === "bank_transfer" 
@@ -2044,13 +2026,11 @@ export default function Reports() {
                           className="border-b border-gray-100 dark:border-gray-700"
                         >
                           <td className="p-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                            {paymentDate.toLocaleString("en-US", {
-                              year: "numeric",
-                              month: "short",
-                              day: "numeric",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
+                            {formatBackendDate(
+                              isPaymentRow
+                                ? purchaseRow.paymentDate || purchaseRow.date
+                                : purchaseRow.date || purchaseRow.createdAt
+                            )}
                             {hasMultiplePayments && (
                               <span className="text-xs text-gray-500 ml-1">
                                 (Payment {paymentIndex + 1})
@@ -2208,13 +2188,11 @@ export default function Reports() {
                                 )}
                               </td>
                               <td className="p-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                                {paymentDate.toLocaleString("en-US", {
-                                  year: "numeric",
-                                  month: "short",
-                                  day: "numeric",
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })}
+                                {formatBackendDate(
+                                  isPaymentRow
+                                    ? paymentRow.paymentDate || paymentRow.date
+                                    : paymentRow.date || paymentRow.createdAt
+                                )}
                               </td>
                               <td className="p-2 text-gray-700 dark:text-gray-300 max-w-[150px]">
                                 <div className="line-clamp-3 truncate">
@@ -2280,18 +2258,7 @@ export default function Reports() {
                             className="border-b border-gray-100 dark:border-gray-700"
                           >
                             <td className="p-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                              {expense.date
-                                ? new Date(expense.date).toLocaleString(
-                                    "en-US",
-                                    {
-                                      year: "numeric",
-                                      month: "short",
-                                      day: "numeric",
-                                      hour: "2-digit",
-                                      minute: "2-digit",
-                                    }
-                                  )
-                                : ""}
+                              {formatBackendDate(expense.date)}
                             </td>
                             <td className="p-2 text-gray-700 dark:text-gray-300 capitalize whitespace-nowrap">
                               {expense.category || ""}

@@ -7,6 +7,7 @@ import Button from "../../components/ui/button/Button";
 import { ChevronLeftIcon, DownloadIcon } from "../../icons";
 import api from "../../services/api";
 import { Sale } from "../../types";
+import { formatBackendDate } from "../../utils/dateHelpers";
 
 export default function BillPrint() {
   const { billNumber } = useParams<{ billNumber: string }>();
@@ -136,13 +137,7 @@ export default function BillPrint() {
     const remainingBalance = Math.max(0, sale.total - totalPaid);
     const change = totalPaid > sale.total ? totalPaid - sale.total : 0;
     const paymentStatus = remainingBalance > 0 ? "Pending" : "Completed";
-    const billDate = new Date(sale.createdAt || sale.date || new Date()).toLocaleString('en-US', { 
-      year: 'numeric', 
-      month: 'short', 
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    const billDate = formatBackendDate(sale.date || sale.createdAt);
 
     const pdfDiscountType = (sale as any).discountType || "percent";
     const pdfTaxType = (sale as any).taxType || "percent";
@@ -533,13 +528,7 @@ export default function BillPrint() {
           <div className="flex justify-between mb-2">
             <span className="text-gray-600 dark:text-gray-400">Date:</span>
             <span className="text-gray-800 dark:text-white">
-              {new Date(sale.createdAt || sale.date || new Date()).toLocaleString('en-US', { 
-                year: 'numeric', 
-                month: 'short', 
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
-              })}
+              {formatBackendDate(sale.date || sale.createdAt)}
             </span>
           </div>
           {sale.customerName && (
@@ -914,13 +903,7 @@ export default function BillPrint() {
         <div className="footer">
           <div className="thank-you">THANK YOU!</div>
           <div>Bill #: {sale.billNumber}</div>
-          <div>Date: {new Date(sale.createdAt || sale.date || new Date()).toLocaleString('en-US', { 
-            year: 'numeric', 
-            month: 'short', 
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-          })}</div>
+          <div>Date: {formatBackendDate(sale.date || sale.createdAt)}</div>
         </div>
       </div>
 

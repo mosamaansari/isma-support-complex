@@ -16,7 +16,7 @@ import { DownloadIcon } from "../../icons";
 import { FaEye, FaCreditCard, FaListAlt, FaUndo } from "react-icons/fa";
 import { SalePayment } from "../../types";
 import { extractErrorMessage } from "../../utils/errorHandler";
-import { getTodayDate } from "../../utils/dateHelpers";
+import { getTodayDate, formatBackendDate, formatBackendDateOnly, formatBackendDateShort } from "../../utils/dateHelpers";
 import { formatPriceWithCurrency } from "../../utils/priceHelpers";
 import { api } from "../../services/api";
 
@@ -458,19 +458,10 @@ export default function SalesList() {
                     </td>
                     <td className="p-2 sm:p-3 md:p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap text-xs sm:text-sm">
                       <span className="hidden sm:inline">
-                        {new Date(sale.date || sale.createdAt).toLocaleString('en-US', { 
-                          year: 'numeric', 
-                          month: 'short', 
-                          day: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
+                        {formatBackendDate(sale.date || sale.createdAt)}
                       </span>
                       <span className="sm:hidden">
-                        {new Date(sale.date || sale.createdAt).toLocaleDateString('en-US', { 
-                          month: 'short', 
-                          day: 'numeric'
-                        })}
+                        {formatBackendDateShort(sale.date || sale.createdAt)}
                       </span>
                     </td>
                     <td className="p-2 sm:p-3 md:p-4 text-gray-700 dark:text-gray-300 max-w-[150px] sm:max-w-[200px]">
@@ -740,13 +731,7 @@ export default function SalesList() {
                           <tr key={index} className="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
                             <td className="p-3 text-gray-700 dark:text-gray-300 font-medium">{index + 1}</td>
                             <td className="p-3 text-gray-700 dark:text-gray-300">
-                              <span className="font-medium">{paymentDate.toLocaleString('en-US', {
-                                year: 'numeric', 
-                                month: 'short', 
-                                day: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })}</span>
+                              <span className="font-medium">{formatBackendDate(payment.date || selectedSale.date || selectedSale.createdAt)}</span>
                             </td>
                             <td className="p-3">
                               <span className="px-2 py-1 text-xs font-medium rounded bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400 uppercase">
