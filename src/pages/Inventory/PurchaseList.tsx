@@ -719,14 +719,6 @@ export default function PurchaseList() {
                           return dateA - dateB;
                         })
                         .map((payment: PurchasePayment, index: number) => {
-                        // Handle date - it might be ISO string or Date object
-                        let paymentDate: Date;
-                        if (payment.date) {
-                          paymentDate = typeof payment.date === 'string' ? new Date(payment.date) : payment.date;
-                        } else {
-                          paymentDate = new Date(selectedPurchase.date);
-                        }
-                        
                         return (
                           <tr key={index} className="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
                             <td className="p-3 text-gray-700 dark:text-gray-300 font-medium">{index + 1}</td>

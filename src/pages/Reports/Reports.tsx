@@ -1985,17 +1985,6 @@ export default function Reports() {
                       // Otherwise, treat as legacy purchase format
                       const isPaymentRow =
                         purchaseRow.paymentAmount !== undefined;
-                      const paymentDate = isPaymentRow
-                        ? purchaseRow.paymentDate
-                          ? new Date(purchaseRow.paymentDate)
-                          : purchaseRow.date
-                          ? new Date(purchaseRow.date)
-                          : new Date()
-                        : purchaseRow.date
-                        ? new Date(purchaseRow.date)
-                        : purchaseRow.createdAt
-                        ? new Date(purchaseRow.createdAt)
-                        : new Date();
 
                       const displayAmount = isPaymentRow
                         ? purchaseRow.paymentAmount
@@ -2144,17 +2133,6 @@ export default function Reports() {
                           // Otherwise, treat as legacy sale format
                           const isPaymentRow =
                             paymentRow.paymentAmount !== undefined;
-                          const paymentDate = isPaymentRow
-                            ? paymentRow.paymentDate
-                              ? new Date(paymentRow.paymentDate)
-                              : paymentRow.date
-                              ? new Date(paymentRow.date)
-                              : new Date()
-                            : paymentRow.date
-                            ? new Date(paymentRow.date)
-                            : paymentRow.createdAt
-                            ? new Date(paymentRow.createdAt)
-                            : new Date();
 
                           const displayAmount = isPaymentRow
                             ? paymentRow.paymentAmount

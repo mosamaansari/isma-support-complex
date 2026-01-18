@@ -16,7 +16,7 @@ import { DownloadIcon } from "../../icons";
 import { FaEye, FaCreditCard, FaListAlt, FaUndo } from "react-icons/fa";
 import { SalePayment } from "../../types";
 import { extractErrorMessage } from "../../utils/errorHandler";
-import { getTodayDate, formatBackendDate, formatBackendDateOnly, formatBackendDateShort } from "../../utils/dateHelpers";
+import { getTodayDate, formatBackendDate, formatBackendDateShort } from "../../utils/dateHelpers";
 import { formatPriceWithCurrency } from "../../utils/priceHelpers";
 import { api } from "../../services/api";
 
@@ -719,14 +719,6 @@ export default function SalesList() {
                           return dateA - dateB;
                         })
                         .map((payment: SalePayment & { date?: string }, index: number) => {
-                        // Handle date - it might be ISO string or Date object
-                        let paymentDate: Date;
-                        if (payment.date) {
-                          paymentDate = typeof payment.date === 'string' ? new Date(payment.date) : payment.date;
-                        } else {
-                          paymentDate = new Date(selectedSale.date || selectedSale.createdAt);
-                        }
-                        
                         return (
                           <tr key={index} className="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
                             <td className="p-3 text-gray-700 dark:text-gray-300 font-medium">{index + 1}</td>

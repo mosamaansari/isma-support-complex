@@ -5,7 +5,7 @@ import api from "../../services/api";
 import { Purchase, PurchasePayment } from "../../types";
 import Button from "../../components/ui/button/Button";
 import { ChevronLeftIcon, DownloadIcon } from "../../icons";
-import { formatBackendDateOnly, formatBackendDate } from "../../utils/dateHelpers";
+import { formatBackendDateOnly } from "../../utils/dateHelpers";
 
 export default function PurchaseView() {
   const { id } = useParams<{ id: string }>();
