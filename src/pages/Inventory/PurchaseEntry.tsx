@@ -147,7 +147,6 @@ export default function PurchaseEntry() {
           // Store original quantities for edit mode (in units, not display units)
           const originalQtyMap = new Map<string, { shopQty: number; warehouseQty: number }>();
           purchase.items.forEach((item: any) => {
-            const priceType: "single" | "dozen" = item.priceType || "single";
             const rawShopQty = Number(item.shopQuantity || 0);
             const rawWarehouseQty = Number(item.warehouseQuantity || 0);
             // Store in units (not display units)
