@@ -88,8 +88,8 @@ export const parseUTCDateString = (dateString: string | Date | null | undefined)
 };
 
 /**
- * Format date from backend (UTC ISO string) to display string without timezone shift
- * Directly formats UTC components to ensure exact time from backend is displayed
+ * Format date from backend (UTC ISO string) to display string with Pakistan timezone (UTC+5)
+ * Converts UTC time to Pakistan time (adds 5 hours) before displaying
  */
 export const formatBackendDate = (dateString: string | Date | null | undefined): string => {
   if (!dateString) return "";
@@ -114,11 +114,22 @@ export const formatBackendDate = (dateString: string | Date | null | undefined):
     return "";
   }
   
+  // Convert UTC to Pakistan time (UTC+5) - add 5 hours
+  const pakistanOffset = 5; // Pakistan is UTC+5
+  hours += pakistanOffset;
+  
+  // Handle day overflow (if hours >= 24, add 1 day)
+  if (hours >= 24) {
+    hours -= 24;
+    day += 1;
+    // Handle month/year overflow if needed (simplified - assumes no month boundaries for now)
+  }
+  
   // Format date: "Jan 18, 2026"
   const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const dateStr = `${monthNames[month]} ${day}, ${year}`;
   
-  // Format time: HH:MM AM/PM
+  // Format time: HH:MM AM/PM (using Pakistan time)
   const isPM = hours >= 12;
   const displayHours = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
   const hoursStr = String(displayHours).padStart(2, "0");
@@ -157,8 +168,8 @@ export const formatBackendDateShort = (dateString: string | Date | null | undefi
 };
 
 /**
- * Format date with time (including seconds) from backend (UTC ISO string) without timezone shift
- * Directly formats UTC components to ensure exact time from backend is displayed
+ * Format date with time (including seconds) from backend (UTC ISO string) with Pakistan timezone (UTC+5)
+ * Converts UTC time to Pakistan time (adds 5 hours) before displaying
  */
 export const formatBackendDateWithTime = (dateString: string | Date | null | undefined): string => {
   if (!dateString) return "";
@@ -185,12 +196,23 @@ export const formatBackendDateWithTime = (dateString: string | Date | null | und
     return "";
   }
   
+  // Convert UTC to Pakistan time (UTC+5) - add 5 hours
+  const pakistanOffset = 5; // Pakistan is UTC+5
+  hours += pakistanOffset;
+  
+  // Handle day overflow (if hours >= 24, add 1 day)
+  if (hours >= 24) {
+    hours -= 24;
+    day += 1;
+    // Handle month/year overflow if needed (simplified - assumes no month boundaries for now)
+  }
+  
   // Format date: MM/DD/YYYY
   const monthStr = String(month + 1).padStart(2, "0");
   const dayStr = String(day).padStart(2, "0");
   const dateStr = `${monthStr}/${dayStr}/${year}`;
   
-  // Format time: HH:MM:SS AM/PM
+  // Format time: HH:MM:SS AM/PM (using Pakistan time)
   const isPM = hours >= 12;
   const displayHours = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
   const hoursStr = String(displayHours).padStart(2, "0");
@@ -198,6 +220,94 @@ export const formatBackendDateWithTime = (dateString: string | Date | null | und
   const secondsStr = String(seconds).padStart(2, "0");
   const ampm = isPM ? "PM" : "AM";
   const timeStr = `${hoursStr}:${minutesStr}:${secondsStr} ${ampm}`;
+  
+  return `${dateStr} ${timeStr}`;
+};
+
+/**
+ * Format date from backend (UTC ISO string) to display string in UTC timezone (no conversion)
+ * Shows the exact UTC time from backend without converting to Pakistan time
+ */
+export const formatBackendDateUTC = (dateString: string | Date | null | undefined): string => {
+  if (!dateString) return "";
+  
+  let year: number, month: number, day: number, hours: number, minutes: number;
+  
+  if (dateString instanceof Date) {
+    year = dateString.getUTCFullYear();
+    month = dateString.getUTCMonth();
+    day = dateString.getUTCDate();
+    hours = dateString.getUTCHours();
+    minutes = dateString.getUTCMinutes();
+  } else if (typeof dateString === 'string') {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return "";
+    year = date.getUTCFullYear();
+    month = date.getUTCMonth();
+    day = date.getUTCDate();
+    hours = date.getUTCHours();
+    minutes = date.getUTCMinutes();
+  } else {
+    return "";
+  }
+  
+  // Format date: "Jan 18, 2026" (using UTC time, no conversion)
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const dateStr = `${monthNames[month]} ${day}, ${year}`;
+  
+  // Format time: HH:MM AM/PM (using UTC time)
+  const isPM = hours >= 12;
+  const displayHours = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+  const hoursStr = String(displayHours).padStart(2, "0");
+  const minutesStr = String(minutes).padStart(2, "0");
+  const ampm = isPM ? "PM" : "AM";
+  const timeStr = `${hoursStr}:${minutesStr} ${ampm} UTC`;
+  
+  return `${dateStr} ${timeStr}`;
+};
+
+/**
+ * Format date with time (including seconds) from backend (UTC ISO string) in UTC timezone (no conversion)
+ * Shows the exact UTC time from backend without converting to Pakistan time
+ */
+export const formatBackendDateWithTimeUTC = (dateString: string | Date | null | undefined): string => {
+  if (!dateString) return "";
+  
+  let year: number, month: number, day: number, hours: number, minutes: number, seconds: number;
+  
+  if (dateString instanceof Date) {
+    year = dateString.getUTCFullYear();
+    month = dateString.getUTCMonth();
+    day = dateString.getUTCDate();
+    hours = dateString.getUTCHours();
+    minutes = dateString.getUTCMinutes();
+    seconds = dateString.getUTCSeconds();
+  } else if (typeof dateString === 'string') {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return "";
+    year = date.getUTCFullYear();
+    month = date.getUTCMonth();
+    day = date.getUTCDate();
+    hours = date.getUTCHours();
+    minutes = date.getUTCMinutes();
+    seconds = date.getUTCSeconds();
+  } else {
+    return "";
+  }
+  
+  // Format date: MM/DD/YYYY (using UTC time, no conversion)
+  const monthStr = String(month + 1).padStart(2, "0");
+  const dayStr = String(day).padStart(2, "0");
+  const dateStr = `${monthStr}/${dayStr}/${year}`;
+  
+  // Format time: HH:MM:SS AM/PM UTC (using UTC time)
+  const isPM = hours >= 12;
+  const displayHours = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+  const hoursStr = String(displayHours).padStart(2, "0");
+  const minutesStr = String(minutes).padStart(2, "0");
+  const secondsStr = String(seconds).padStart(2, "0");
+  const ampm = isPM ? "PM" : "AM";
+  const timeStr = `${hoursStr}:${minutesStr}:${secondsStr} ${ampm} UTC`;
   
   return `${dateStr} ${timeStr}`;
 };

@@ -9,7 +9,7 @@ import Button from "../../components/ui/button/Button";
 import { DownloadIcon } from "../../icons";
 import api from "../../services/api";
 import { DailyReport, DateRangeReport } from "../../types";
-import { getTodayDate, formatBackendDate, parseUTCDateString, formatBackendDateWithTime } from "../../utils/dateHelpers";
+import { getTodayDate, formatBackendDate, parseUTCDateString, formatBackendDateWithTime, formatBackendDateUTC, formatBackendDateWithTimeUTC } from "../../utils/dateHelpers";
 import { extractErrorMessage } from "../../utils/errorHandler";
 import { formatCompleteAmount } from "../../utils/priceHelpers";
 
@@ -1452,7 +1452,9 @@ export default function Reports() {
                             }`}
                           >
                             <td className="p-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                              {formatBackendDateWithTime(transaction.datetime || transaction.date)}
+                              {transaction.createdAt || transaction.updatedAt
+                                ? formatBackendDateWithTimeUTC(transaction.datetime || transaction.createdAt || transaction.updatedAt || transaction.date)
+                                : formatBackendDateWithTime(transaction.datetime || transaction.date)}
                             </td>
                             <td className="p-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">
                               {transaction.type}
@@ -2007,11 +2009,16 @@ export default function Reports() {
                           className="border-b border-gray-100 dark:border-gray-700"
                         >
                           <td className="p-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                            {formatBackendDate(
-                              isPaymentRow
+                            {(() => {
+                              const dateToShow = isPaymentRow
                                 ? purchaseRow.paymentDate || purchaseRow.date
-                                : purchaseRow.date || purchaseRow.createdAt
-                            )}
+                                : purchaseRow.date || purchaseRow.createdAt;
+                              // If using createdAt as fallback, show in UTC
+                              const isUsingCreatedAt = !purchaseRow.date && purchaseRow.createdAt && dateToShow === purchaseRow.createdAt;
+                              return isUsingCreatedAt
+                                ? formatBackendDateUTC(dateToShow)
+                                : formatBackendDate(dateToShow);
+                            })()}
                             {hasMultiplePayments && (
                               <span className="text-xs text-gray-500 ml-1">
                                 (Payment {paymentIndex + 1})
@@ -2158,11 +2165,16 @@ export default function Reports() {
                                 )}
                               </td>
                               <td className="p-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                                {formatBackendDate(
-                                  isPaymentRow
+                                {(() => {
+                                  const dateToShow = isPaymentRow
                                     ? paymentRow.paymentDate || paymentRow.date
-                                    : paymentRow.date || paymentRow.createdAt
-                                )}
+                                    : paymentRow.date || paymentRow.createdAt;
+                                  // If using createdAt as fallback, show in UTC
+                                  const isUsingCreatedAt = !paymentRow.date && paymentRow.createdAt && dateToShow === paymentRow.createdAt;
+                                  return isUsingCreatedAt
+                                    ? formatBackendDateUTC(dateToShow)
+                                    : formatBackendDate(dateToShow);
+                                })()}
                               </td>
                               <td className="p-2 text-gray-700 dark:text-gray-300 max-w-[150px]">
                                 <div className="line-clamp-3 truncate">

@@ -99,15 +99,23 @@ class BalanceManagementService {
     const endDate = new Date(year, localDate.getMonth(), localDate.getDate());
     endDate.setHours(23, 59, 59, 999);
 
-    // First, try to get the latest transaction for this bank today
+    // Determine the cutoff time: if viewing today, use current time; otherwise use end of that day
+    const now = new Date();
+    const isToday = now.getFullYear() === year && 
+                    now.getMonth() === localDate.getMonth() && 
+                    now.getDate() === localDate.getDate();
+    const cutoffTime = isToday ? now : endDate;
+
+    // First, try to get the latest transaction up to the cutoff time
+    // Use createdAt to find the most recent transaction, as it represents when the transaction actually occurred
+    // This ensures we get the actual current balance including all transactions up to the cutoff
     const latestTransaction = await prisma.balanceTransaction.findFirst({
       where: {
-        date: {
-          gte: dateObj,
-          lte: endDate,
-        },
         paymentType: "bank_transfer",
         bankAccountId: bankAccountId,
+        createdAt: {
+          lte: cutoffTime,
+        },
       },
       orderBy: { createdAt: "desc" },
     });
