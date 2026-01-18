@@ -215,6 +215,18 @@ class ExpenseService {
           }
         );
       }
+
+      // Recalculate closing balance for today to include the new expense
+      try {
+        const dailyClosingBalanceService = (await import("./dailyClosingBalance.service")).default;
+        const today = new Date();
+        await dailyClosingBalanceService.calculateAndStoreClosingBalance(today);
+        logger.info(`Recalculated closing balance after expense creation for ${expense.id}`);
+      } catch (error: any) {
+        logger.error("Error recalculating closing balance after expense:", error);
+        // Don't fail the expense creation if closing balance recalculation fails
+        // The balance transaction is already created, so the balance is correct
+      }
     } catch (error: any) {
       logger.error("Error updating balance for expense:", error);
 
