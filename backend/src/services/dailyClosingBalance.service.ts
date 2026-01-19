@@ -144,22 +144,15 @@ class DailyClosingBalanceService {
         continue;
       }
 
-      // For 'add_opening_balance' transactions: Only skip if they happened BEFORE or AT THE SAME TIME
-      // as the opening balance was created. If they happened AFTER, they are real additions during the day.
-      if (openingBalance && (
-        transaction.source === "add_opening_balance" ||
-        (transaction.source && transaction.source.includes("opening_balance") && transaction.source !== "opening_balance")
-      )) {
-        const txCreatedAt = new Date(transaction.createdAt || transaction.date).getTime();
-        // If opening balance exists and this transaction was created before/at opening balance creation,
-        // skip it (it's already included in opening balance)
-        if (openingBalanceCreatedAt !== null && txCreatedAt <= openingBalanceCreatedAt) {
-          skippedCount++;
-          logger.info(`Skipping add_opening_balance transaction (before opening balance): ${transaction.id}, amount=${transaction.amount}, txCreated=${new Date(txCreatedAt).toISOString()}, openingBalanceCreated=${new Date(openingBalanceCreatedAt).toISOString()}`);
-          continue;
-        }
-        // Otherwise, include it (it's a real addition during the day)
-        logger.info(`Including add_opening_balance transaction (after opening balance): ${transaction.id}, amount=${transaction.amount}, txCreated=${new Date(txCreatedAt).toISOString()}, openingBalanceCreated=${new Date(openingBalanceCreatedAt!).toISOString()}`);
+      // IMPORTANT: ALWAYS include 'add_opening_balance' transactions in closing balance calculation
+      // When user manually adds to opening balance, it should always be reflected in closing balance
+      // This ensures that:
+      // - Cash additions are summed in cash
+      // - Bank additions are summed in respective banks (or new banks are added to bank JSON)
+      // - Card additions are summed in respective cards
+      if (transaction.source === "add_opening_balance" ||
+          (transaction.source && transaction.source.includes("opening_balance") && transaction.source !== "opening_balance")) {
+        logger.info(`Including add_opening_balance transaction: ${transaction.id}, amount=${transaction.amount}, paymentType=${transaction.paymentType}, bankAccountId=${transaction.bankAccountId}`);
       }
 
       processedCount++;
@@ -171,8 +164,10 @@ class DailyClosingBalanceService {
           closingCash -= amount;
         }
       } else if (transaction.paymentType === "bank_transfer" && transaction.bankAccountId) {
+        // Initialize bank balance to 0 if it doesn't exist (for new banks)
         if (!closingBankBalances[transaction.bankAccountId]) {
           closingBankBalances[transaction.bankAccountId] = 0;
+          logger.info(`New bank added to closing balance: ${transaction.bankAccountId}`);
         }
         if (transaction.type === "income") {
           closingBankBalances[transaction.bankAccountId] += amount;

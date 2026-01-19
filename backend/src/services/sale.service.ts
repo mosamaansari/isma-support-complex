@@ -1,4 +1,4 @@
-import prisma from "../config/database";
+ import prisma from "../config/database";
 import logger from "../utils/logger";
 import whatsappService from "./whatsapp.service";
 import productService from "./product.service";
