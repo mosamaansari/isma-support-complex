@@ -9,7 +9,7 @@ import Button from "../../components/ui/button/Button";
 import { DownloadIcon } from "../../icons";
 import api from "../../services/api";
 import { DailyReport, DateRangeReport } from "../../types";
-import { getTodayDate, formatBackendDate, parseUTCDateString, formatBackendDateWithTime, formatBackendDateUTC, formatBackendDateWithTimeUTC } from "../../utils/dateHelpers";
+import { getTodayDate, formatBackendDate, parseUTCDateString, formatBackendDateWithTime } from "../../utils/dateHelpers";
 import { extractErrorMessage } from "../../utils/errorHandler";
 import { formatCompleteAmount } from "../../utils/priceHelpers";
 
