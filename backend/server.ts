@@ -31,6 +31,7 @@ import searchRoutes from "./src/routes/search.routes";
 import dashboardRoutes from "./src/routes/dashboard.routes";
 import backupRoutes from "./src/routes/backup.routes";
 import suppliersRoutes from "./src/routes/suppliers.routes";
+import cronService from "./src/services/cron.service";
 
 
 // Load environment variables
@@ -160,11 +161,20 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 app.listen(PORT, () => {
   logger.info(`Server running on port ${PORT}`);
   logger.info(`Environment: ${process.env.NODE_ENV || "development"}`);
+  
+  // Start cron service for automated tasks
+  try {
+    cronService.start();
+    logger.info("Cron service initialized and started");
+  } catch (error) {
+    logger.error("Failed to start cron service:", error);
+  }
 });
 
 // Graceful shutdown
 process.on("SIGTERM", async () => {
   logger.info("SIGTERM signal received: closing HTTP server");
+  cronService.stop();
   await prisma.$disconnect();
   redis.disconnect();
   process.exit(0);
@@ -172,6 +182,7 @@ process.on("SIGTERM", async () => {
 
 process.on("SIGINT", async () => {
   logger.info("SIGINT signal received: closing HTTP server");
+  cronService.stop();
   await prisma.$disconnect();
   redis.disconnect();
   process.exit(0);
