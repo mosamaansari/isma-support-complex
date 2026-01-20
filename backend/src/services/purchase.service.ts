@@ -305,9 +305,17 @@ class PurchaseService {
       throw new Error("Total paid amount cannot exceed total amount");
     }
 
-    // Check balance BEFORE creating purchase
-    const balanceManagementService = (await import("./balanceManagement.service")).default;
-    const currentDate = new Date();
+    // Check balance from daily closing balance BEFORE creating purchase
+    const dailyClosingBalanceService = (await import("./dailyClosingBalance.service")).default;
+    const { formatLocalYMD, parseLocalISO } = await import("../utils/date");
+    
+    // Use purchase date if provided, otherwise use current date
+    // Use parseLocalISO to avoid timezone conversion issues
+    const purchaseDate = data.date ? parseLocalISO(data.date) : new Date();
+    const purchaseDateStr = formatLocalYMD(purchaseDate);
+    console.log("purchaseDateStr", purchaseDateStr, "original date:", data.date);
+    // Get or calculate closing balance for purchase date
+    const closingBalance = await dailyClosingBalanceService.getClosingBalance(purchaseDateStr);
 
     for (const payment of data.payments || []) {
       // Skip invalid payments (allow 0, but skip null/undefined/NaN)
@@ -319,14 +327,24 @@ class PurchaseService {
       const amount = Number(paymentAmount);
 
       if (payment.type === "cash") {
-        const currentBalance = await balanceManagementService.getCurrentCashBalance(currentDate);
-        if (currentBalance < amount) {
-          throw new Error(`Insufficient cash balance. Available: ${currentBalance.toFixed(2)}, Required: ${amount.toFixed(2)}`);
+        const availableCash = closingBalance?.cashBalance || 0;
+        if (availableCash < amount) {
+          throw new Error(`Insufficient cash balance. Available: ${availableCash.toFixed(2)}, Required: ${amount.toFixed(2)}`);
         }
-      } else if ((payment.type === "bank_transfer" || payment.type === "card") && payment.bankAccountId) {
-        const currentBalance = await balanceManagementService.getCurrentBankBalance(payment.bankAccountId, currentDate);
-        if (currentBalance < amount) {
-          throw new Error(`Insufficient bank balance for account. Available: ${currentBalance.toFixed(2)}, Required: ${amount.toFixed(2)}`);
+      } else if (payment.type === "bank_transfer" && payment.bankAccountId) {
+        const bankBalances = (closingBalance?.bankBalances || []) as Array<{ bankAccountId: string; balance: number }>;
+        const bankBalance = bankBalances.find(b => b.bankAccountId === payment.bankAccountId);
+        const availableBankBalance = bankBalance ? Number(bankBalance.balance) : 0;
+        if (availableBankBalance < amount) {
+          throw new Error(`Insufficient bank balance for account. Available: ${availableBankBalance.toFixed(2)}, Required: ${amount.toFixed(2)}`);
+        }
+      } else if (payment.type === "card" && (payment.cardId || payment.bankAccountId)) {
+        const cardId = payment.cardId || payment.bankAccountId;
+        const cardBalances = (closingBalance?.cardBalances || []) as Array<{ cardId: string; balance: number }>;
+        const cardBalance = cardBalances.find(c => c.cardId === cardId);
+        const availableCardBalance = cardBalance ? Number(cardBalance.balance) : 0;
+        if (availableCardBalance < amount) {
+          throw new Error(`Insufficient card balance. Available: ${availableCardBalance.toFixed(2)}, Required: ${amount.toFixed(2)}`);
         }
       }
     }
@@ -416,6 +434,8 @@ class PurchaseService {
 
     // Update balances atomically for payments using balance management service
     // Balance already validated above, now update after successful purchase creation
+    const balanceManagementService = (await import("./balanceManagement.service")).default;
+    
     for (const payment of data.payments) {
       // Skip payments with invalid amounts
       if (!payment.amount || payment.amount <= 0 || isNaN(Number(payment.amount))) {
@@ -424,14 +444,21 @@ class PurchaseService {
       }
 
       // Use payment date if available, otherwise use purchase date
-      const paymentDate = (payment as any).date ? parseLocalISO((payment as any).date) : purchase.date;
+      // Extract date components from payment/purchase date to avoid timezone issues
+      const paymentOrPurchaseDate = (payment as any).date ? parseLocalISO((payment as any).date) : purchase.date;
+      const paymentDateYear = paymentOrPurchaseDate.getFullYear();
+      const paymentDateMonth = paymentOrPurchaseDate.getMonth();
+      const paymentDateDay = paymentOrPurchaseDate.getDate();
+      // Create date at noon to avoid timezone conversion issues (same as balanceManagement service expects)
+      const paymentDateForBalance = new Date(paymentDateYear, paymentDateMonth, paymentDateDay, 12, 0, 0, 0);
+      
       const amount = Number(payment.amount);
 
       try {
         // Purchase payments can be cash, card, or bank_transfer
         if (payment.type === "cash") {
           await balanceManagementService.updateCashBalance(
-            paymentDate,
+            paymentDateForBalance,
             amount,
             "expense",
             {
@@ -447,7 +474,7 @@ class PurchaseService {
           // Bank transfer payments in purchases
           await balanceManagementService.updateBankBalance(
             payment.bankAccountId,
-            paymentDate,
+            paymentDateForBalance,
             amount,
             "expense",
             {
@@ -465,7 +492,7 @@ class PurchaseService {
           if (cardId) {
             await balanceManagementService.updateCardBalance(
               cardId,
-              paymentDate,
+              paymentDateForBalance,
               amount,
               "expense",
               {
@@ -497,6 +524,25 @@ class PurchaseService {
         // Re-throw to ensure the error is propagated
         throw new Error(`${error.message}`);
       }
+    }
+
+    // Recalculate closing balance for the purchase date to include the new payments
+    // Use the same purchaseDateStr we used for balance check to ensure consistency
+    try {
+      const dailyClosingBalanceService = (await import("./dailyClosingBalance.service")).default;
+      const { parseLocalYMD } = await import("../utils/date");
+      // Use the same purchaseDateStr that was used for balance check to ensure same date
+      // This avoids any timezone conversion issues
+      const balanceDateObj = parseLocalYMD(purchaseDateStr);
+      // Set to noon to match closing balance service expectations
+      balanceDateObj.setHours(12, 0, 0, 0);
+      console.log("Recalculating closing balance for date:", balanceDateObj, "Date string:", purchaseDateStr);
+      await dailyClosingBalanceService.calculateAndStoreClosingBalance(balanceDateObj);
+      logger.info(`Recalculated closing balance after purchase creation for ${purchase.id} on date ${purchaseDateStr}`);
+    } catch (error: any) {
+      logger.error("Error recalculating closing balance after purchase:", error);
+      // Don't fail the purchase creation if closing balance recalculation fails
+      // The balance transaction is already created, so the balance is correct
     }
 
     return purchase;
@@ -1310,6 +1356,25 @@ class PurchaseService {
         } else if ((payment.type === "bank_transfer" || payment.type === "card") && !payment.bankAccountId && !payment.cardId) {
           logger.warn(`Skipping ${payment.type} payment without account ID for purchase ${purchase.id}`);
         }
+      }
+
+      // Recalculate closing balance for the payment date to include the new payment
+      try {
+        const dailyClosingBalanceService = (await import("./dailyClosingBalance.service")).default;
+        // Use payment date if available, otherwise use purchase date
+        // Extract date components to avoid timezone issues
+        const paymentOrPurchaseDate = (payment as any).date ? parseLocalISO((payment as any).date) : updatedPurchase.date;
+        const balanceDateYear = paymentOrPurchaseDate.getFullYear();
+        const balanceDateMonth = paymentOrPurchaseDate.getMonth();
+        const balanceDateDay = paymentOrPurchaseDate.getDate();
+        // Create date at noon to match closing balance service expectations (avoids timezone issues)
+        const balanceDateObj = new Date(balanceDateYear, balanceDateMonth, balanceDateDay, 12, 0, 0, 0);
+        await dailyClosingBalanceService.calculateAndStoreClosingBalance(balanceDateObj);
+        logger.info(`Recalculated closing balance after purchase payment addition for ${purchase.id}`);
+      } catch (error: any) {
+        logger.error("Error recalculating closing balance after purchase payment:", error);
+        // Don't fail the payment addition if closing balance recalculation fails
+        // The balance transaction is already created, so the balance is correct
       }
     } catch (error: any) {
       logger.error("Error updating balance for purchase payment:", error);

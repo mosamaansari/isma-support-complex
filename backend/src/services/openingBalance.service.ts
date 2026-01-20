@@ -218,7 +218,7 @@ class OpeningBalanceService {
     const existing = await prisma.dailyOpeningBalance.findUnique({
       where: { date: dateObj },
     });
-
+    console.log("existing", existing)
     if (existing) {
       throw new Error("Opening balance already exists for this date");
     }

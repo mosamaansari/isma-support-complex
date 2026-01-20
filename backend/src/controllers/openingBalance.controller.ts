@@ -107,6 +107,23 @@ class OpeningBalanceController {
     }
   }
 
+  async triggerCronJob(req: AuthRequest, res: Response) {
+    try {
+     
+      const cronService = (await import("../services/cron.service")).default;
+      await cronService.manualTriggerAutoCreate();
+
+   
+      res.json({
+        message: "Cron job triggered successfully",
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      logger.error("Trigger cron job error:", error);
+      res.status(500).json({ error: error.message || "Failed to trigger cron job" });
+    }
+  }
+
   async addToOpeningBalance(req: AuthRequest, res: Response) {
     try {
       if (!req.user) {

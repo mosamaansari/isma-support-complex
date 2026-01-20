@@ -185,8 +185,12 @@ class BalanceManagementService {
       const day = String(localDate.getDate()).padStart(2, '0');
       const dateStr = `${year}-${month}-${day}`;
 
-      // Get current balance with lock
-      const beforeBalance = await this.getCurrentCashBalance(date);
+      // Get balance from daily closing balance
+      const dailyClosingBalanceService = (await import("./dailyClosingBalance.service")).default;
+      
+      // Get or calculate closing balance for the date (reuse dateStr which is in YYYY-MM-DD format)
+      const closingBalance = await dailyClosingBalanceService.getClosingBalance(dateStr);
+      const beforeBalance = closingBalance?.cashBalance || 0;
 
       // Calculate new balance
       const changeAmount = type === "income" ? amount : -amount;
@@ -326,8 +330,14 @@ class BalanceManagementService {
       const day = String(localDate.getDate()).padStart(2, '0');
       const dateStr = `${year}-${month}-${day}`;
 
-      // Get current balance with lock
-      const beforeBalance = await this.getCurrentBankBalance(bankAccountId, date);
+      // Get balance from daily closing balance
+      const dailyClosingBalanceService = (await import("./dailyClosingBalance.service")).default;
+      
+      // Get or calculate closing balance for the date (reuse dateStr which is in YYYY-MM-DD format)
+      const closingBalance = await dailyClosingBalanceService.getClosingBalance(dateStr);
+      const closingBankBalances = (closingBalance?.bankBalances || []) as Array<{ bankAccountId: string; balance: number }>;
+      const bankBalance = closingBankBalances.find(b => b.bankAccountId === bankAccountId);
+      const beforeBalance = bankBalance ? Number(bankBalance.balance) : 0;
 
       // Calculate new balance
       const changeAmount = type === "income" ? amount : -amount;
@@ -569,8 +579,14 @@ class BalanceManagementService {
       const day = String(localDate.getDate()).padStart(2, '0');
       const dateStr = `${year}-${month}-${day}`;
 
-      // Get current balance
-      const beforeBalance = await this.getCurrentCardBalance(cardId, date);
+      // Get balance from daily closing balance
+      const dailyClosingBalanceService = (await import("./dailyClosingBalance.service")).default;
+      
+      // Get or calculate closing balance for the date (reuse dateStr which is in YYYY-MM-DD format)
+      const closingBalance = await dailyClosingBalanceService.getClosingBalance(dateStr);
+      const closingCardBalances = (closingBalance?.cardBalances || []) as Array<{ cardId: string; balance: number }>;
+      const cardBalance = closingCardBalances.find(c => c.cardId === cardId);
+      const beforeBalance = cardBalance ? Number(cardBalance.balance) : 0;
 
       // Calculate new balance
       const changeAmount = type === "income" ? amount : -amount;

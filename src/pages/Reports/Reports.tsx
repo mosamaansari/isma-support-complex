@@ -1452,9 +1452,7 @@ export default function Reports() {
                             }`}
                           >
                             <td className="p-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                              {transaction.createdAt || transaction.updatedAt
-                                ? formatBackendDateWithTimeUTC(transaction.datetime || transaction.createdAt || transaction.updatedAt || transaction.date)
-                                : formatBackendDateWithTime(transaction.datetime || transaction.date)}
+                              {formatBackendDateWithTime(transaction.datetime || transaction.createdAt || transaction.updatedAt || transaction.date)}
                             </td>
                             <td className="p-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">
                               {transaction.type}
@@ -2010,13 +2008,15 @@ export default function Reports() {
                         >
                           <td className="p-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">
                             {(() => {
-                              const dateToShow = isPaymentRow
-                                ? purchaseRow.paymentDate || purchaseRow.date
-                                : purchaseRow.date || purchaseRow.createdAt;
-                              // If using createdAt as fallback, show in UTC
-                              const isUsingCreatedAt = !purchaseRow.date && purchaseRow.createdAt && dateToShow === purchaseRow.createdAt;
-                              return isUsingCreatedAt
-                                ? formatBackendDateUTC(dateToShow)
+                              // Prefer createdAt if available (has actual time), otherwise use date/paymentDate
+                              const dateToShow = purchaseRow.createdAt || 
+                                (isPaymentRow
+                                  ? purchaseRow.paymentDate || purchaseRow.date
+                                  : purchaseRow.date);
+                              // If createdAt is available, use formatBackendDateWithTime to show actual time
+                              // Otherwise use formatBackendDate for date-only fields
+                              return purchaseRow.createdAt
+                                ? formatBackendDateWithTime(dateToShow)
                                 : formatBackendDate(dateToShow);
                             })()}
                             {hasMultiplePayments && (
@@ -2166,13 +2166,15 @@ export default function Reports() {
                               </td>
                               <td className="p-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">
                                 {(() => {
-                                  const dateToShow = isPaymentRow
-                                    ? paymentRow.paymentDate || paymentRow.date
-                                    : paymentRow.date || paymentRow.createdAt;
-                                  // If using createdAt as fallback, show in UTC
-                                  const isUsingCreatedAt = !paymentRow.date && paymentRow.createdAt && dateToShow === paymentRow.createdAt;
-                                  return isUsingCreatedAt
-                                    ? formatBackendDateUTC(dateToShow)
+                                  // Prefer createdAt if available (has actual time), otherwise use date/paymentDate
+                                  const dateToShow = paymentRow.createdAt || 
+                                    (isPaymentRow
+                                      ? paymentRow.paymentDate || paymentRow.date
+                                      : paymentRow.date);
+                                  // If createdAt is available, use formatBackendDateWithTime to show actual time
+                                  // Otherwise use formatBackendDate for date-only fields
+                                  return paymentRow.createdAt
+                                    ? formatBackendDateWithTime(dateToShow)
                                     : formatBackendDate(dateToShow);
                                 })()}
                               </td>

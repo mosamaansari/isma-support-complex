@@ -127,19 +127,35 @@ class ExpenseService {
     // Use provided userType if available, otherwise use detected type
     const userTypeToUse = userType || finalUserType;
 
-    // Check balance BEFORE creating expense
-    const balanceManagementService = (await import("./balanceManagement.service")).default;
-    const currentDate = new Date();
+    // Check balance from daily closing balance BEFORE creating expense
+    const dailyClosingBalanceService = (await import("./dailyClosingBalance.service")).default;
+    const { formatLocalYMD } = await import("../utils/date");
+    
+    // Use expense date if provided, otherwise use current date
+    const expenseDate = data.date ? new Date(data.date) : new Date();
+    const expenseDateStr = formatLocalYMD(expenseDate); // YYYY-MM-DD format in local timezone
+    
+    // Get or calculate closing balance for expense date
+    const closingBalance = await dailyClosingBalanceService.getClosingBalance(expenseDateStr);
 
     if (data.paymentType === "cash") {
-      const currentBalance = await balanceManagementService.getCurrentCashBalance(currentDate);
-      if (currentBalance < data.amount) {
-        throw new Error(`Insufficient cash balance. Available: ${currentBalance.toFixed(2)}, Required: ${data.amount.toFixed(2)}`);
+      const availableCash = closingBalance?.cashBalance || 0;
+      if (availableCash < data.amount) {
+        throw new Error(`Insufficient cash balance. Available: ${availableCash.toFixed(2)}, Required: ${data.amount.toFixed(2)}`);
       }
     } else if (data.bankAccountId) {
-      const currentBalance = await balanceManagementService.getCurrentBankBalance(data.bankAccountId, currentDate);
-      if (currentBalance < data.amount) {
-        throw new Error(`Insufficient bank balance. Available: ${currentBalance.toFixed(2)}, Required: ${data.amount.toFixed(2)}`);
+      const bankBalances = (closingBalance?.bankBalances || []) as Array<{ bankAccountId: string; balance: number }>;
+      const bankBalance = bankBalances.find(b => b.bankAccountId === data.bankAccountId);
+      const availableBankBalance = bankBalance ? Number(bankBalance.balance) : 0;
+      if (availableBankBalance < data.amount) {
+        throw new Error(`Insufficient bank balance. Available: ${availableBankBalance.toFixed(2)}, Required: ${data.amount.toFixed(2)}`);
+      }
+    } else if (data.cardId) {
+      const cardBalances = (closingBalance?.cardBalances || []) as Array<{ cardId: string; balance: number }>;
+      const cardBalance = cardBalances.find(c => c.cardId === data.cardId);
+      const availableCardBalance = cardBalance ? Number(cardBalance.balance) : 0;
+      if (availableCardBalance < data.amount) {
+        throw new Error(`Insufficient card balance. Available: ${availableCardBalance.toFixed(2)}, Required: ${data.amount.toFixed(2)}`);
       }
     }
 
@@ -173,6 +189,9 @@ class ExpenseService {
     // Update balance atomically for expense using balance management service
     // Balance already validated above, now update after successful creation
     try {
+      // Import balance management service for updating balances
+      const balanceManagementService = (await import("./balanceManagement.service")).default;
+      
       // Extract date components from expense.date in local timezone to avoid timezone conversion issues
       // This ensures the same date that was intended is stored in balance_transactions
       const expenseDate = new Date(expense.date);

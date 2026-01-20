@@ -106,6 +106,13 @@ router.delete(
   openingBalanceController.deleteOpeningBalance.bind(openingBalanceController)
 );
 
+// Manually trigger cron job to create opening balance (admin only)
+router.get(
+  "/trigger-cron",
+
+  openingBalanceController.triggerCronJob.bind(openingBalanceController)
+);
+
 // Add to opening balance (creates opening balance if doesn't exist)
 router.post(
   "/add",

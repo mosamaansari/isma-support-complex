@@ -33,21 +33,21 @@ class DailyClosingBalanceService {
     const existingClosing = await prisma.dailyClosingBalance.findUnique({
       where: { date: dateObj },
     });
-
-    if (existingClosing) {
-      const now = new Date();
-      const updatedAt = new Date(existingClosing.updatedAt);
-      const timeDiff = now.getTime() - updatedAt.getTime();
-      const oneHour = 60 * 60 * 1000; // 1 hour in milliseconds
-      
-      // If closing balance was updated within last hour, skip recalculation to prevent double entry
-      if (timeDiff < oneHour) {
-        logger.info(`Closing balance for ${dateStr} already exists and was recently updated (${Math.round(timeDiff / 1000 / 60)} minutes ago), skipping recalculation to prevent double entry`);
-        return existingClosing;
-      } else {
-        logger.info(`Closing balance for ${dateStr} exists but is old (${Math.round(timeDiff / 1000 / 60 / 60)} hours ago), will recalculate`);
-      }
-    }
+    console.log("existingClosing", existingClosing)
+    // if (existingClosing) {
+    //   const now = new Date();
+    //   const updatedAt = new Date(existingClosing.updatedAt);
+    //   const timeDiff = now.getTime() - updatedAt.getTime();
+    //   const oneHour = 60 * 60 * 1000; // 1 hour in milliseconds
+    //   
+    //   // If closing balance was updated within last hour, skip recalculation to prevent double entry
+    //   if (timeDiff < oneHour) {
+    //     logger.info(`Closing balance for ${dateStr} already exists and was recently updated (${Math.round(timeDiff / 1000 / 60)} minutes ago), skipping recalculation to prevent double entry`);
+    //     return existingClosing;
+    //   } else {
+    //     logger.info(`Closing balance for ${dateStr} exists but is old (${Math.round(timeDiff / 1000 / 60 / 60)} hours ago), will recalculate`);
+    //   }
+    // }
 
     // Get opening balance for this date
     const openingBalance = await prisma.dailyOpeningBalance.findUnique({

@@ -112,43 +112,54 @@ class CronService {
       // Get previous day closing balance
       const previousClosing = await dailyClosingBalanceService.getPreviousDayClosingBalance(todayStr);
 
+      let cashBalance = 0;
+      let bankBalancesArray: Array<{ bankAccountId: string; balance: number }> = [];
+      let cardBalancesArray: Array<{ cardId: string; balance: number }> = [];
+      let notes = "";
+
       if (!previousClosing) {
-        logger.warn(`No previous closing balance found for ${previousDayStr}, cannot auto-create opening balance`);
-        return;
+        logger.warn(`No previous closing balance found for ${previousDayStr}, creating opening balance with zero values`);
+        notes = `Auto-created with zero balance (no previous closing balance found for ${previousDayStr}) (via cron job) at ${new Date().toISOString()}`;
+      } else {
+        logger.info(`Found previous day (${previousDayStr}) closing balance: Cash=${previousClosing.cashBalance}, Banks=${(previousClosing.bankBalances || []).length}, Cards=${(previousClosing.cardBalances || []).length}`);
+        cashBalance = Number(previousClosing.cashBalance) || 0;
+        bankBalancesArray = (previousClosing.bankBalances as Array<{ bankAccountId: string; balance: number }>) || [];
+        cardBalancesArray = (previousClosing.cardBalances as Array<{ cardId: string; balance: number }>) || [];
+        notes = `Auto-created from previous day (${previousDayStr}) closing balance (via cron job) at ${new Date().toISOString()}`;
       }
 
-      // Create opening balance from previous closing balance
-      // IMPORTANT: Do NOT create balance transactions here - this is just the baseline
-      // Balance transactions will be created when actual transactions happen (sales, purchases, expenses)
-      const bankBalancesArray = (previousClosing.bankBalances as Array<{ bankAccountId: string; balance: number }>) || [];
-      const cardBalancesArray = (previousClosing.cardBalances as Array<{ cardId: string; balance: number }>) || [];
+      logger.info(`Creating opening balance for today (${todayStr}) from previous day (${previousDayStr}) closing balance`);
+      console.log(`Cron Job: Creating opening balance for ${todayStr} from ${previousDayStr} closing balance`);
+      console.log(`Previous Closing - Cash: ${cashBalance}, Banks: ${JSON.stringify(bankBalancesArray)}`);
 
       // Create opening balance record directly (without creating transactions)
       // Use upsert to prevent duplicate entries if cron runs multiple times
-      await prisma.dailyOpeningBalance.upsert({
+      const createdOpening = await prisma.dailyOpeningBalance.upsert({
         where: { date: todayDateObj },
         update: {
-          cashBalance: Number(previousClosing.cashBalance) || 0,
+          cashBalance: cashBalance,
           bankBalances: bankBalancesArray as any,
           cardBalances: cardBalancesArray as any,
-          notes: "Auto-created from previous day's closing balance (via cron job) - updated",
+          notes: notes.replace("Auto-created", "Auto-created - updated"),
           userName: "System Auto",
           updatedBy: null,
           updatedByType: "admin",
         },
         create: {
           date: todayDateObj,
-          cashBalance: Number(previousClosing.cashBalance) || 0,
+          cashBalance: cashBalance,
           bankBalances: bankBalancesArray as any,
           cardBalances: cardBalancesArray as any,
-          notes: `Auto-created from previous day's closing balance (via cron job) at ${new Date().toISOString()}`,
+          notes: notes,
           userName: "System Auto",
           createdBy: null,
           createdByType: "admin",
         },
       });
 
-      logger.info(`Successfully auto-created opening balance for ${todayStr} from previous day's closing balance`);
+      console.log(`Cron Job: Successfully created opening balance for ${todayStr}`);
+      console.log(`Opening Balance - Cash: ${createdOpening.cashBalance}, Banks: ${JSON.stringify(createdOpening.bankBalances)}`);
+      logger.info(`Successfully auto-created opening balance for ${todayStr} from previous day (${previousDayStr}) closing balance. Cash: ${createdOpening.cashBalance}, Banks: ${bankBalancesArray.length}, Cards: ${cardBalancesArray.length}`);
     } catch (error: any) {
       // If opening balance already exists (race condition), that's okay
       if (error.code === "P2002" || (error.message && error.message.includes("already exists"))) {

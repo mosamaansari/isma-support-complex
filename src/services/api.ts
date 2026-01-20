@@ -1,7 +1,7 @@
 import axios, { AxiosInstance, AxiosError } from "axios";
 import { normalizeProduct, normalizeSale, normalizeExpense, normalizePurchase } from "../utils/apiHelpers";
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "https://isma-support-complex-sigma.vercel.app/api";
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
 class ApiClient {
   private client: AxiosInstance;

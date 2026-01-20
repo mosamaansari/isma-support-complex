@@ -322,8 +322,15 @@ class SaleService {
     // Validate that date is today (if provided)
     validateTodayDate(data.date, 'sale date');
     console.log(data)
+    
+    // Parse sale date properly to avoid timezone issues
+    // Use parseLocalISO to avoid timezone conversion issues
+    const saleDate = data.date ? parseLocalISO(data.date) : new Date();
+    const saleDateStr = formatLocalYMD(saleDate);
+    console.log("saleDateStr", saleDateStr, "original date:", data.date);
+    
     // Generate bill number based on target date to stay consistent with client
-    const targetDateForBill = data.date ? new Date(data.date) : new Date();
+    const targetDateForBill = saleDate;
     const yearOutput = targetDateForBill.getFullYear();
     const monthOutput = String(targetDateForBill.getMonth() + 1).padStart(2, '0');
     const dayOutput = String(targetDateForBill.getDate()).padStart(2, '0');
@@ -733,10 +740,17 @@ class SaleService {
           continue;
         }
         // Use sale date for balance updates (not payment date)
+        // Extract date components from sale date to avoid timezone issues
+        const saleDateYear = sale.date.getFullYear();
+        const saleDateMonth = sale.date.getMonth();
+        const saleDateDay = sale.date.getDate();
+        // Create date at noon to avoid timezone conversion issues (same as balanceManagement service expects)
+        const saleDateForBalance = new Date(saleDateYear, saleDateMonth, saleDateDay, 12, 0, 0, 0);
+        
         // Handle cash, bank_transfer, and card payments
         if (payment.type === "cash") {
           await balanceManagementService.updateCashBalance(
-            sale.date,
+            saleDateForBalance,
             Number(paymentAmount),
             "income",
             {
@@ -753,7 +767,7 @@ class SaleService {
           if (bankAccountId) {
             await balanceManagementService.updateBankBalance(
               bankAccountId,
-              sale.date,
+              saleDateForBalance,
               Number(paymentAmount),
               "income",
               {
@@ -771,7 +785,7 @@ class SaleService {
           if (cardId) {
             await balanceManagementService.updateCardBalance(
               cardId,
-              sale.date,
+              saleDateForBalance,
               Number(paymentAmount),
               "income",
               {
@@ -793,6 +807,24 @@ class SaleService {
       logger.error("Error updating balance for sale:", error);
       // Don't fail the sale creation if balance update fails, but log it
       throw error; // Re-throw to ensure transaction is rolled back
+    }
+
+    // Recalculate closing balance for the sale date to include the new payments
+    try {
+      const dailyClosingBalanceService = (await import("./dailyClosingBalance.service")).default;
+      const { parseLocalYMD } = await import("../utils/date");
+      // Use the same saleDateStr that was used above to ensure same date
+      // This avoids any timezone conversion issues
+      const balanceDateObj = parseLocalYMD(saleDateStr);
+      // Set to noon to match closing balance service expectations
+      balanceDateObj.setHours(12, 0, 0, 0);
+      console.log("Recalculating closing balance for sale date:", balanceDateObj, "Date string:", saleDateStr);
+      await dailyClosingBalanceService.calculateAndStoreClosingBalance(balanceDateObj);
+      logger.info(`Recalculated closing balance after sale creation for ${sale.id} on date ${saleDateStr}`);
+    } catch (error: any) {
+      logger.error("Error recalculating closing balance after sale:", error);
+      // Don't fail the sale creation if closing balance recalculation fails
+      // The balance transaction is already created, so the balance is correct
     }
 
     // Send WhatsApp notification if customer phone number exists and payment is completed
@@ -1227,6 +1259,26 @@ class SaleService {
       logger.error("Error updating balance for sale payment:", error);
       // Re-throw to ensure the error is propagated
       throw new Error(`Failed to update balance for sale payment: ${error.message}`);
+    }
+
+    // Recalculate closing balance for the payment date to include the new payment
+    try {
+      const dailyClosingBalanceService = (await import("./dailyClosingBalance.service")).default;
+      const { parseLocalISO } = await import("../utils/date");
+      // Extract date components from payment date to avoid timezone issues
+      const paymentOrSaleDate = paymentDate ? parseLocalISO(paymentDate) : updatedSale.date;
+      const balanceDateYear = paymentOrSaleDate.getFullYear();
+      const balanceDateMonth = paymentOrSaleDate.getMonth();
+      const balanceDateDay = paymentOrSaleDate.getDate();
+      // Create date at noon to match closing balance service expectations (avoids timezone issues)
+      const balanceDateObj = new Date(balanceDateYear, balanceDateMonth, balanceDateDay, 12, 0, 0, 0);
+      console.log("Recalculating closing balance for sale payment date:", balanceDateObj);
+      await dailyClosingBalanceService.calculateAndStoreClosingBalance(balanceDateObj);
+      logger.info(`Recalculated closing balance after sale payment addition for ${sale.id}`);
+    } catch (error: any) {
+      logger.error("Error recalculating closing balance after sale payment:", error);
+      // Don't fail the payment addition if closing balance recalculation fails
+      // The balance transaction is already created, so the balance is correct
     }
 
     // Update customer due amount
