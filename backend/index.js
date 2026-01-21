@@ -5,6 +5,7 @@ const morgan = require("morgan");
 const rateLimit = require("express-rate-limit");
 require("dotenv").config();
 
+
 // Import routes (handle ES6 default exports compiled to CommonJS)
 const getRoute = (module) => module.default || module;
 const authRoutes = getRoute(require("./dist/routes/auth.routes"));
