@@ -13,7 +13,7 @@ import Label from "../../components/form/Label";
 import Select from "../../components/form/Select";
 import TaxDiscountInput from "../../components/form/TaxDiscountInput";
 import Button from "../../components/ui/button/Button";
-import { TrashBinIcon, PlusIcon } from "../../icons";
+import { TrashBinIcon, PlusIcon, ChevronDownIcon, ChevronUpIcon, ChevronLeftIcon, ChevronRightIcon } from "../../icons";
 import { getTodayDate, formatDateToString, formatDateToLocalISO } from "../../utils/dateHelpers";
 import { extractErrorMessage, extractValidationErrors } from "../../utils/errorHandler";
 import { restrictDecimalInput } from "../../utils/numberHelpers";
@@ -58,6 +58,9 @@ export default function SalesEntry() {
   const [showErrors, setShowErrors] = useState(false);
   const [formError, setFormError] = useState<string>("");
   const bankAccountsLoadedRef = useRef(false);
+  const [isRightSidebarCollapsed, setIsRightSidebarCollapsed] = useState(true);
+  const [isPaymentDetailsOpen, setIsPaymentDetailsOpen] = useState(true);
+  const [isBillSummaryOpen, setIsBillSummaryOpen] = useState(true);
 
   const {
     register,
@@ -100,6 +103,14 @@ export default function SalesEntry() {
     // Payments are optional, don't add default payment
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Auto-open collapsible sections when products are added
+  useEffect(() => {
+    if (selectedProducts.length > 0) {
+      setIsPaymentDetailsOpen(true);
+      setIsBillSummaryOpen(true);
+    }
+  }, [selectedProducts.length]);
 
   if (!currentUser) {
     return (
@@ -686,7 +697,7 @@ export default function SalesEntry() {
         description="Create new sales entry and generate bill"
       />
       <div className="grid grid-cols-12 gap-3 sm:gap-4 md:gap-6">
-        <div className="col-span-12 lg:col-span-8">
+        <div className={`col-span-12 transition-all duration-300 ${isRightSidebarCollapsed ? 'lg:col-span-11' : 'lg:col-span-8'}`}>
           <div className="p-3 sm:p-4 md:p-6 bg-white rounded-lg shadow-sm dark:bg-gray-800">
             <h2 className="mb-4 text-lg sm:text-xl font-semibold text-gray-800 dark:text-white">
               Product Search
@@ -741,32 +752,32 @@ export default function SalesEntry() {
                 <table className="w-full min-w-[1000px] table-fixed divide-y divide-gray-200 dark:divide-gray-700">
                   <thead className="bg-gray-50 dark:bg-gray-800">
                     <tr>
-                      <th scope="col" className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[250px]">
+                      <th scope="col" className="p-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[180px]">
                         Product
                       </th>
-                      <th scope="col" className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[140px]">
+                      <th scope="col" className="p-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[140px]">
                         Price Type
                       </th>
-                      <th scope="col" className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[160px]">
+                      <th scope="col" className="p-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[160px]">
                         Price
                       </th>
-                      <th scope="col" className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[100px]">
+                      <th scope="col" className="p-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[100px]">
                         {selectedProducts.some(item => ((item as any).priceType || "single") === "dozen")
                           ? "Shop Qty"
                           : "Shop Qty"}
                       </th>
-                      <th scope="col" className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[100px]">
+                      <th scope="col" className="p-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[100px]">
                         {selectedProducts.some(item => ((item as any).priceType || "single") === "dozen")
                           ? "Warehouse Qty"
                           : "Warehouse Qty"}
                       </th>
-                      <th scope="col" className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[160px]" colSpan={2}>
+                      <th scope="col" className="p-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[160px]" colSpan={2}>
                         Discount
                       </th>
-                      <th scope="col" className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[140px]">
+                      <th scope="col" className="p-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[140px]">
                         Total
                       </th>
-                      <th scope="col" className="p-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[80px]">
+                      <th scope="col" className="p-2 text-center text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[80px]">
                         Action
                       </th>
                     </tr>
@@ -777,17 +788,17 @@ export default function SalesEntry() {
                         key={item.productId}
                         className="hover:bg-gray-50 dark:hover:bg-gray-700/50"
                       >
-                        <td className="p-3 overflow-hidden">
+                        <td className="p-2 overflow-hidden">
                           <div className="flex flex-col max-w-full">
-                            <p className="font-medium text-gray-900 dark:text-white text-sm truncate" title={item.productName}>
+                            <p className="font-medium text-gray-900 dark:text-white text-[11px] truncate" title={item.productName}>
                               {item.productName}
                             </p>
-                            <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                            <p className="text-[9px] text-gray-500 dark:text-gray-400 truncate">
                               Rs. {item.unitPrice.toFixed(2)}
                             </p>
                           </div>
                         </td>
-                        <td className="p-3">
+                        <td className="p-2">
                           <Select
                             value={((item as any).priceType || "single") as any}
                             onChange={(value) => updateItemPriceType(item.productId, value as any)}
@@ -797,7 +808,7 @@ export default function SalesEntry() {
                             ]}
                           />
                         </td>
-                        <td className="p-3">
+                        <td className="p-2">
                           <div className="space-y-1">
                             <Input
                               type="number"
@@ -829,14 +840,14 @@ export default function SalesEntry() {
                                 // Pass the raw value, rounding will happen in updateItemPrice
                                 updateItemPrice(item.productId, numValue);
                               }}
-                              className="w-full text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                              className="w-full text-[11px] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             />
-                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                            <div className="text-[9px] text-gray-500 dark:text-gray-400">
                               Unit: Rs. {(((item as any).priceSingle ?? (item.customPrice ?? item.unitPrice)) || 0).toFixed(2)}
                             </div>
                           </div>
                         </td>
-                        <td className="p-3">
+                        <td className="p-2">
                           <div className="space-y-1">
                             <Input
                               type="number"
@@ -847,17 +858,17 @@ export default function SalesEntry() {
                               ).toString()}
                               value={item.shopQuantity !== null && item.shopQuantity !== undefined ? item.shopQuantity : ""}
                               onChange={(e) => updateItemLocationQuantity(item.productId, "shop", e.target.value)}
-                              className="w-full text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                              className="w-full text-[11px] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                               placeholder={((item as any).priceType || "single") === "dozen" ? "Dozen" : "Units"}
                             />
                             {((item as any).priceType || "single") === "dozen" && (
-                              <div className="text-xs text-gray-500 dark:text-gray-400">
+                              <div className="text-[9px] text-gray-500 dark:text-gray-400">
                                 Units: {((item.shopQuantity || 0) * 12).toFixed(0)}
                               </div>
                             )}
                           </div>
                         </td>
-                        <td className="p-3">
+                        <td className="p-2">
                           <div className="space-y-1">
                             <Input
                               type="number"
@@ -868,18 +879,17 @@ export default function SalesEntry() {
                               ).toString()}
                               value={item.warehouseQuantity !== null && item.warehouseQuantity !== undefined ? item.warehouseQuantity : ""}
                               onChange={(e) => updateItemLocationQuantity(item.productId, "warehouse", e.target.value)}
-                              className="w-full text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                              className="w-full text-[11px] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                               placeholder={((item as any).priceType || "single") === "dozen" ? "Dozen" : "Units"}
                             />
                             {((item as any).priceType || "single") === "dozen" && (
-                              <div className="text-xs text-gray-500 dark:text-gray-400">
+                              <div className="text-[9px] text-gray-500 dark:text-gray-400">
                                 Units: {((item.warehouseQuantity || 0) * 12).toFixed(0)}
                               </div>
                             )}
-                    
                           </div>
                         </td>
-                        <td className="p-3" colSpan={2}>
+                        <td className="p-2" colSpan={2}>
                           <TaxDiscountInput
                             value={item.discount}
                             type={item.discountType || "percent"}
@@ -891,12 +901,12 @@ export default function SalesEntry() {
                             className="w-full"
                           />
                         </td>
-                        <td className="p-3">
-                          <div className="text-sm font-semibold text-gray-900 dark:text-white break-all">
+                        <td className="p-2">
+                          <div className="text-[11px] font-semibold text-gray-900 dark:text-white break-all">
                             Rs. {item.total.toFixed(2)}
                           </div>
                         </td>
-                        <td className="p-3 text-center">
+                        <td className="p-2 text-center">
                           <button
                             onClick={() => removeItem(item.productId)}
                             className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 transition-colors"
@@ -914,12 +924,26 @@ export default function SalesEntry() {
           </div>
         </div>
 
-        <div className="col-span-12 lg:col-span-4">
-          <div className="p-3 sm:p-4 md:p-6 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-            <h2 className="mb-4 text-lg sm:text-xl font-semibold text-gray-800 dark:text-white">
+        <div className={`col-span-12 transition-all duration-300 ${isRightSidebarCollapsed ? 'lg:col-span-1' : 'lg:col-span-4'}`}>
+          <div className={`p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800 relative ${isRightSidebarCollapsed ? 'h-[webkit-fill-available]' : ''}`} style={isRightSidebarCollapsed ? { height: '-webkit-fill-available' } : {}}>
+            <button
+              type="button"
+              onClick={() => setIsRightSidebarCollapsed(!isRightSidebarCollapsed)}
+              className="absolute -left-3 top-4 z-10 p-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              title={isRightSidebarCollapsed ? "Expand" : "Collapse"}
+            >
+              {isRightSidebarCollapsed ? (
+                <ChevronLeftIcon className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+              ) : (
+                <ChevronRightIcon className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+              )}
+            </button>
+            {!isRightSidebarCollapsed && (
+              <>
+            <h2 className="mb-3 text-base font-semibold text-gray-800 dark:text-white">
               Customer Details
             </h2>
-            <div className="space-y-4">
+            <div className="space-y-3">
               <div>
                 <Label>
                   Customer Name <span className="text-error-500">*</span>
@@ -985,14 +1009,24 @@ export default function SalesEntry() {
               </div>
             </div>
 
-            <h2 className="mt-4 sm:mt-6 mb-4 text-lg sm:text-xl font-semibold text-gray-800 dark:text-white">
-              Payment Details
-            </h2>
-            <div className="space-y-4">
+            <button
+              type="button"
+              onClick={() => setIsPaymentDetailsOpen(!isPaymentDetailsOpen)}
+              className="flex items-center justify-between w-full mt-4 mb-3 text-base font-semibold text-gray-800 dark:text-white hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
+            >
+              <span>Payment Details</span>
+              {isPaymentDetailsOpen ? (
+                <ChevronUpIcon className="w-4 h-4" />
+              ) : (
+                <ChevronDownIcon className="w-4 h-4" />
+              )}
+            </button>
+            {isPaymentDetailsOpen && (
+            <div className="space-y-3">
               {payments.map((payment, index) => (
-                <div key={index} className="p-4 border border-gray-200 rounded-lg dark:border-gray-700">
-                  <div className="flex items-center justify-between mb-3">
-                    <Label>Payment {index + 1}</Label>
+                <div key={index} className="p-3 border border-gray-200 rounded-lg dark:border-gray-700">
+                  <div className="flex items-center justify-between mb-2">
+                    <Label className="text-sm">Payment {index + 1}</Label>
                     <button
                       onClick={() => removePayment(index)}
                       className="p-1 text-red-600 hover:bg-red-50 rounded dark:hover:bg-red-900/20"
@@ -1000,9 +1034,9 @@ export default function SalesEntry() {
                       <TrashBinIcon className="w-4 h-4" />
                     </button>
                   </div>
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     <div>
-                      <Label>Payment Type  <span className="text-error-500">*</span></Label>
+                      <Label className="text-sm">Payment Type  <span className="text-error-500">*</span></Label>
                       <Select
                         value={payment.type}
                         onChange={(value) =>
@@ -1015,7 +1049,7 @@ export default function SalesEntry() {
                       />
                     </div>
                     <div>
-                      <Label>Amount (Optional)</Label>
+                      <Label className="text-sm">Amount (Optional)</Label>
                       <Input
                         type="number"
                         min="0"
@@ -1040,7 +1074,7 @@ export default function SalesEntry() {
                     </div>
                     {payment.type === "bank_transfer" && (
                       <div>
-                        <Label>Select Bank Account <span className="text-error-500">*</span></Label>
+                        <Label className="text-sm">Select Bank Account <span className="text-error-500">*</span></Label>
                         <Select
                           value={payment.bankAccountId || ""}
                           onChange={(value) =>
@@ -1082,26 +1116,37 @@ export default function SalesEntry() {
                 Add Payment
               </Button>
               {remainingBalance > 0 && (
-                <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg dark:bg-yellow-900/20 dark:border-yellow-800">
-                  <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
+                <div className="p-2 bg-yellow-50 border border-yellow-200 rounded-lg dark:bg-yellow-900/20 dark:border-yellow-800">
+                  <p className="text-xs font-medium text-yellow-800 dark:text-yellow-200">
                     Remaining Balance: Rs. {remainingBalance.toFixed(2)}
                   </p>
                 </div>
               )}
             </div>
+            )}
 
-            <h2 className="mt-4 sm:mt-6 mb-4 text-lg sm:text-xl font-semibold text-gray-800 dark:text-white">
-              Bill Summary
-            </h2>
-            <div className="space-y-3">
+            <button
+              type="button"
+              onClick={() => setIsBillSummaryOpen(!isBillSummaryOpen)}
+              className="flex items-center justify-between w-full mt-4 mb-3 text-base font-semibold text-gray-800 dark:text-white hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
+            >
+              <span>Bill Summary</span>
+              {isBillSummaryOpen ? (
+                <ChevronUpIcon className="w-4 h-4" />
+              ) : (
+                <ChevronDownIcon className="w-4 h-4" />
+              )}
+            </button>
+            {isBillSummaryOpen && (
+            <div className="space-y-2">
               <div className="flex justify-between">
-                <span className="text-sm sm:text-base text-gray-600 dark:text-gray-400">Subtotal:</span>
-                <span className="font-medium text-sm sm:text-base text-gray-800 dark:text-white price-responsive">
+                <span className="text-xs text-gray-600 dark:text-gray-400">Subtotal:</span>
+                <span className="font-medium text-xs text-gray-800 dark:text-white price-responsive">
                   Rs. {subtotal.toFixed(2)}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <Label className="mb-0 whitespace-nowrap">Discount:</Label>
+                <Label className="mb-0 whitespace-nowrap text-xs">Discount:</Label>
                 <div className="">
                   <TaxDiscountInput
                     value={globalDiscount}
@@ -1115,7 +1160,7 @@ export default function SalesEntry() {
                 </div>
               </div>
               <div className="flex items-center justify-between gap-4">
-                <Label className="mb-0 whitespace-nowrap">Tax:</Label>
+                <Label className="mb-0 whitespace-nowrap text-xs">Tax:</Label>
                 <div className="">
                   <TaxDiscountInput
                     value={globalTax}
@@ -1129,38 +1174,41 @@ export default function SalesEntry() {
                 </div>
               </div>
               <div className="flex justify-between pt-2 border-t border-gray-200 dark:border-gray-700">
-                <span className="text-base sm:text-lg font-semibold text-gray-800 dark:text-white">
+                <span className="text-sm font-semibold text-gray-800 dark:text-white">
                   Total:
                 </span>
-                <span className="text-base sm:text-lg font-bold text-brand-600 dark:text-brand-400 price-responsive">
+                <span className="text-sm font-bold text-brand-600 dark:text-brand-400 price-responsive">
                   Rs. {total.toFixed(2)}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-sm sm:text-base text-gray-600 dark:text-gray-400">Total Paid:</span>
-                <span className="font-medium text-sm sm:text-base text-gray-800 dark:text-white price-responsive">
+                <span className="text-xs text-gray-600 dark:text-gray-400">Total Paid:</span>
+                <span className="font-medium text-xs text-gray-800 dark:text-white price-responsive">
                   Rs. {totalPaid.toFixed(2)}
                 </span>
               </div>
               {remainingBalance > 0 && (
                 <div className="flex justify-between">
-                  <span className="text-sm sm:text-base text-gray-600 dark:text-gray-400">Remaining:</span>
-                  <span className="font-medium text-sm sm:text-base text-red-600 dark:text-red-400 price-responsive">
+                  <span className="text-xs text-gray-600 dark:text-gray-400">Remaining:</span>
+                  <span className="font-medium text-xs text-red-600 dark:text-red-400 price-responsive">
                     Rs. {remainingBalance.toFixed(2)}
                   </span>
                 </div>
               )}
             </div>
+            )}
 
             <Button
               onClick={handleFormSubmit(onSubmit)}
-              className="w-full mt-6"
+              className="w-full mt-4"
               size="sm"
               loading={isSubmitting}
               disabled={selectedProducts.length === 0 || isSubmitting}
             >
               Generate Bill
             </Button>
+            </>
+            )}
           </div>
         </div>
       </div>

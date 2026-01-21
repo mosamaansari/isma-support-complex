@@ -13,7 +13,7 @@ import Label from "../../components/form/Label";
 import Select from "../../components/form/Select";
 import TaxDiscountInput from "../../components/form/TaxDiscountInput";
 import Button from "../../components/ui/button/Button";
-import { TrashBinIcon, ChevronLeftIcon, PlusIcon } from "../../icons";
+import { TrashBinIcon, ChevronLeftIcon, ChevronRightIcon, PlusIcon, ChevronDownIcon, ChevronUpIcon } from "../../icons";
 import api from "../../services/api";
 import { hasPermission } from "../../utils/permissions";
 import { AVAILABLE_PERMISSIONS } from "../../utils/availablePermissions";
@@ -58,6 +58,9 @@ export default function PurchaseEntry() {
   const [payments, setPayments] = useState<PurchasePayment[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [isRightSidebarCollapsed, setIsRightSidebarCollapsed] = useState(true);
+  const [isPaymentMethodsOpen, setIsPaymentMethodsOpen] = useState(true);
+  const [isSummaryOpen, setIsSummaryOpen] = useState(true);
 
   const {
     register,
@@ -95,6 +98,14 @@ export default function PurchaseEntry() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Auto-open collapsible sections when products are added
+  useEffect(() => {
+    if (selectedProducts.length > 0) {
+      setIsPaymentMethodsOpen(true);
+      setIsSummaryOpen(true);
+    }
+  }, [selectedProducts.length]);
 
   // Load purchase data for edit
   useEffect(() => {
@@ -592,9 +603,9 @@ export default function PurchaseEntry() {
           </div>
 
           <div className="grid grid-cols-12 gap-4 md:gap-6">
-            <div className="col-span-12 lg:col-span-8">
-              <div className="p-6 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-                <h2 className="mb-4 text-xl font-semibold text-gray-800 dark:text-white">
+            <div className={`col-span-12 transition-all duration-300 ${isRightSidebarCollapsed ? 'lg:col-span-11' : 'lg:col-span-8'}`}>
+                  <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+                <h2 className="mb-3 text-base font-semibold text-gray-800 dark:text-white">
                   Product Search
                 </h2>
                 <Input
@@ -629,8 +640,8 @@ export default function PurchaseEntry() {
                 )}
               </div>
 
-              <div className="p-6 mt-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-                <h2 className="mb-4 text-xl font-semibold text-gray-800 dark:text-white">
+              <div className="p-3 sm:p-4 mt-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+                <h2 className="mb-3 text-base font-semibold text-gray-800 dark:text-white">
                   Selected Products
                 </h2>
                 {selectedProducts.length === 0 ? (
@@ -642,28 +653,28 @@ export default function PurchaseEntry() {
                     <table className="w-full min-w-[980px] table-fixed divide-y divide-gray-200 dark:divide-gray-700">
                       <thead className="bg-gray-50 dark:bg-gray-800">
                         <tr>
-                          <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[240px]">
+                          <th className="p-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[180px]">
                             Product
                           </th>
-                          <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[140px]">
+                          <th className="p-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[140px]">
                             Price Type
                           </th>
-                          <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[140px]">
+                          <th className="p-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[140px]">
                             Price
                           </th>
-                          <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[120px]">
+                          <th className="p-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[120px]">
                             Unit (Rs)
                           </th>
-                          <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[120px]">
+                          <th className="p-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[120px]">
                             Shop Qty
                           </th>
-                          <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[140px]">
+                          <th className="p-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[140px]">
                             Warehouse Qty
                           </th>
-                          <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[140px]">
+                          <th className="p-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[140px]">
                             Total
                           </th>
-                          <th className="p-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[80px]">
+                          <th className="p-2 text-center text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[80px]">
                             Action
                           </th>
                         </tr>
@@ -674,14 +685,14 @@ export default function PurchaseEntry() {
                             key={item.productId}
                             className="hover:bg-gray-50 dark:hover:bg-gray-700/50"
                           >
-                            <td className="p-3 overflow-hidden">
+                            <td className="p-2 overflow-hidden">
                               <div className="flex flex-col max-w-full">
-                                <p className="font-medium text-gray-900 dark:text-white text-sm truncate" title={item.productName}>
+                                <p className="font-medium text-gray-900 dark:text-white text-[11px] truncate" title={item.productName}>
                                   {item.productName}
                                 </p>
                               </div>
                             </td>
-                            <td className="p-3">
+                            <td className="p-2">
                               <Select
                                 value={((item as any).priceType || "single") as any}
                                 onChange={(value) => updateItemPriceType(item.productId, value as any)}
@@ -691,7 +702,7 @@ export default function PurchaseEntry() {
                                 ]}
                               />
                             </td>
-                            <td className="p-3">
+                            <td className="p-2">
                               <Input
                                 type="number"
                                 step={0.01}
@@ -710,14 +721,14 @@ export default function PurchaseEntry() {
                                     updateItemPrice(item.productId, isNaN(numValue) ? undefined : numValue);
                                   }
                                 }}
-                                className="w-full text-sm"
+                                className="w-full text-[11px]"
                                 placeholder="0"
                               />
                             </td>
-                            <td className="p-3 text-sm text-gray-700 dark:text-gray-300">
+                            <td className="p-2 text-[11px] text-gray-700 dark:text-gray-300">
                               Rs. {(((item as any).costSingle ?? item.cost) || 0).toFixed(2)}
                             </td>
-                            <td className="p-3">
+                            <td className="p-2">
                               <Input
                                 type="number"
                                 min="0"
@@ -731,11 +742,11 @@ export default function PurchaseEntry() {
                                     updateItemShopQuantity(item.productId, isNaN(numValue) ? undefined : numValue);
                                   }
                                 }}
-                                className="w-full text-sm"
+                                className="w-full text-[11px]"
                                 placeholder="0"
                               />
                             </td>
-                            <td className="p-3">
+                            <td className="p-2">
                               <Input
                                 type="number"
                                 min="0"
@@ -749,16 +760,16 @@ export default function PurchaseEntry() {
                                     updateItemWarehouseQuantity(item.productId, isNaN(numValue) ? undefined : numValue);
                                   }
                                 }}
-                                className="w-full text-sm"
+                                className="w-full text-[11px]"
                                 placeholder="0"
                               />
                             </td>
-                            <td className="p-3">
-                              <div className="text-sm font-semibold text-gray-900 dark:text-white break-all">
+                            <td className="p-2">
+                              <div className="text-[11px] font-semibold text-gray-900 dark:text-white break-all">
                               Rs. {(item.total || 0).toFixed(2)}
                               </div>
                             </td>
-                            <td className="p-3 text-center">
+                            <td className="p-2 text-center">
                               <button
                                 onClick={() => removeItem(item.productId)}
                                 className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 transition-colors"
@@ -775,12 +786,26 @@ export default function PurchaseEntry() {
               </div>
             </div>
 
-            <div className="col-span-12 lg:col-span-4">
-              <div className="p-6 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-                <h2 className="mb-4 text-xl font-semibold text-gray-800 dark:text-white">
+            <div className={`col-span-12 transition-all duration-300 ${isRightSidebarCollapsed ? 'lg:col-span-1' : 'lg:col-span-4'}`}>
+              <div className={`p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800 relative ${isRightSidebarCollapsed ? 'h-[webkit-fill-available]' : ''}`} style={isRightSidebarCollapsed ? { height: '-webkit-fill-available' } : {}}>
+                <button
+                  type="button"
+                  onClick={() => setIsRightSidebarCollapsed(!isRightSidebarCollapsed)}
+                  className="absolute -left-3 top-4 z-10 p-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                  title={isRightSidebarCollapsed ? "Expand" : "Collapse"}
+                >
+                  {isRightSidebarCollapsed ? (
+                    <ChevronLeftIcon className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                  ) : (
+                    <ChevronRightIcon className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                  )}
+                </button>
+                {!isRightSidebarCollapsed && (
+                  <>
+                <h2 className="mb-3 text-base font-semibold text-gray-800 dark:text-white">
                   Purchase Details
                 </h2>
-                <div className="space-y-4">
+                <div className="space-y-3">
                   <div>
                     <Label>
                       Supplier Name <span className="text-error-500">*</span>
@@ -833,16 +858,26 @@ export default function PurchaseEntry() {
                   </div>
                 </div>
 
-                <h2 className="mt-6 mb-4 text-xl font-semibold text-gray-800 dark:text-white">
-                  Summary
-                </h2>
+                <button
+                  type="button"
+                  onClick={() => setIsSummaryOpen(!isSummaryOpen)}
+                  className="flex items-center justify-between w-full mt-4 mb-3 text-base font-semibold text-gray-800 dark:text-white hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
+                >
+                  <span>Summary</span>
+                  {isSummaryOpen ? (
+                    <ChevronUpIcon className="w-4 h-4" />
+                  ) : (
+                    <ChevronDownIcon className="w-4 h-4" />
+                  )}
+                </button>
+                {isSummaryOpen && (
                 <div className="space-y-2">
                   <div className="flex justify-between">
-                    <span className="text-gray-600 dark:text-gray-400">Subtotal:</span>
-                    <span className="text-gray-800 dark:text-white">Rs. {subtotal.toFixed(2)}</span>
+                    <span className="text-xs text-gray-600 dark:text-gray-400">Subtotal:</span>
+                    <span className="text-xs text-gray-800 dark:text-white">Rs. {subtotal.toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <Label className="mb-0">Tax:</Label>
+                    <Label className="mb-0 text-xs">Tax:</Label>
                     <div className="flex items-center gap-2">
                       <TaxDiscountInput
                         value={tax}
@@ -861,23 +896,34 @@ export default function PurchaseEntry() {
                     </div>
                   </div>
                   <div className="flex justify-between pt-2 border-t border-gray-200 dark:border-gray-700">
-                    <span className="text-lg font-semibold text-gray-800 dark:text-white">
+                    <span className="text-sm font-semibold text-gray-800 dark:text-white">
                       Total:
                     </span>
-                    <span className="text-lg font-bold text-brand-600 dark:text-brand-400">
+                    <span className="text-sm font-bold text-brand-600 dark:text-brand-400">
                       Rs. {total.toFixed(2)}
                     </span>
                   </div>
                 </div>
+                )}
 
-                <h2 className="mt-6 mb-4 text-xl font-semibold text-gray-800 dark:text-white">
-                  Payment Methods
-                </h2>
+                <button
+                  type="button"
+                  onClick={() => setIsPaymentMethodsOpen(!isPaymentMethodsOpen)}
+                  className="flex items-center justify-between w-full mt-4 mb-3 text-base font-semibold text-gray-800 dark:text-white hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
+                >
+                  <span>Payment Methods</span>
+                  {isPaymentMethodsOpen ? (
+                    <ChevronUpIcon className="w-4 h-4" />
+                  ) : (
+                    <ChevronDownIcon className="w-4 h-4" />
+                  )}
+                </button>
+                {isPaymentMethodsOpen && (
                 <div className="space-y-3">
                   {payments.map((payment, index) => (
-                    <div key={index} className="p-3 border border-gray-200 rounded-lg dark:border-gray-700">
+                    <div key={index} className="p-2 border border-gray-200 rounded-lg dark:border-gray-700">
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
                           Payment {index + 1}
                         </span>
                         {payments.length > 1 && (
@@ -891,7 +937,7 @@ export default function PurchaseEntry() {
                       </div>
                       <div className="space-y-2">
                         <div>
-                          <Label>Payment Type <span className="text-error-500">*</span></Label>
+                          <Label className="text-xs">Payment Type <span className="text-error-500">*</span></Label>
                           <Select
                             value={payment.type}
                             onChange={(value) => updatePayment(index, "type", value)}
@@ -903,7 +949,7 @@ export default function PurchaseEntry() {
                         </div>
                         {payment.type === "bank_transfer" && (
                           <div className="mt-2">
-                            <Label>
+                            <Label className="text-xs">
                               Select Bank Account <span className="text-error-500">*</span>
                             </Label>
                             {bankAccounts.filter((acc) => acc.isActive).length === 0 ? (
@@ -940,7 +986,7 @@ export default function PurchaseEntry() {
                           </div>
                         )}
                         <div>
-                          <Label>Amount <span className="text-error-500">*</span></Label>
+                          <Label className="text-xs">Amount <span className="text-error-500">*</span></Label>
                           <Input
                             type="number"
                             step={0.01}
@@ -972,17 +1018,18 @@ export default function PurchaseEntry() {
                     Add Payment Method
                   </Button>
                 </div>
+                )}
 
-                <div className="mt-4 space-y-2 pt-4 border-t border-gray-200 dark:border-gray-700">
+                <div className="mt-3 space-y-1 pt-3 border-t border-gray-200 dark:border-gray-700">
                   <div className="flex justify-between">
-                    <span className="text-gray-600 dark:text-gray-400">Total Paid:</span>
-                    <span className="font-semibold text-gray-800 dark:text-white">
+                    <span className="text-xs text-gray-600 dark:text-gray-400">Total Paid:</span>
+                    <span className="text-xs font-semibold text-gray-800 dark:text-white">
                       Rs. {totalPaid.toFixed(2)}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-600 dark:text-gray-400">Remaining Balance:</span>
-                    <span className={`font-semibold ${remainingBalance > 0 ? "text-orange-600 dark:text-orange-400" : "text-green-600 dark:text-green-400"}`}>
+                    <span className="text-xs text-gray-600 dark:text-gray-400">Remaining Balance:</span>
+                    <span className={`text-xs font-semibold ${remainingBalance > 0 ? "text-orange-600 dark:text-orange-400" : "text-green-600 dark:text-green-400"}`}>
                       Rs. {remainingBalance.toFixed(2)}
                     </span>
                   </div>
@@ -990,13 +1037,15 @@ export default function PurchaseEntry() {
 
                 <Button
                   onClick={handleFormSubmit(onSubmit)}
-                  className="w-full mt-6"
+                  className="w-full mt-4"
                   size="sm"
                   loading={isSubmitting}
                   disabled={selectedProducts.length === 0 || !supplierName || payments.length === 0 || isSubmitting}
                 >
                   {isEdit ? "Update Purchase" : "Save Purchase"}
                 </Button>
+                </>
+                )}
               </div>
             </div>
           </div>
