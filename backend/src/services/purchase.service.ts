@@ -2,7 +2,7 @@ import prisma from "../config/database";
 import logger from "../utils/logger";
 import productService from "./product.service";
 import { validateTodayDate } from "../utils/dateValidation";
-import { parseLocalISO, getCurrentLocalDateTime, formatDateToLocalISO, getTodayInPakistan, formatLocalYMD, parseLocalYMDForDB } from "../utils/date";
+import { parseLocalISO, getCurrentLocalDateTime, formatDateToLocalISO, getTodayInPakistan, formatLocalYMD, parseLocalYMDForDB, convertToPakistanTime } from "../utils/date";
 import { limitDecimalPlaces } from "../utils/numberHelpers";
 
 const splitPurchaseQuantities = (item: {
@@ -1231,8 +1231,16 @@ class PurchaseService {
     }
 
     const currentPayments = (purchase.payments as any) || [];
-    // Always use current date and time for the new payment (avoids timezone/validation issues)
-    const paymentDate = formatDateToLocalISO(getCurrentLocalDateTime());
+    // Convert payment date to Pakistani time if provided, otherwise use current Pakistani time
+    let paymentDate: string;
+    if (payment.date) {
+      // Convert provided date to Pakistani timezone
+      const pakistanTime = convertToPakistanTime(payment.date);
+      paymentDate = formatDateToLocalISO(pakistanTime);
+    } else {
+      // Use current date and time in Pakistani timezone
+      paymentDate = formatDateToLocalISO(getCurrentLocalDateTime());
+    }
 
     const paymentAmount = payment.amount || 0;
     const newPayments = [...currentPayments, { ...payment, amount: paymentAmount, date: paymentDate }];
