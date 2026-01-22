@@ -172,10 +172,11 @@ export const formatBackendDateShort = (dateString: string | Date | null | undefi
  * Converts UTC time to Pakistan time (adds 5 hours) before displaying
  */
 export const formatBackendDateWithTime = (dateString: string | Date | null | undefined): string => {
+
+
   if (!dateString) return "";
   
   let year: number, month: number, day: number, hours: number, minutes: number, seconds: number;
-  
   if (dateString instanceof Date) {
     year = dateString.getUTCFullYear();
     month = dateString.getUTCMonth();
@@ -195,7 +196,7 @@ export const formatBackendDateWithTime = (dateString: string | Date | null | und
   } else {
     return "";
   }
-  
+  console.log("hours", hours)
   // Convert UTC to Pakistan time (UTC+5) - add 5 hours
   const pakistanOffset = 5; // Pakistan is UTC+5
   hours += pakistanOffset;
@@ -224,6 +225,60 @@ export const formatBackendDateWithTime = (dateString: string | Date | null | und
   return `${dateStr} ${timeStr}`;
 };
 
+export const formatBackendDateWithTimeWithoutUTC = (dateString: string | Date | null | undefined): string => {
+
+
+  if (!dateString) return "";
+  
+  let year: number, month: number, day: number, hours: number, minutes: number, seconds: number;
+  console.log("dateString instanceof Date", dateString instanceof Date)
+  if (dateString instanceof Date) {
+    year = dateString.getFullYear();
+    month = dateString.getMonth();
+    day = dateString.getDate();
+    hours = dateString.getHours();
+    minutes = dateString.getMinutes();
+    seconds = dateString.getSeconds();
+  } else if (typeof dateString === 'string') {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return "";
+    year = date.getFullYear();
+    month = date.getMonth();
+    day = date.getDate();
+    hours = date.getHours();
+    minutes = date.getMinutes();
+    seconds = date.getSeconds();
+  } else {
+    return "";
+  }
+  console.log("hours", hours)
+  // Convert UTC to Pakistan time (UTC+5) - add 5 hours
+  const pakistanOffset = 5; // Pakistan is UTC+5
+  hours += pakistanOffset;
+  
+  // Handle day overflow (if hours >= 24, add 1 day)
+  if (hours >= 24) {
+    hours -= 24;
+    day += 1;
+    // Handle month/year overflow if needed (simplified - assumes no month boundaries for now)
+  }
+  
+  // Format date: MM/DD/YYYY
+  const monthStr = String(month + 1).padStart(2, "0");
+  const dayStr = String(day).padStart(2, "0");
+  const dateStr = `${monthStr}/${dayStr}/${year}`;
+  
+  // Format time: HH:MM:SS AM/PM (using Pakistan time)
+  const isPM = hours >= 12;
+  const displayHours = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+  const hoursStr = String(displayHours).padStart(2, "0");
+  const minutesStr = String(minutes).padStart(2, "0");
+  const secondsStr = String(seconds).padStart(2, "0");
+  const ampm = isPM ? "PM" : "AM";
+  const timeStr = `${hoursStr}:${minutesStr}:${secondsStr} ${ampm}`;
+  
+  return `${dateStr} ${timeStr}`;
+};
 /**
  * Format date from backend (UTC ISO string) to display string in UTC timezone (no conversion)
  * Shows the exact UTC time from backend without converting to Pakistan time

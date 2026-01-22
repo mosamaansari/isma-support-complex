@@ -9,7 +9,7 @@ import Button from "../../components/ui/button/Button";
 import { DownloadIcon } from "../../icons";
 import api from "../../services/api";
 import { DailyReport, DateRangeReport } from "../../types";
-import { getTodayDate, formatBackendDate, parseUTCDateString, formatBackendDateWithTime } from "../../utils/dateHelpers";
+import { getTodayDate, formatBackendDate, parseUTCDateString, formatBackendDateWithTime, formatBackendDateWithTimeWithoutUTC } from "../../utils/dateHelpers";
 import { extractErrorMessage } from "../../utils/errorHandler";
 import { formatCompleteAmount } from "../../utils/priceHelpers";
 
@@ -36,7 +36,6 @@ export default function Reports() {
   const [chronologicalTransactions, setChronologicalTransactions] = useState<
     any[]
   >([]);
-
   const getDateRange = () => {
     // Always use startDate and endDate directly
     if (!startDate || !endDate) return null;
@@ -1451,8 +1450,9 @@ export default function Reports() {
                                 : ""
                             }`}
                           >
+                            
                             <td className="p-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                              {formatBackendDateWithTime(transaction.datetime || transaction.createdAt || transaction.updatedAt || transaction.date)}
+                              {formatBackendDateWithTimeWithoutUTC(transaction.datetime || transaction.createdAt || transaction.updatedAt || transaction.date)}
                             </td>
                             <td className="p-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">
                               {transaction.type}
