@@ -309,9 +309,10 @@ export default function PurchaseEntry() {
       selectedProducts.map((item) => {
         if (item.productId === productId) {
           const priceType: "single" | "dozen" = (item as any).priceType || "single";
-          if (!price || price <= 0) {
+          if (price === undefined || price === null) {
             return recalcItem(item as any, { cost: undefined, costSingle: undefined, costDozen: undefined } as any);
           }
+          // Allow 0 as valid price
           const costSingle = priceType === "dozen" ? price / 12 : price;
           const costDozen = priceType === "dozen" ? price : price * 12;
           return recalcItem(item as any, { costSingle, costDozen } as any);
@@ -445,11 +446,12 @@ export default function PurchaseEntry() {
         setIsSubmitting(false);
         return;
       }
-      if (item.cost === undefined || item.cost === null || item.cost <= 0) {
+      if (item.cost === undefined || item.cost === null) {
         showError(`Please enter a valid cost for ${item.productName || 'product'}`);
         setIsSubmitting(false);
         return;
       }
+      // Allow 0 as valid cost
     }
 
     setIsSubmitting(true);
