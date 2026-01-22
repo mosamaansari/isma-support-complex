@@ -31,7 +31,8 @@ class UserController {
 
   async getUser(req: AuthRequest, res: Response) {
     try {
-      const user = await userService.getUser(req.params.id);
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      const user = await userService.getUser(id);
       return res.status(200).json({
         message: "User retrieved successfully",
         response: {
@@ -126,8 +127,9 @@ class UserController {
         });
       }
 
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
       const canModify = await userService.canUserModify(
-        req.params.id,
+        id,
         req.user!.id,
         req.user!.role
       );
@@ -140,7 +142,7 @@ class UserController {
         });
       }
 
-      const user = await userService.updateUser(req.params.id, req.body);
+      const user = await userService.updateUser(id, req.body);
       logger.info(`User updated: ${user.username} by ${req.user?.username}`);
       return res.status(200).json({
         message: "User updated successfully",
@@ -239,8 +241,9 @@ class UserController {
 
   async deleteUser(req: AuthRequest, res: Response) {
     try {
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
       const canModify = await userService.canUserModify(
-        req.params.id,
+        id,
         req.user!.id,
         req.user!.role
       );
@@ -253,8 +256,8 @@ class UserController {
         });
       }
 
-      await userService.deleteUser(req.params.id);
-      logger.info(`User deleted: ${req.params.id} by ${req.user?.username}`);
+      await userService.deleteUser(id);
+      logger.info(`User deleted: ${id} by ${req.user?.username}`);
       return res.status(200).json({
         message: "User deleted successfully",
         response: {

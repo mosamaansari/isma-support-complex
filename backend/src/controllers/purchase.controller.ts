@@ -64,7 +64,7 @@ class PurchaseController {
 
   async getPurchase(req: AuthRequest, res: Response) {
     try {
-      const { id } = req.params;
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
       const purchase = await purchaseService.getPurchase(id);
       return res.status(200).json({
         message: "Purchase retrieved successfully",
@@ -94,7 +94,7 @@ class PurchaseController {
 
   async updatePurchase(req: AuthRequest, res: Response) {
     try {
-      const { id } = req.params;
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
       const purchase = await purchaseService.updatePurchase(id, req.body, req.user!.id);
       logger.info(`Purchase updated: ${purchase.id} by ${req.user?.username}`);
       return res.status(200).json({
@@ -125,7 +125,7 @@ class PurchaseController {
 
   async cancelPurchase(req: AuthRequest, res: Response) {
     try {
-      const { id } = req.params;
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
       const { refundMethod, bankAccountId } = req.body;
       
       const refundData = refundMethod ? {
@@ -193,7 +193,7 @@ class PurchaseController {
 
   async addPayment(req: AuthRequest, res: Response) {
     try {
-      const { id } = req.params;
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
       console.log("req.body", req.body)
       const purchase = await purchaseService.addPaymentToPurchase(id, req.body, req.user!.id, req.user?.userType);
       logger.info(`Payment added to purchase: ${purchase.id} by ${req.user?.username}`);

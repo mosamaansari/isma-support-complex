@@ -70,7 +70,7 @@ class OpeningBalanceController {
 
   async updateOpeningBalance(req: AuthRequest, res: Response) {
     try {
-      const { id } = req.params;
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
       const openingBalance = await openingBalanceService.updateOpeningBalance(
         id,
         req.body,
@@ -93,7 +93,7 @@ class OpeningBalanceController {
 
   async deleteOpeningBalance(req: AuthRequest, res: Response) {
     try {
-      const { id } = req.params;
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
       await openingBalanceService.deleteOpeningBalance(id);
       logger.info(`Opening balance deleted: ${id} by ${req.user?.username}`);
       res.json({ message: "Opening balance deleted successfully" });

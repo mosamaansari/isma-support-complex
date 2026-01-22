@@ -28,7 +28,8 @@ class CategoryController {
 
   async getCategory(req: AuthRequest, res: Response) {
     try {
-      const category = await categoryService.getCategory(req.params.id);
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      const category = await categoryService.getCategory(id);
       return res.status(200).json({
         message: "Category retrieved successfully",
         response: {
@@ -87,7 +88,8 @@ class CategoryController {
 
   async updateCategory(req: AuthRequest, res: Response) {
     try {
-      const category = await categoryService.updateCategory(req.params.id, req.body);
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      const category = await categoryService.updateCategory(id, req.body);
       logger.info(`Category updated: ${category.name} by ${req.user?.username}`);
       return res.status(200).json({
         message: "Category updated successfully",
@@ -121,8 +123,9 @@ class CategoryController {
 
   async deleteCategory(req: AuthRequest, res: Response) {
     try {
-      await categoryService.deleteCategory(req.params.id);
-      logger.info(`Category deleted: ${req.params.id} by ${req.user?.username}`);
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      await categoryService.deleteCategory(id);
+      logger.info(`Category deleted: ${id} by ${req.user?.username}`);
       return res.status(200).json({
         message: "Category deleted successfully",
         response: {

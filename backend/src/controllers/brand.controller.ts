@@ -28,7 +28,8 @@ class BrandController {
 
   async getBrand(req: AuthRequest, res: Response) {
     try {
-      const brand = await brandService.getBrand(req.params.id);
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      const brand = await brandService.getBrand(id);
       return res.status(200).json({
         message: "Brand retrieved successfully",
         response: {
@@ -87,7 +88,8 @@ class BrandController {
 
   async updateBrand(req: AuthRequest, res: Response) {
     try {
-      const brand = await brandService.updateBrand(req.params.id, req.body);
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      const brand = await brandService.updateBrand(id, req.body);
       logger.info(`Brand updated: ${brand.name} by ${req.user?.username}`);
       return res.status(200).json({
         message: "Brand updated successfully",
@@ -121,8 +123,9 @@ class BrandController {
 
   async deleteBrand(req: AuthRequest, res: Response) {
     try {
-      await brandService.deleteBrand(req.params.id);
-      logger.info(`Brand deleted: ${req.params.id} by ${req.user?.username}`);
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      await brandService.deleteBrand(id);
+      logger.info(`Brand deleted: ${id} by ${req.user?.username}`);
       return res.status(200).json({
         message: "Brand deleted successfully",
         response: {

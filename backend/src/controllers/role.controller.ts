@@ -94,8 +94,9 @@ class RoleController {
         });
       }
 
-      const role = await roleService.updateRole(req.params.id, req.body);
-      logger.info(`Role updated: ${req.params.id} by ${req.user?.username}`);
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      const role = await roleService.updateRole(id, req.body);
+      logger.info(`Role updated: ${id} by ${req.user?.username}`);
       return res.status(200).json({
         message: "Role updated successfully",
         response: {
@@ -133,8 +134,9 @@ class RoleController {
         });
       }
 
-      await roleService.deleteRole(req.params.id);
-      logger.info(`Role deleted: ${req.params.id} by ${req.user?.username}`);
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      await roleService.deleteRole(id);
+      logger.info(`Role deleted: ${id} by ${req.user?.username}`);
       return res.status(200).json({
         message: "Role deleted successfully",
         response: {

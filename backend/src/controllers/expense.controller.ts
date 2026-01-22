@@ -35,7 +35,8 @@ class ExpenseController {
 
   async getExpense(req: AuthRequest, res: Response) {
     try {
-      const expense = await expenseService.getExpense(req.params.id);
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      const expense = await expenseService.getExpense(id);
       return res.status(200).json({
         message: "Expense retrieved successfully",
         response: {
@@ -94,8 +95,9 @@ class ExpenseController {
 
   async updateExpense(req: AuthRequest, res: Response) {
     try {
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
       const canModify = await expenseService.canUserModify(
-        req.params.id,
+        id,
         req.user!.id,
         req.user!.role
       );
@@ -108,7 +110,7 @@ class ExpenseController {
         });
       }
 
-      const expense = await expenseService.updateExpense(req.params.id, req.body);
+      const expense = await expenseService.updateExpense(id, req.body);
       logger.info(`Expense updated: ${expense.id} by ${req.user?.username}`);
       return res.status(200).json({
         message: "Expense updated successfully",
@@ -138,8 +140,9 @@ class ExpenseController {
 
   async deleteExpense(req: AuthRequest, res: Response) {
     try {
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
       const canModify = await expenseService.canUserModify(
-        req.params.id,
+        id,
         req.user!.id,
         req.user!.role
       );
@@ -152,8 +155,8 @@ class ExpenseController {
         });
       }
 
-      await expenseService.deleteExpense(req.params.id);
-      logger.info(`Expense deleted: ${req.params.id} by ${req.user?.username}`);
+      await expenseService.deleteExpense(id);
+      logger.info(`Expense deleted: ${id} by ${req.user?.username}`);
       return res.status(200).json({
         message: "Expense deleted successfully",
         response: {

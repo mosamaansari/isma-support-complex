@@ -28,7 +28,8 @@ class CardController {
 
   async getCard(req: AuthRequest, res: Response) {
     try {
-      const card = await cardService.getCard(req.params.id);
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      const card = await cardService.getCard(id);
       return res.status(200).json({
         message: "Card retrieved successfully",
         response: {
@@ -102,7 +103,8 @@ class CardController {
 
   async updateCard(req: AuthRequest, res: Response) {
     try {
-      const card = await cardService.updateCard(req.params.id, req.body);
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      const card = await cardService.updateCard(id, req.body);
       logger.info(`Card updated: ${card.name} by ${req.user?.username}`);
       return res.status(200).json({
         message: "Card updated successfully",
@@ -132,8 +134,9 @@ class CardController {
 
   async deleteCard(req: AuthRequest, res: Response) {
     try {
-      await cardService.deleteCard(req.params.id);
-      logger.info(`Card deleted: ${req.params.id} by ${req.user?.username}`);
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      await cardService.deleteCard(id);
+      logger.info(`Card deleted: ${id} by ${req.user?.username}`);
       return res.status(200).json({
         message: "Card deleted successfully",
         response: {

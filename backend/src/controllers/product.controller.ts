@@ -34,7 +34,8 @@ class ProductController {
 
   async getProduct(req: AuthRequest, res: Response) {
     try {
-      const product = await productService.getProduct(req.params.id);
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      const product = await productService.getProduct(id);
       return res.status(200).json({
         message: "Product retrieved successfully",
         response: {
@@ -86,7 +87,8 @@ class ProductController {
 
   async updateProduct(req: AuthRequest, res: Response) {
     try {
-      const product = await productService.updateProduct(req.params.id, req.body);
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      const product = await productService.updateProduct(id, req.body);
       logger.info(`Product updated: ${product.name} by ${req.user?.username}`);
       return res.status(200).json({
         message: "Product updated successfully",
@@ -109,8 +111,9 @@ class ProductController {
 
   async deleteProduct(req: AuthRequest, res: Response) {
     try {
-      await productService.deleteProduct(req.params.id);
-      logger.info(`Product deleted: ${req.params.id} by ${req.user?.username}`);
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      await productService.deleteProduct(id);
+      logger.info(`Product deleted: ${id} by ${req.user?.username}`);
       return res.status(200).json({
         message: "Product deleted successfully",
         response: {

@@ -13,7 +13,7 @@ import Label from "../../components/form/Label";
 import Select from "../../components/form/Select";
 import TaxDiscountInput from "../../components/form/TaxDiscountInput";
 import Button from "../../components/ui/button/Button";
-import { TrashBinIcon, ChevronLeftIcon, ChevronRightIcon, PlusIcon, ChevronDownIcon, ChevronUpIcon } from "../../icons";
+import { TrashBinIcon, ChevronLeftIcon, PlusIcon, ChevronDownIcon, ChevronUpIcon } from "../../icons";
 import api from "../../services/api";
 import { hasPermission } from "../../utils/permissions";
 import { AVAILABLE_PERMISSIONS } from "../../utils/availablePermissions";
@@ -58,7 +58,6 @@ export default function PurchaseEntry() {
   const [payments, setPayments] = useState<PurchasePayment[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [isRightSidebarCollapsed, setIsRightSidebarCollapsed] = useState(true);
   const [isPaymentMethodsOpen, setIsPaymentMethodsOpen] = useState(true);
   const [isSummaryOpen, setIsSummaryOpen] = useState(true);
 
@@ -92,10 +91,7 @@ export default function PurchaseEntry() {
     if (bankAccounts.length === 0) {
       refreshBankAccounts();
     }
-    // Add default cash payment
-    if (payments.length === 0 && !isEdit) {
-      setPayments([{ type: "cash", amount: undefined }]);
-    }
+    // Don't add default payment - payments are optional
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -406,22 +402,18 @@ export default function PurchaseEntry() {
       showError("Please add at least one product");
       return;
     }
-    if (payments.length === 0) {
-      showError("Please add at least one payment method");
-      return;
-    }
     if (totalPaid > total) {
       showError("Total paid amount cannot exceed total amount");
       return;
     }
 
-    // Validate payments
+    // Validate payments (only if payments exist)
     for (const payment of payments) {
-      if (payment.amount === undefined || payment.amount === null || payment.amount <= 0) {
-        showError("Please enter a valid amount for all payments");
+      if (payment.amount !== undefined && payment.amount !== null && payment.amount <= 0) {
+        showError("Payment amount must be greater than 0 if provided");
         return;
       }
-      if (payment.type === "bank_transfer" && !payment.bankAccountId) {
+      if (payment.type === "bank_transfer" && payment.amount !== undefined && payment.amount !== null && payment.amount > 0 && !payment.bankAccountId) {
         showError("Please select a bank account for bank transfer payment");
         return;
       }
@@ -602,12 +594,11 @@ export default function PurchaseEntry() {
             </Link>
           </div>
 
-          <div className="grid grid-cols-12 gap-4 md:gap-6">
-            <div className={`col-span-12 transition-all duration-300 ${isRightSidebarCollapsed ? 'lg:col-span-11' : 'lg:col-span-8'}`}>
-                  <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-                <h2 className="mb-3 text-base font-semibold text-gray-800 dark:text-white">
-                  Product Search
-                </h2>
+          <div className="space-y-4 md:space-y-6">
+            <div className="p-4 md:p-6 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+              <h2 className="mb-4 text-lg sm:text-xl font-semibold text-gray-800 dark:text-white">
+                Product Search
+              </h2>
                 <Input
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
@@ -638,12 +629,12 @@ export default function PurchaseEntry() {
                     ))}
                   </div>
                 )}
-              </div>
+            </div>
 
-              <div className="p-3 sm:p-4 mt-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-                <h2 className="mb-3 text-base font-semibold text-gray-800 dark:text-white">
-                  Selected Products
-                </h2>
+            <div className="p-4 md:p-6 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+              <h2 className="mb-4 text-lg sm:text-xl font-semibold text-gray-800 dark:text-white">
+                Selected Products
+              </h2>
                 {selectedProducts.length === 0 ? (
                   <p className="text-gray-500 dark:text-gray-400">
                     No products selected. Search and add products above.
@@ -783,29 +774,14 @@ export default function PurchaseEntry() {
                     </table>
                   </div>
                 )}
-              </div>
             </div>
 
-            <div className={`col-span-12 transition-all duration-300 ${isRightSidebarCollapsed ? 'lg:col-span-1' : 'lg:col-span-4'}`}>
-              <div className={`p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800 relative ${isRightSidebarCollapsed ? 'h-[webkit-fill-available]' : ''}`} style={isRightSidebarCollapsed ? { height: '-webkit-fill-available' } : {}}>
-                <button
-                  type="button"
-                  onClick={() => setIsRightSidebarCollapsed(!isRightSidebarCollapsed)}
-                  className="absolute -left-3 top-4 z-10 p-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                  title={isRightSidebarCollapsed ? "Expand" : "Collapse"}
-                >
-                  {isRightSidebarCollapsed ? (
-                    <ChevronLeftIcon className="w-4 h-4 text-gray-600 dark:text-gray-400" />
-                  ) : (
-                    <ChevronRightIcon className="w-4 h-4 text-gray-600 dark:text-gray-400" />
-                  )}
-                </button>
-                {!isRightSidebarCollapsed && (
-                  <>
-                <h2 className="mb-3 text-base font-semibold text-gray-800 dark:text-white">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
+              <div className="p-4 md:p-6 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+                <h2 className="mb-4 text-base font-semibold text-gray-800 dark:text-white">
                   Purchase Details
                 </h2>
-                <div className="space-y-3">
+                <div className="space-y-4">
                   <div>
                     <Label>
                       Supplier Name <span className="text-error-500">*</span>
@@ -857,59 +833,13 @@ export default function PurchaseEntry() {
                     />
                   </div>
                 </div>
+              </div>
 
-                <button
-                  type="button"
-                  onClick={() => setIsSummaryOpen(!isSummaryOpen)}
-                  className="flex items-center justify-between w-full mt-4 mb-3 text-base font-semibold text-gray-800 dark:text-white hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
-                >
-                  <span>Summary</span>
-                  {isSummaryOpen ? (
-                    <ChevronUpIcon className="w-4 h-4" />
-                  ) : (
-                    <ChevronDownIcon className="w-4 h-4" />
-                  )}
-                </button>
-                {isSummaryOpen && (
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-xs text-gray-600 dark:text-gray-400">Subtotal:</span>
-                    <span className="text-xs text-gray-800 dark:text-white">Rs. {subtotal.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <Label className="mb-0 text-xs">Tax:</Label>
-                    <div className="flex items-center gap-2">
-                      <TaxDiscountInput
-                        value={tax}
-                        type={taxType}
-                        onValueChange={(value) => {
-                          setTax(value || null);
-                          setValue("tax", value || null);
-                        }}
-                        onTypeChange={(type) => {
-                          setTaxType(type);
-                        }}
-                        placeholder="0"
-                        className="w-32"
-                      />
-
-                    </div>
-                  </div>
-                  <div className="flex justify-between pt-2 border-t border-gray-200 dark:border-gray-700">
-                    <span className="text-sm font-semibold text-gray-800 dark:text-white">
-                      Total:
-                    </span>
-                    <span className="text-sm font-bold text-brand-600 dark:text-brand-400">
-                      Rs. {total.toFixed(2)}
-                    </span>
-                  </div>
-                </div>
-                )}
-
+              <div className="p-4 md:p-6 bg-white rounded-lg shadow-sm dark:bg-gray-800">
                 <button
                   type="button"
                   onClick={() => setIsPaymentMethodsOpen(!isPaymentMethodsOpen)}
-                  className="flex items-center justify-between w-full mt-4 mb-3 text-base font-semibold text-gray-800 dark:text-white hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
+                  className="flex items-center justify-between w-full mb-4 text-base font-semibold text-gray-800 dark:text-white hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
                 >
                   <span>Payment Methods</span>
                   {isPaymentMethodsOpen ? (
@@ -926,14 +856,12 @@ export default function PurchaseEntry() {
                         <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
                           Payment {index + 1}
                         </span>
-                        {payments.length > 1 && (
-                          <button
-                            onClick={() => removePayment(index)}
-                            className="text-red-600 hover:text-red-700"
-                          >
-                            <TrashBinIcon className="w-4 h-4" />
-                          </button>
-                        )}
+                        <button
+                          onClick={() => removePayment(index)}
+                          className="text-red-600 hover:text-red-700"
+                        >
+                          <TrashBinIcon className="w-4 h-4" />
+                        </button>
                       </div>
                       <div className="space-y-2">
                         <div>
@@ -986,28 +914,30 @@ export default function PurchaseEntry() {
                           </div>
                         )}
                         <div>
-                          <Label className="text-xs">Amount <span className="text-error-500">*</span></Label>
+                          <Label className="text-xs">Amount (Optional)</Label>
                           <Input
                             type="number"
                             step={0.01}
                             min="0"
                             max={String(total - totalPaid + (payment.amount || 0))}
-                            value={payment.amount === undefined || payment.amount === null ? "" : payment.amount}
+                            value={(payment.amount !== null && payment.amount !== undefined && payment.amount !== 0) ? String(payment.amount) : ""}
                             onChange={(e) => {
-                              const value = e.target.value;
-                              if (value === "" || value === null || value === undefined) {
-                                updatePayment(index, "amount", undefined);
-                              } else {
-                                const numValue = parseFloat(value);
-                                updatePayment(index, "amount", isNaN(numValue) ? undefined : numValue);
-                              }
+                              const value = e.target.value === "" ? undefined : parseFloat(e.target.value);
+                              updatePayment(index, "amount", isNaN(value as any) || value === null ? undefined : value);
                             }}
-                            placeholder="Enter amount"
+                            placeholder="Enter amount (optional)"
                           />
                         </div>
                       </div>
                     </div>
                   ))}
+                  {payments.length === 0 && (
+                    <div className="text-center py-4">
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+                        No payments added. Payments are optional.
+                      </p>
+                    </div>
+                  )}
                   <Button
                     onClick={addPayment}
                     variant="outline"
@@ -1015,36 +945,79 @@ export default function PurchaseEntry() {
                     className="w-full"
                   >
                     <PlusIcon className="w-4 h-4 mr-2" />
-                    Add Payment Method
+                    Add Payment
                   </Button>
+                  {totalPaid > total && (
+                    <div className="p-2 text-sm text-error-500 bg-error-50 border border-error-200 rounded dark:bg-error-900/20 dark:border-error-700">
+                      Total paid amount cannot exceed total amount.
+                    </div>
+                  )}
+                  {remainingBalance > 0 && totalPaid > 0 && (
+                    <div className="p-2 bg-yellow-50 border border-yellow-200 rounded-lg dark:bg-yellow-900/20 dark:border-yellow-800">
+                      <p className="text-xs font-medium text-yellow-800 dark:text-yellow-200">
+                        Remaining Balance: Rs. {remainingBalance.toFixed(2)}
+                      </p>
+                    </div>
+                  )}
                 </div>
                 )}
+              </div>
 
-                <div className="mt-3 space-y-1 pt-3 border-t border-gray-200 dark:border-gray-700">
-                  <div className="flex justify-between">
-                    <span className="text-xs text-gray-600 dark:text-gray-400">Total Paid:</span>
-                    <span className="text-xs font-semibold text-gray-800 dark:text-white">
-                      Rs. {totalPaid.toFixed(2)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-xs text-gray-600 dark:text-gray-400">Remaining Balance:</span>
-                    <span className={`text-xs font-semibold ${remainingBalance > 0 ? "text-orange-600 dark:text-orange-400" : "text-green-600 dark:text-green-400"}`}>
-                      Rs. {remainingBalance.toFixed(2)}
-                    </span>
-                  </div>
-                </div>
-
-                <Button
-                  onClick={handleFormSubmit(onSubmit)}
-                  className="w-full mt-4"
-                  size="sm"
-                  loading={isSubmitting}
-                  disabled={selectedProducts.length === 0 || !supplierName || payments.length === 0 || isSubmitting}
+              <div className="p-4 md:p-6 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+                <button
+                  type="button"
+                  onClick={() => setIsSummaryOpen(!isSummaryOpen)}
+                  className="flex items-center justify-between w-full mb-4 text-base font-semibold text-gray-800 dark:text-white hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
                 >
-                  {isEdit ? "Update Purchase" : "Save Purchase"}
-                </Button>
-                </>
+                  <span>Summary</span>
+                  {isSummaryOpen ? (
+                    <ChevronUpIcon className="w-4 h-4" />
+                  ) : (
+                    <ChevronDownIcon className="w-4 h-4" />
+                  )}
+                </button>
+                {isSummaryOpen && (
+                <div className="space-y-3">
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-600 dark:text-gray-400">Subtotal:</span>
+                    <span className="text-sm text-gray-800 dark:text-white">Rs. {subtotal.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <Label className="mb-0 text-sm">Tax:</Label>
+                    <div className="flex items-center gap-2">
+                      <TaxDiscountInput
+                        value={tax}
+                        type={taxType}
+                        onValueChange={(value) => {
+                          setTax(value || null);
+                          setValue("tax", value || null);
+                        }}
+                        onTypeChange={(type) => {
+                          setTaxType(type);
+                        }}
+                        placeholder="0"
+                        className="w-32"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-between pt-3 border-t border-gray-200 dark:border-gray-700">
+                    <span className="text-base font-semibold text-gray-800 dark:text-white">
+                      Total:
+                    </span>
+                    <span className="text-base font-bold text-brand-600 dark:text-brand-400">
+                      Rs. {total.toFixed(2)}
+                    </span>
+                  </div>
+                  <Button
+                    onClick={handleFormSubmit(onSubmit)}
+                    className="w-full mt-4"
+                    size="sm"
+                    loading={isSubmitting}
+                    disabled={selectedProducts.length === 0 || !supplierName || isSubmitting}
+                  >
+                    {isEdit ? "Update Purchase" : "Save Purchase"}
+                  </Button>
+                </div>
                 )}
               </div>
             </div>

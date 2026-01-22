@@ -13,7 +13,7 @@ import Label from "../../components/form/Label";
 import Select from "../../components/form/Select";
 import TaxDiscountInput from "../../components/form/TaxDiscountInput";
 import Button from "../../components/ui/button/Button";
-import { TrashBinIcon, PlusIcon, ChevronDownIcon, ChevronUpIcon, ChevronLeftIcon, ChevronRightIcon } from "../../icons";
+import { TrashBinIcon, PlusIcon, ChevronDownIcon, ChevronUpIcon } from "../../icons";
 import { getTodayDate, formatDateToString, formatDateToLocalISO } from "../../utils/dateHelpers";
 import { extractErrorMessage, extractValidationErrors } from "../../utils/errorHandler";
 import { restrictDecimalInput } from "../../utils/numberHelpers";
@@ -58,7 +58,6 @@ export default function SalesEntry() {
   const [showErrors, setShowErrors] = useState(false);
   const [formError, setFormError] = useState<string>("");
   const bankAccountsLoadedRef = useRef(false);
-  const [isRightSidebarCollapsed, setIsRightSidebarCollapsed] = useState(true);
   const [isPaymentDetailsOpen, setIsPaymentDetailsOpen] = useState(true);
   const [isBillSummaryOpen, setIsBillSummaryOpen] = useState(true);
 
@@ -696,12 +695,11 @@ export default function SalesEntry() {
         title="Sales Entry | Isma Sports Complex"
         description="Create new sales entry and generate bill"
       />
-      <div className="grid grid-cols-12 gap-3 sm:gap-4 md:gap-6">
-        <div className={`col-span-12 transition-all duration-300 ${isRightSidebarCollapsed ? 'lg:col-span-11' : 'lg:col-span-8'}`}>
-          <div className="p-3 sm:p-4 md:p-6 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-            <h2 className="mb-4 text-lg sm:text-xl font-semibold text-gray-800 dark:text-white">
-              Product Search
-            </h2>
+      <div className="space-y-4 md:space-y-6">
+        <div className="p-4 md:p-6 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+          <h2 className="mb-4 text-lg sm:text-xl font-semibold text-gray-800 dark:text-white">
+            Product Search
+          </h2>
             {formError && (
               <div className="mb-4 p-3 text-sm text-error-600 bg-error-50 border border-error-200 rounded dark:text-error-300 dark:bg-error-900/20 dark:border-error-800">
                 {formError}
@@ -737,12 +735,12 @@ export default function SalesEntry() {
                 ))}
               </div>
             )}
-          </div>
+        </div>
 
-          <div className="p-3 sm:p-4 md:p-6 mt-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-            <h2 className="mb-4 text-lg sm:text-xl font-semibold text-gray-800 dark:text-white">
-              Selected Products
-            </h2>
+        <div className="p-4 md:p-6 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+          <h2 className="mb-4 text-lg sm:text-xl font-semibold text-gray-800 dark:text-white">
+            Selected Products
+          </h2>
             {selectedProducts.length === 0 ? (
               <p className="text-sm sm:text-base text-gray-500 dark:text-gray-400">
                 No products selected. Search and add products above.
@@ -921,29 +919,14 @@ export default function SalesEntry() {
                 </table>
               </div>
             )}
-          </div>
         </div>
 
-        <div className={`col-span-12 transition-all duration-300 ${isRightSidebarCollapsed ? 'lg:col-span-1' : 'lg:col-span-4'}`}>
-          <div className={`p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800 relative ${isRightSidebarCollapsed ? 'h-[webkit-fill-available]' : ''}`} style={isRightSidebarCollapsed ? { height: '-webkit-fill-available' } : {}}>
-            <button
-              type="button"
-              onClick={() => setIsRightSidebarCollapsed(!isRightSidebarCollapsed)}
-              className="absolute -left-3 top-4 z-10 p-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-              title={isRightSidebarCollapsed ? "Expand" : "Collapse"}
-            >
-              {isRightSidebarCollapsed ? (
-                <ChevronLeftIcon className="w-4 h-4 text-gray-600 dark:text-gray-400" />
-              ) : (
-                <ChevronRightIcon className="w-4 h-4 text-gray-600 dark:text-gray-400" />
-              )}
-            </button>
-            {!isRightSidebarCollapsed && (
-              <>
-            <h2 className="mb-3 text-base font-semibold text-gray-800 dark:text-white">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
+          <div className="p-4 md:p-6 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+            <h2 className="mb-4 text-base font-semibold text-gray-800 dark:text-white">
               Customer Details
             </h2>
-            <div className="space-y-3">
+            <div className="space-y-4">
               <div>
                 <Label>
                   Customer Name <span className="text-error-500">*</span>
@@ -1008,7 +991,9 @@ export default function SalesEntry() {
                 />
               </div>
             </div>
+          </div>
 
+          <div className="p-4 md:p-6 bg-white rounded-lg shadow-sm dark:bg-gray-800">
             <button
               type="button"
               onClick={() => setIsPaymentDetailsOpen(!isPaymentDetailsOpen)}
@@ -1124,11 +1109,13 @@ export default function SalesEntry() {
               )}
             </div>
             )}
+          </div>
 
+          <div className="p-4 md:p-6 bg-white rounded-lg shadow-sm dark:bg-gray-800">
             <button
               type="button"
               onClick={() => setIsBillSummaryOpen(!isBillSummaryOpen)}
-              className="flex items-center justify-between w-full mt-4 mb-3 text-base font-semibold text-gray-800 dark:text-white hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
+              className="flex items-center justify-between w-full mb-4 text-base font-semibold text-gray-800 dark:text-white hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
             >
               <span>Bill Summary</span>
               {isBillSummaryOpen ? (
@@ -1138,16 +1125,16 @@ export default function SalesEntry() {
               )}
             </button>
             {isBillSummaryOpen && (
-            <div className="space-y-2">
+            <div className="space-y-3">
               <div className="flex justify-between">
-                <span className="text-xs text-gray-600 dark:text-gray-400">Subtotal:</span>
-                <span className="font-medium text-xs text-gray-800 dark:text-white price-responsive">
+                <span className="text-sm text-gray-600 dark:text-gray-400">Subtotal:</span>
+                <span className="font-medium text-sm text-gray-800 dark:text-white">
                   Rs. {subtotal.toFixed(2)}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <Label className="mb-0 whitespace-nowrap text-xs">Discount:</Label>
-                <div className="">
+                <Label className="mb-0 whitespace-nowrap text-sm">Discount:</Label>
+                <div className="flex-1 max-w-[200px]">
                   <TaxDiscountInput
                     value={globalDiscount}
                     type={globalDiscountType}
@@ -1160,8 +1147,8 @@ export default function SalesEntry() {
                 </div>
               </div>
               <div className="flex items-center justify-between gap-4">
-                <Label className="mb-0 whitespace-nowrap text-xs">Tax:</Label>
-                <div className="">
+                <Label className="mb-0 whitespace-nowrap text-sm">Tax:</Label>
+                <div className="flex-1 max-w-[200px]">
                   <TaxDiscountInput
                     value={globalTax}
                     type={globalTaxType}
@@ -1173,41 +1160,38 @@ export default function SalesEntry() {
                   />
                 </div>
               </div>
-              <div className="flex justify-between pt-2 border-t border-gray-200 dark:border-gray-700">
-                <span className="text-sm font-semibold text-gray-800 dark:text-white">
+              <div className="flex justify-between pt-3 border-t border-gray-200 dark:border-gray-700">
+                <span className="text-base font-semibold text-gray-800 dark:text-white">
                   Total:
                 </span>
-                <span className="text-sm font-bold text-brand-600 dark:text-brand-400 price-responsive">
+                <span className="text-base font-bold text-brand-600 dark:text-brand-400">
                   Rs. {total.toFixed(2)}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-xs text-gray-600 dark:text-gray-400">Total Paid:</span>
-                <span className="font-medium text-xs text-gray-800 dark:text-white price-responsive">
+                <span className="text-sm text-gray-600 dark:text-gray-400">Total Paid:</span>
+                <span className="font-medium text-sm text-gray-800 dark:text-white">
                   Rs. {totalPaid.toFixed(2)}
                 </span>
               </div>
               {remainingBalance > 0 && (
                 <div className="flex justify-between">
-                  <span className="text-xs text-gray-600 dark:text-gray-400">Remaining:</span>
-                  <span className="font-medium text-xs text-red-600 dark:text-red-400 price-responsive">
+                  <span className="text-sm text-gray-600 dark:text-gray-400">Remaining:</span>
+                  <span className="font-medium text-sm text-red-600 dark:text-red-400">
                     Rs. {remainingBalance.toFixed(2)}
                   </span>
                 </div>
               )}
+              <Button
+                onClick={handleFormSubmit(onSubmit)}
+                className="w-full mt-4"
+                size="sm"
+                loading={isSubmitting}
+                disabled={selectedProducts.length === 0 || isSubmitting}
+              >
+                Generate Bill
+              </Button>
             </div>
-            )}
-
-            <Button
-              onClick={handleFormSubmit(onSubmit)}
-              className="w-full mt-4"
-              size="sm"
-              loading={isSubmitting}
-              disabled={selectedProducts.length === 0 || isSubmitting}
-            >
-              Generate Bill
-            </Button>
-            </>
             )}
           </div>
         </div>

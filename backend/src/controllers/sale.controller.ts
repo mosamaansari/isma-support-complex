@@ -35,7 +35,8 @@ class SaleController {
 
   async getSale(req: AuthRequest, res: Response) {
     try {
-      const sale = await saleService.getSale(req.params.id);
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      const sale = await saleService.getSale(id);
       return res.status(200).json({
         message: "Sale retrieved successfully",
         response: {
@@ -64,7 +65,8 @@ class SaleController {
 
   async getSaleByBillNumber(req: AuthRequest, res: Response) {
     try {
-      const sale = await saleService.getSaleByBillNumber(req.params.billNumber);
+      const billNumber = Array.isArray(req.params.billNumber) ? req.params.billNumber[0] : req.params.billNumber;
+      const sale = await saleService.getSaleByBillNumber(billNumber);
       return res.status(200).json({
         message: "Sale retrieved successfully",
         response: {
@@ -120,7 +122,7 @@ class SaleController {
 
   async addPaymentToSale(req: AuthRequest, res: Response) {
     try {
-      const { id } = req.params;
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
       const payment = req.body;
       const sale = await saleService.addPaymentToSale(
         id,
@@ -174,7 +176,7 @@ class SaleController {
 
   async cancelSale(req: AuthRequest, res: Response) {
     try {
-      const { id } = req.params;
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
       const { refundMethod, bankAccountId } = req.body;
       
       const refundData = refundMethod ? {

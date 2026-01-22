@@ -28,7 +28,8 @@ class BankAccountController {
 
   async getBankAccount(req: AuthRequest, res: Response) {
     try {
-      const account = await bankAccountService.getBankAccount(req.params.id);
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      const account = await bankAccountService.getBankAccount(id);
       return res.status(200).json({
         message: "Bank account retrieved successfully",
         response: {
@@ -112,7 +113,8 @@ class BankAccountController {
 
   async updateBankAccount(req: AuthRequest, res: Response) {
     try {
-      const account = await bankAccountService.updateBankAccount(req.params.id, req.body);
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      const account = await bankAccountService.updateBankAccount(id, req.body);
       logger.info(`Bank account updated: ${account.accountName} by ${req.user?.username}`);
       return res.status(200).json({
         message: "Bank account updated successfully",
@@ -153,8 +155,9 @@ class BankAccountController {
 
   async deleteBankAccount(req: AuthRequest, res: Response) {
     try {
-      await bankAccountService.deleteBankAccount(req.params.id);
-      logger.info(`Bank account deleted: ${req.params.id} by ${req.user?.username}`);
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      await bankAccountService.deleteBankAccount(id);
+      logger.info(`Bank account deleted: ${id} by ${req.user?.username}`);
       return res.status(200).json({
         message: "Bank account deleted successfully",
         response: {
