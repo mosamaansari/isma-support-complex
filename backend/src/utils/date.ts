@@ -101,6 +101,7 @@ export function getCurrentLocalDateTime(): Date {
   const milliseconds = now.getMilliseconds();
   
   // Create a new date using local components (this avoids UTC conversion)
+  console.log("year", new Date(year, month, day, hours, minutes, seconds, milliseconds))
   return new Date(year, month, day, hours, minutes, seconds, milliseconds);
 }
 
@@ -119,6 +120,54 @@ export function formatDateToLocalISO(date: Date): string {
   const milliseconds = String(date.getMilliseconds()).padStart(3, '0');
   // Do NOT add "Z" suffix - it causes UTC interpretation
   return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.${milliseconds}`;
+}
+
+/**
+ * Convert a date string or Date object to Pakistani timezone (Asia/Karachi)
+ * Returns a Date object with the date/time components in Pakistani timezone
+ */
+export function convertToPakistanTime(date: string | Date): Date {
+  let inputDate: Date;
+  
+  if (typeof date === 'string') {
+    // Parse the date string - handle various formats
+    if (date.includes('T')) {
+      // ISO format with time
+      inputDate = parseLocalISO(date);
+    } else {
+      // Just date string (YYYY-MM-DD)
+      inputDate = parseLocalYMD(date);
+    }
+  } else {
+    inputDate = date;
+  }
+  
+  // Get the date/time components in Pakistani timezone
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Karachi",
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "numeric",
+    second: "numeric",
+    hour12: false,
+  });
+  
+  // Format the date to get components in Pakistani timezone
+  const parts = formatter.formatToParts(inputDate);
+  const year = parseInt(parts.find(p => p.type === "year")?.value || "0", 10);
+  const month = parseInt(parts.find(p => p.type === "month")?.value || "0", 10) - 1; // Month is 0-indexed
+  const day = parseInt(parts.find(p => p.type === "day")?.value || "0", 10);
+  const hours = parseInt(parts.find(p => p.type === "hour")?.value || "0", 10);
+  const minutes = parseInt(parts.find(p => p.type === "minute")?.value || "0", 10);
+  const seconds = parseInt(parts.find(p => p.type === "second")?.value || "0", 10);
+  
+  // Get milliseconds from original date (formatter doesn't provide milliseconds)
+  const milliseconds = inputDate.getMilliseconds();
+  
+  // Create a new date using Pakistani timezone components
+  return new Date(year, month, day, hours, minutes, seconds, milliseconds);
 }
 
 

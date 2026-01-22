@@ -3,7 +3,7 @@ import logger from "../utils/logger";
 import whatsappService from "./whatsapp.service";
 import productService from "./product.service";
 import { validateTodayDate } from "../utils/dateValidation";
-import { parseLocalISO, getCurrentLocalDateTime, formatDateToLocalISO, getTodayInPakistan, formatLocalYMD, parseLocalYMDForDB } from "../utils/date";
+import { parseLocalISO, getCurrentLocalDateTime, formatDateToLocalISO, getTodayInPakistan, formatLocalYMD, parseLocalYMDForDB, convertToPakistanTime } from "../utils/date";
 import { limitDecimalPlaces } from "../utils/numberHelpers";
 
 const splitSaleQuantities = (item: {
@@ -1125,8 +1125,16 @@ class SaleService {
       throw new Error("Total payment amount cannot exceed sale total");
     }
 
-    // Always use current date and time for the new payment (avoids timezone/validation issues)
-    const paymentDate = formatDateToLocalISO(getCurrentLocalDateTime());
+    // Convert payment date to Pakistani time if provided, otherwise use current Pakistani time
+    let paymentDate: string;
+    if (payment.date) {
+      // Convert provided date to Pakistani timezone
+      const pakistanTime = convertToPakistanTime(payment.date);
+      paymentDate = formatDateToLocalISO(pakistanTime);
+    } else {
+      // Use current date and time in Pakistani timezone
+      paymentDate = formatDateToLocalISO(getCurrentLocalDateTime());
+    }
 
     const paymentWithDate = {
       ...payment,
