@@ -375,9 +375,15 @@ class DailyClosingBalanceService {
 
       const closingBalanceData: any = {
         date: dateObj,
-        cashBalance: startingCash,
-        bankBalances: Object.entries(startingBankBalances).map(([id, bal]) => ({ bankAccountId: id, balance: bal })),
-        cardBalances: Object.entries(startingCardBalances).map(([id, bal]) => ({ cardId: id, balance: bal })),
+        cashBalance: Number(startingCash),
+        bankBalances: Object.entries(startingBankBalances).map(([id, bal]) => ({ 
+          bankAccountId: id, 
+          balance: Number(bal) 
+        })),
+        cardBalances: Object.entries(startingCardBalances).map(([id, bal]) => ({ 
+          cardId: id, 
+          balance: Number(bal) 
+        })),
       };
 
       const newClosing = await prisma.dailyClosingBalance.create({
@@ -395,7 +401,7 @@ class DailyClosingBalanceService {
 
     if (type === "cash") {
       const oldBalance = updatedCashBalance;
-      updatedCashBalance += changeAmount;
+      updatedCashBalance = Number(updatedCashBalance) + changeAmount;
       logger.info(`${isExpense ? 'Subtracted' : 'Added'} ${amount} ${isExpense ? 'from' : 'to'} cash in closing balance for ${dateStr}: ${oldBalance} ${isExpense ? '-' : '+'} ${amount} = ${updatedCashBalance}`);
     } else if (type === "bank" && bankAccountId) {
       // Find or add bank balance
@@ -405,12 +411,45 @@ class DailyClosingBalanceService {
       
       if (bankIndex >= 0) {
         const oldBalance = Number(existingBankBalances[bankIndex].balance) || 0;
-        existingBankBalances[bankIndex].balance = oldBalance + changeAmount;
+        existingBankBalances[bankIndex].balance = Number(oldBalance + changeAmount);
         logger.info(`${isExpense ? 'Subtracted' : 'Added'} ${amount} ${isExpense ? 'from' : 'to'} bank ${bankAccountId} in closing balance for ${dateStr}: ${oldBalance} ${isExpense ? '-' : '+'} ${amount} = ${existingBankBalances[bankIndex].balance}`);
       } else {
-        // For new bank, if expense, start from 0 and subtract
-        existingBankBalances.push({ bankAccountId, balance: changeAmount });
-        logger.info(`${isExpense ? 'Subtracted' : 'Added'} ${amount} ${isExpense ? 'from' : 'to'} new bank ${bankAccountId} in closing balance for ${dateStr}`);
+        // For new bank in existing closing balance, get starting balance from opening balance or previous day
+        let startingBalance = 0;
+        
+        // Check opening balance for this date
+        const openingBalance = await prisma.dailyOpeningBalance.findUnique({
+          where: { date: dateObj },
+        });
+        
+        if (openingBalance) {
+          const bankBalances = (openingBalance.bankBalances as any[]) || [];
+          const bankBalance = bankBalances.find((b: any) => b.bankAccountId === bankAccountId);
+          if (bankBalance) {
+            startingBalance = Number(bankBalance.balance) || 0;
+          }
+        } else {
+          // Check previous day's closing balance
+          const previousDate = new Date(dateObj);
+          previousDate.setDate(previousDate.getDate() - 1);
+          previousDate.setHours(12, 0, 0, 0);
+          const previousClosing = await prisma.dailyClosingBalance.findUnique({
+            where: { date: previousDate },
+          });
+          if (previousClosing) {
+            const prevBankBalances = (previousClosing.bankBalances as any[]) || [];
+            const prevBankBalance = prevBankBalances.find((b: any) => b.bankAccountId === bankAccountId);
+            if (prevBankBalance) {
+              startingBalance = Number(prevBankBalance.balance) || 0;
+            }
+          }
+        }
+        
+        existingBankBalances.push({ 
+          bankAccountId, 
+          balance: Number(startingBalance + changeAmount) 
+        });
+        logger.info(`${isExpense ? 'Subtracted' : 'Added'} ${amount} ${isExpense ? 'from' : 'to'} new bank ${bankAccountId} in closing balance for ${dateStr}: starting=${startingBalance}, ${isExpense ? '-' : '+'} ${amount} = ${startingBalance + changeAmount}`);
       }
     } else if (type === "card" && cardId) {
       // Find or add card balance
@@ -433,9 +472,15 @@ class DailyClosingBalanceService {
     const updatedClosing = await prisma.dailyClosingBalance.update({
       where: { date: dateObj },
       data: {
-        cashBalance: updatedCashBalance,
-        bankBalances: existingBankBalances as any,
-        cardBalances: existingCardBalances as any,
+        cashBalance: Number(updatedCashBalance),
+        bankBalances: existingBankBalances.map((b: any) => ({
+          bankAccountId: b.bankAccountId,
+          balance: Number(b.balance)
+        })) as any,
+        cardBalances: existingCardBalances.map((c: any) => ({
+          cardId: c.cardId,
+          balance: Number(c.balance)
+        })) as any,
         updatedAt: new Date(),
       },
     });

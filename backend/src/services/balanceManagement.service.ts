@@ -806,23 +806,9 @@ class BalanceManagementService {
       );
     }
 
-    // After transaction is committed, directly add to closing balance in daily_closing_balances table
-    // If row doesn't exist, create it. If exists, add to existing balance.
-    try {
-      const dailyClosingBalanceService = (await import("./dailyClosingBalance.service")).default;
-      await dailyClosingBalanceService.addToClosingBalance(
-        date,
-        amount,
-        type,
-        type === "bank" ? transactionData.bankAccountId : undefined,
-        type === "card" ? transactionData.cardId : undefined
-      );
-      logger.info(`Added ${amount} to closing balance in daily_closing_balances table: ${type} on ${formatLocalYMD(date)}`);
-    } catch (error: any) {
-      logger.error("Error adding to closing balance after opening balance addition:", error);
-      // Don't fail the request if closing balance update fails
-      // The balance transaction is already created, so the balance is correct
-    }
+    // Note: Closing balance is already updated in updateCashBalance/updateBankBalance/updateCardBalance
+    // No need to call addToClosingBalance again here to avoid double addition
+    // The balance transaction is already created and closing balance is updated in those methods
 
     return result;
   }
