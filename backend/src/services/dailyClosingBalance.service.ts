@@ -112,7 +112,7 @@ class DailyClosingBalanceService {
     // IMPORTANT: For 'add_opening_balance' transactions, also check the 'date' field
     // because these manual additions should be included based on their intended date,
     // not just when they were created (which might be at a different time)
-    const transactions = transactionsRaw.filter((tx) => {
+    const transactions = transactionsRaw.filter((tx: any) => {
       // Check createdAt's local date (for most transactions)
       const txCreated = new Date(tx.createdAt);
       const ty = txCreated.getFullYear(), tm = txCreated.getMonth(), td = txCreated.getDate();
@@ -141,13 +141,13 @@ class DailyClosingBalanceService {
     logger.info(`Calculating closing balance for ${dateStr}: startingCash=${startingCash}, startingBanks=[${startingBankList}], transactions=${transactions.length} (raw=${transactionsRaw.length})`);
     
     // Log add_opening_balance transactions for debugging
-    const addOpeningBalanceTxns = transactions.filter(tx => 
+    const addOpeningBalanceTxns = transactions.filter((tx: any) => 
       tx.source === "add_opening_balance" || 
       (tx.source && tx.source.includes("opening_balance") && tx.source !== "opening_balance")
     );
     if (addOpeningBalanceTxns.length > 0) {
       logger.info(`Found ${addOpeningBalanceTxns.length} add_opening_balance transactions:`, 
-        addOpeningBalanceTxns.map(tx => ({
+        addOpeningBalanceTxns.map((tx: any) => ({
           id: tx.id,
           paymentType: tx.paymentType,
           bankAccountId: tx.bankAccountId,
@@ -288,15 +288,17 @@ class DailyClosingBalanceService {
   }
 
   /**
-   * Directly add amount to closing balance without recalculating
-   * If row doesn't exist, creates it. If exists, adds to existing balance.
+   * Directly add/subtract amount to/from closing balance without recalculating
+   * If row doesn't exist, creates it. If exists, adds/subtracts to/from existing balance.
+   * For expenses/purchases, pass negative amount or use isExpense=true
    */
   async addToClosingBalance(
     date: Date,
     amount: number,
     type: "cash" | "bank" | "card",
     bankAccountId?: string,
-    cardId?: string
+    cardId?: string,
+    isExpense: boolean = false
   ) {
     const dateStr = formatLocalYMD(date);
     const [year, month, day] = dateStr.split("-").map(v => parseInt(v, 10));
@@ -307,35 +309,94 @@ class DailyClosingBalanceService {
       where: { date: dateObj },
     });
 
+    // Calculate the change amount (negative for expenses)
+    const changeAmount = isExpense ? -amount : amount;
+    const operation = isExpense ? "subtracted" : "added";
+
     if (!existingClosing) {
       // Row doesn't exist, create it with the new amount
+      // For expenses, we need to get starting balance first (from previous day or opening balance)
+      let startingCash = 0;
+      const startingBankBalances: Record<string, number> = {};
+      const startingCardBalances: Record<string, number> = {};
+
+      // Get opening balance for this date
+      const openingBalance = await prisma.dailyOpeningBalance.findUnique({
+        where: { date: dateObj },
+      });
+
+      if (openingBalance) {
+        startingCash = Number(openingBalance.cashBalance) || 0;
+        const bankBalances = (openingBalance.bankBalances as any[]) || [];
+        for (const bankBalance of bankBalances) {
+          if (bankBalance.bankAccountId) {
+            startingBankBalances[bankBalance.bankAccountId] = Number(bankBalance.balance) || 0;
+          }
+        }
+        const cardBalances = (openingBalance.cardBalances as any[]) || [];
+        for (const cardBalance of cardBalances) {
+          if (cardBalance.cardId) {
+            startingCardBalances[cardBalance.cardId] = Number(cardBalance.balance) || 0;
+          }
+        }
+      } else {
+        // Get previous day's closing balance
+        const previousDate = new Date(dateObj);
+        previousDate.setDate(previousDate.getDate() - 1);
+        previousDate.setHours(12, 0, 0, 0);
+        const previousClosing = await prisma.dailyClosingBalance.findUnique({
+          where: { date: previousDate },
+        });
+        if (previousClosing) {
+          startingCash = Number(previousClosing.cashBalance) || 0;
+          const bankBalances = (previousClosing.bankBalances as any[]) || [];
+          for (const bankBalance of bankBalances) {
+            if (bankBalance.bankAccountId) {
+              startingBankBalances[bankBalance.bankAccountId] = Number(bankBalance.balance) || 0;
+            }
+          }
+          const cardBalances = (previousClosing.cardBalances as any[]) || [];
+          for (const cardBalance of cardBalances) {
+            if (cardBalance.cardId) {
+              startingCardBalances[cardBalance.cardId] = Number(cardBalance.balance) || 0;
+            }
+          }
+        }
+      }
+
+      // Apply the change
+      if (type === "cash") {
+        startingCash += changeAmount;
+      } else if (type === "bank" && bankAccountId) {
+        startingBankBalances[bankAccountId] = (startingBankBalances[bankAccountId] || 0) + changeAmount;
+      } else if (type === "card" && cardId) {
+        startingCardBalances[cardId] = (startingCardBalances[cardId] || 0) + changeAmount;
+      }
+
       const closingBalanceData: any = {
         date: dateObj,
-        cashBalance: type === "cash" ? amount : 0,
-        bankBalances: type === "bank" && bankAccountId
-          ? [{ bankAccountId, balance: amount }]
-          : [],
-        cardBalances: type === "card" && cardId
-          ? [{ cardId, balance: amount }]
-          : [],
+        cashBalance: startingCash,
+        bankBalances: Object.entries(startingBankBalances).map(([id, bal]) => ({ bankAccountId: id, balance: bal })),
+        cardBalances: Object.entries(startingCardBalances).map(([id, bal]) => ({ cardId: id, balance: bal })),
       };
 
       const newClosing = await prisma.dailyClosingBalance.create({
         data: closingBalanceData,
       });
 
-      logger.info(`Created new closing balance row for ${dateStr}: ${type} ${amount} added`);
+      logger.info(`Created new closing balance row for ${dateStr}: ${type} ${amount} ${operation}`);
       return newClosing;
     }
 
-    // Row exists, add to existing balance
+    // Row exists, add/subtract from existing balance
     let updatedCashBalance = Number(existingClosing.cashBalance) || 0;
     const existingBankBalances = (existingClosing.bankBalances as any[]) || [];
     const existingCardBalances = (existingClosing.cardBalances as any[]) || [];
 
     if (type === "cash") {
-      updatedCashBalance += amount;
-      logger.info(`Added ${amount} to cash in closing balance for ${dateStr}: ${Number(existingClosing.cashBalance)} + ${amount} = ${updatedCashBalance}`);
+      const oldBalance = updatedCashBalance;
+      updatedCashBalance += changeAmount;
+      logger.info(`${isExpense ? 'Subtracted' : 'Added'} ${amount} ${isExpense ? 'from' : 'to'} cash in closing balance for ${dateStr}: ${oldBalance} ${isExpense ? '-' : '+'} ${amount} = ${updatedCashBalance}`);
     } else if (type === "bank" && bankAccountId) {
       // Find or add bank balance
       const bankIndex = existingBankBalances.findIndex(
@@ -344,11 +405,12 @@ class DailyClosingBalanceService {
       
       if (bankIndex >= 0) {
         const oldBalance = Number(existingBankBalances[bankIndex].balance) || 0;
-        existingBankBalances[bankIndex].balance = oldBalance + amount;
-        logger.info(`Added ${amount} to bank ${bankAccountId} in closing balance for ${dateStr}: ${oldBalance} + ${amount} = ${existingBankBalances[bankIndex].balance}`);
+        existingBankBalances[bankIndex].balance = oldBalance + changeAmount;
+        logger.info(`${isExpense ? 'Subtracted' : 'Added'} ${amount} ${isExpense ? 'from' : 'to'} bank ${bankAccountId} in closing balance for ${dateStr}: ${oldBalance} ${isExpense ? '-' : '+'} ${amount} = ${existingBankBalances[bankIndex].balance}`);
       } else {
-        existingBankBalances.push({ bankAccountId, balance: amount });
-        logger.info(`Added new bank ${bankAccountId} with ${amount} to closing balance for ${dateStr}`);
+        // For new bank, if expense, start from 0 and subtract
+        existingBankBalances.push({ bankAccountId, balance: changeAmount });
+        logger.info(`${isExpense ? 'Subtracted' : 'Added'} ${amount} ${isExpense ? 'from' : 'to'} new bank ${bankAccountId} in closing balance for ${dateStr}`);
       }
     } else if (type === "card" && cardId) {
       // Find or add card balance
@@ -358,11 +420,12 @@ class DailyClosingBalanceService {
       
       if (cardIndex >= 0) {
         const oldBalance = Number(existingCardBalances[cardIndex].balance) || 0;
-        existingCardBalances[cardIndex].balance = oldBalance + amount;
-        logger.info(`Added ${amount} to card ${cardId} in closing balance for ${dateStr}: ${oldBalance} + ${amount} = ${existingCardBalances[cardIndex].balance}`);
+        existingCardBalances[cardIndex].balance = oldBalance + changeAmount;
+        logger.info(`${isExpense ? 'Subtracted' : 'Added'} ${amount} ${isExpense ? 'from' : 'to'} card ${cardId} in closing balance for ${dateStr}: ${oldBalance} ${isExpense ? '-' : '+'} ${amount} = ${existingCardBalances[cardIndex].balance}`);
       } else {
-        existingCardBalances.push({ cardId, balance: amount });
-        logger.info(`Added new card ${cardId} with ${amount} to closing balance for ${dateStr}`);
+        // For new card, if expense, start from 0 and subtract
+        existingCardBalances.push({ cardId, balance: changeAmount });
+        logger.info(`${isExpense ? 'Subtracted' : 'Added'} ${amount} ${isExpense ? 'from' : 'to'} new card ${cardId} in closing balance for ${dateStr}`);
       }
     }
 
@@ -527,7 +590,7 @@ class DailyClosingBalanceService {
 
     return Object.entries(cardBalances)
       .filter(([_, balance]) => balance > 0)
-      .map(([cardId, balance]) => ({ cardId, balance }));
+      .map(([cardId, balance]: [string, number]) => ({ cardId, balance }));
   }
 
   /**
@@ -596,7 +659,7 @@ class DailyClosingBalanceService {
       orderBy: { date: "asc" },
     });
 
-    return closingBalances.map((cb) => ({
+    return closingBalances.map((cb: any) => ({
       date: formatLocalYMD(cb.date),
       cashBalance: Number(cb.cashBalance),
       bankBalances: (cb.bankBalances as any[]) || [],

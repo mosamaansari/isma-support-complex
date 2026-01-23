@@ -299,6 +299,24 @@ class BalanceManagementService {
         changeAmount,
         transactionId: transaction.id,
       };
+    }).then(async (result) => {
+      // After transaction is committed, directly update closing balance
+      try {
+        const dailyClosingBalanceService = (await import("./dailyClosingBalance.service")).default;
+        await dailyClosingBalanceService.addToClosingBalance(
+          date,
+          amount,
+          "cash",
+          undefined,
+          undefined,
+          type === "expense"
+        );
+        logger.info(`Updated closing balance for cash ${type === "income" ? "income" : "expense"}: ${amount} on ${formatLocalYMD(date)}`);
+      } catch (error: any) {
+        logger.error("Error updating closing balance after cash transaction:", error);
+        // Don't fail the request if closing balance update fails
+      }
+      return result;
     });
   }
 
@@ -460,6 +478,24 @@ class BalanceManagementService {
         changeAmount,
         transactionId: transaction.id,
       };
+    }).then(async (result) => {
+      // After transaction is committed, directly update closing balance
+      try {
+        const dailyClosingBalanceService = (await import("./dailyClosingBalance.service")).default;
+        await dailyClosingBalanceService.addToClosingBalance(
+          date,
+          amount,
+          "bank",
+          bankAccountId,
+          undefined,
+          type === "expense"
+        );
+        logger.info(`Updated closing balance for bank ${type === "income" ? "income" : "expense"}: ${amount} on ${formatLocalYMD(date)}`);
+      } catch (error: any) {
+        logger.error("Error updating closing balance after bank transaction:", error);
+        // Don't fail the request if closing balance update fails
+      }
+      return result;
     });
   }
 
@@ -686,6 +722,24 @@ class BalanceManagementService {
         changeAmount,
         transactionId: transaction.id,
       };
+    }).then(async (result) => {
+      // After transaction is committed, directly update closing balance
+      try {
+        const dailyClosingBalanceService = (await import("./dailyClosingBalance.service")).default;
+        await dailyClosingBalanceService.addToClosingBalance(
+          date,
+          amount,
+          "card",
+          undefined,
+          cardId,
+          type === "expense"
+        );
+        logger.info(`Updated closing balance for card ${type === "income" ? "income" : "expense"}: ${amount} on ${formatLocalYMD(date)}`);
+      } catch (error: any) {
+        logger.error("Error updating closing balance after card transaction:", error);
+        // Don't fail the request if closing balance update fails
+      }
+      return result;
     });
   }
 

@@ -809,23 +809,8 @@ class SaleService {
       throw error; // Re-throw to ensure transaction is rolled back
     }
 
-    // Recalculate closing balance for the sale date to include the new payments
-    try {
-      const dailyClosingBalanceService = (await import("./dailyClosingBalance.service")).default;
-      const { parseLocalYMD } = await import("../utils/date");
-      // Use the same saleDateStr that was used above to ensure same date
-      // This avoids any timezone conversion issues
-      const balanceDateObj = parseLocalYMD(saleDateStr);
-      // Set to noon to match closing balance service expectations
-      balanceDateObj.setHours(12, 0, 0, 0);
-      console.log("Recalculating closing balance for sale date:", balanceDateObj, "Date string:", saleDateStr);
-      await dailyClosingBalanceService.calculateAndStoreClosingBalance(balanceDateObj);
-      logger.info(`Recalculated closing balance after sale creation for ${sale.id} on date ${saleDateStr}`);
-    } catch (error: any) {
-      logger.error("Error recalculating closing balance after sale:", error);
-      // Don't fail the sale creation if closing balance recalculation fails
-      // The balance transaction is already created, so the balance is correct
-    }
+    // Note: Closing balance is now updated directly in balanceManagementService.updateCashBalance/updateBankBalance/updateCardBalance
+    // No need to recalculate here - the direct add/subtract method handles it
 
     // Send WhatsApp notification if customer phone number exists and payment is completed
     if (sale.customerPhone && sale.status === "completed" && sale.customerPhone !== "0000000000" && sale.customerPhone.trim() !== "") {
@@ -1019,16 +1004,8 @@ class SaleService {
       }
     }
 
-    // Recalculate closing balance for today to include refunds
-    try {
-      const dailyClosingBalanceService = (await import("./dailyClosingBalance.service")).default;
-      const today = new Date();
-      await dailyClosingBalanceService.calculateAndStoreClosingBalance(today);
-      logger.info(`Recalculated closing balance after sale refund for ${sale.billNumber}`);
-    } catch (error: any) {
-      logger.error("Error recalculating closing balance after refund:", error);
-      // Don't fail the refund if closing balance recalculation fails
-    }
+    // Note: Closing balance is now updated directly in balanceManagementService.updateCashBalance/updateBankBalance/updateCardBalance
+    // No need to recalculate here - the direct add/subtract method handles it (refunds subtract from balance)
 
     // Restore product quantities (shop or warehouse)
     for (const item of sale.items) {
@@ -1269,25 +1246,8 @@ class SaleService {
       throw new Error(`Failed to update balance for sale payment: ${error.message}`);
     }
 
-    // Recalculate closing balance for the payment date to include the new payment
-    try {
-      const dailyClosingBalanceService = (await import("./dailyClosingBalance.service")).default;
-      const { parseLocalISO } = await import("../utils/date");
-      // Extract date components from payment date to avoid timezone issues
-      const paymentOrSaleDate = paymentDate ? parseLocalISO(paymentDate) : updatedSale.date;
-      const balanceDateYear = paymentOrSaleDate.getFullYear();
-      const balanceDateMonth = paymentOrSaleDate.getMonth();
-      const balanceDateDay = paymentOrSaleDate.getDate();
-      // Create date at noon to match closing balance service expectations (avoids timezone issues)
-      const balanceDateObj = new Date(balanceDateYear, balanceDateMonth, balanceDateDay, 12, 0, 0, 0);
-      console.log("Recalculating closing balance for sale payment date:", balanceDateObj);
-      await dailyClosingBalanceService.calculateAndStoreClosingBalance(balanceDateObj);
-      logger.info(`Recalculated closing balance after sale payment addition for ${sale.id}`);
-    } catch (error: any) {
-      logger.error("Error recalculating closing balance after sale payment:", error);
-      // Don't fail the payment addition if closing balance recalculation fails
-      // The balance transaction is already created, so the balance is correct
-    }
+    // Note: Closing balance is now updated directly in balanceManagementService.updateCashBalance/updateBankBalance/updateCardBalance
+    // No need to recalculate here - the direct add/subtract method handles it
 
     // Update customer due amount
     if (sale.customerId) {

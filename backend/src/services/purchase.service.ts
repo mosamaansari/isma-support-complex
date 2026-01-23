@@ -526,24 +526,8 @@ class PurchaseService {
       }
     }
 
-    // Recalculate closing balance for the purchase date to include the new payments
-    // Use the same purchaseDateStr we used for balance check to ensure consistency
-    try {
-      const dailyClosingBalanceService = (await import("./dailyClosingBalance.service")).default;
-      const { parseLocalYMD } = await import("../utils/date");
-      // Use the same purchaseDateStr that was used for balance check to ensure same date
-      // This avoids any timezone conversion issues
-      const balanceDateObj = parseLocalYMD(purchaseDateStr);
-      // Set to noon to match closing balance service expectations
-      balanceDateObj.setHours(12, 0, 0, 0);
-      console.log("Recalculating closing balance for date:", balanceDateObj, "Date string:", purchaseDateStr);
-      await dailyClosingBalanceService.calculateAndStoreClosingBalance(balanceDateObj);
-      logger.info(`Recalculated closing balance after purchase creation for ${purchase.id} on date ${purchaseDateStr}`);
-    } catch (error: any) {
-      logger.error("Error recalculating closing balance after purchase:", error);
-      // Don't fail the purchase creation if closing balance recalculation fails
-      // The balance transaction is already created, so the balance is correct
-    }
+    // Note: Closing balance is now updated directly in balanceManagementService.updateCashBalance/updateBankBalance/updateCardBalance
+    // No need to recalculate here - the direct add/subtract method handles it
 
     return purchase;
   }
@@ -1366,24 +1350,8 @@ class PurchaseService {
         }
       }
 
-      // Recalculate closing balance for the payment date to include the new payment
-      try {
-        const dailyClosingBalanceService = (await import("./dailyClosingBalance.service")).default;
-        // Use payment date if available, otherwise use purchase date
-        // Extract date components to avoid timezone issues
-        const paymentOrPurchaseDate = (payment as any).date ? parseLocalISO((payment as any).date) : updatedPurchase.date;
-        const balanceDateYear = paymentOrPurchaseDate.getFullYear();
-        const balanceDateMonth = paymentOrPurchaseDate.getMonth();
-        const balanceDateDay = paymentOrPurchaseDate.getDate();
-        // Create date at noon to match closing balance service expectations (avoids timezone issues)
-        const balanceDateObj = new Date(balanceDateYear, balanceDateMonth, balanceDateDay, 12, 0, 0, 0);
-        await dailyClosingBalanceService.calculateAndStoreClosingBalance(balanceDateObj);
-        logger.info(`Recalculated closing balance after purchase payment addition for ${purchase.id}`);
-      } catch (error: any) {
-        logger.error("Error recalculating closing balance after purchase payment:", error);
-        // Don't fail the payment addition if closing balance recalculation fails
-        // The balance transaction is already created, so the balance is correct
-      }
+      // Note: Closing balance is now updated directly in balanceManagementService.updateCashBalance/updateBankBalance/updateCardBalance
+      // No need to recalculate here - the direct add/subtract method handles it
     } catch (error: any) {
       logger.error("Error updating balance for purchase payment:", error);
       // Re-throw to ensure the error is propagated
