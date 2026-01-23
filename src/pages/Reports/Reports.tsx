@@ -2242,7 +2242,7 @@ export default function Reports() {
                             className="border-b border-gray-100 dark:border-gray-700"
                           >
                             <td className="p-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                              {formatBackendDate(expense.date)}
+                              {formatBackendDate(expense.createdAt)}
                             </td>
                             <td className="p-2 text-gray-700 dark:text-gray-300 capitalize whitespace-nowrap">
                               {expense.category || ""}
