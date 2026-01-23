@@ -290,11 +290,18 @@ class PurchaseService {
       return amount !== null && amount !== undefined && !isNaN(Number(amount)) && Number(amount) > 0;
     });
 
-    // Add current date and time to all valid payments
-    const currentDateTime = new Date().toISOString();
+    // Add date and time to all valid payments - use purchase date (or payment date if provided)
+    // Store dates as ISO strings without UTC conversion (no "Z" suffix) - same as sales
     const paymentsWithDate = validPayments.map((payment: any) => ({
       ...payment,
-      date: currentDateTime // Always use current date and time
+      // Use payment date if provided, otherwise use purchase date, otherwise use current date/time
+      // Use formatDateToLocalISO to ensure date is stored as string without "Z" suffix
+      // This matches how addPaymentToPurchase stores dates
+      date: payment.date 
+        ? (typeof payment.date === 'string' ? payment.date : formatDateToLocalISO(parseLocalISO(payment.date)))
+        : (data.date 
+          ? (typeof data.date === 'string' ? data.date : formatDateToLocalISO(parseLocalISO(data.date)))
+          : formatDateToLocalISO(getCurrentLocalDateTime()))
     }));
 
     // Calculate total paid amount
