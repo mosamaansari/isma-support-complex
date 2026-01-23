@@ -1,7 +1,18 @@
 import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { Pool } from "pg";
 import bcrypt from "bcryptjs";
 
-const prisma = new PrismaClient();
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+});
+
+const adapter = new PrismaPg(pool);
+
+// Type assertion needed due to Prisma 7 type definitions
+const prisma = new PrismaClient({
+  adapter,
+} as any);
 
 async function main() {
   console.log("Seeding database...");

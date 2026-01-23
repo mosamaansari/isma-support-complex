@@ -1,6 +1,5 @@
 import prisma from "../config/database";
 import logger from "../utils/logger";
-import { Decimal } from "@prisma/client/runtime/library";
 import dailyClosingBalanceService from "./dailyClosingBalance.service";
 import balanceManagementService from "./balanceManagement.service";
 import { formatLocalYMD, parseLocalYMD, getTodayInPakistan } from "../utils/date";

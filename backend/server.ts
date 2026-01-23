@@ -1,8 +1,11 @@
+// Load environment variables FIRST, before any other imports
+import dotenv from "dotenv";
+dotenv.config();
+
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
-import dotenv from "dotenv";
 import rateLimit from "express-rate-limit";
 import logger from "./src/utils/logger";
 import redis from "./src/config/redis";
@@ -32,10 +35,6 @@ import dashboardRoutes from "./src/routes/dashboard.routes";
 import backupRoutes from "./src/routes/backup.routes";
 import suppliersRoutes from "./src/routes/suppliers.routes";
 import cronService from "./src/services/cron.service";
-
-
-// Load environment variables
-dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;

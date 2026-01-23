@@ -250,6 +250,42 @@ class ProductService {
   }
 
   async deleteProduct(id: string) {
+    // Check if product exists
+    const product = await prisma.product.findUnique({
+      where: { id },
+      select: { id: true, name: true },
+    });
+
+    if (!product) {
+      throw new Error("Product not found");
+    }
+
+    // Check if product is referenced in sale items
+    const saleItemsCount = await prisma.saleItem.count({
+      where: { productId: id },
+    });
+
+    // Check if product is referenced in purchase items
+    const purchaseItemsCount = await prisma.purchaseItem.count({
+      where: { productId: id },
+    });
+
+    // Build error message if product is referenced
+    if (saleItemsCount > 0 || purchaseItemsCount > 0) {
+      const parts: string[] = [];
+      if (saleItemsCount > 0) {
+        parts.push("sales transactions");
+      }
+      if (purchaseItemsCount > 0) {
+        parts.push("purchase transactions");
+      }
+      const usageText = parts.join(" and ");
+      throw new Error(
+        `Cannot delete product "${product.name}" because it is currently being used in ${usageText}. To delete this product, please first remove it from all related sales and purchase records.`
+      );
+    }
+
+    // Product is not referenced, safe to delete
     await prisma.product.delete({
       where: { id },
     });

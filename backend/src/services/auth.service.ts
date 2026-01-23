@@ -41,7 +41,12 @@ class AuthService {
 
     // Store token in Redis (24 hours = 86400 seconds)
     const expirySeconds = 24 * 60 * 60;
-    await redis.setex(`token:${user.id}`, expirySeconds, token);
+    try {
+      await redis.setex(`token:${user.id}`, expirySeconds, token);
+    } catch (redisError) {
+      logger.error("Failed to store token in Redis:", redisError);
+      // Continue without Redis - token is still valid
+    }
 
     logger.info(`User logged in: ${user.username} (${user.role})`);
 
@@ -106,7 +111,12 @@ class AuthService {
 
     // Store token in Redis (24 hours = 86400 seconds)
     const expirySeconds = 24 * 60 * 60;
-    await redis.setex(`token:${adminUser.id}`, expirySeconds, token);
+    try {
+      await redis.setex(`token:${adminUser.id}`, expirySeconds, token);
+    } catch (redisError) {
+      logger.error("Failed to store token in Redis:", redisError);
+      // Continue without Redis - token is still valid
+    }
 
     logger.info(`Admin logged in: ${adminUser.username} (${adminUser.role})`);
 
@@ -137,11 +147,16 @@ class AuthService {
     try {
       const decoded = jwt.decode(token) as { userId: string } | null;
       if (decoded?.userId) {
-        await redis.del(`token:${decoded.userId}`);
+        try {
+          await redis.del(`token:${decoded.userId}`);
+        } catch (redisError) {
+          logger.error("Failed to delete token from Redis:", redisError);
+          // Continue - logout should succeed even if Redis fails
+        }
       }
     } catch (error) {
       logger.error("Logout error:", error);
-      throw error;
+      // Don't throw - logout should succeed even if there's an error
     }
   }
 

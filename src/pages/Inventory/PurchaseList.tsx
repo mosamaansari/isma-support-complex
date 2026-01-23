@@ -16,7 +16,7 @@ import Label from "../../components/form/Label";
 import { Modal } from "../../components/ui/modal";
 import { extractErrorMessage, extractValidationErrors } from "../../utils/errorHandler";
 import { formatPriceWithCurrency } from "../../utils/priceHelpers";
-import { formatDateToLocalISO, getTodayDate, formatBackendDateOnly, formatBackendDateShort, formatBackendDate } from "../../utils/dateHelpers";
+import { formatDateToLocalISO, getTodayDate, formatBackendDateOnly, formatBackendDateShort, formatBackendDate, formatBackendDateUTC, formatBackendDateWithTimeUTC } from "../../utils/dateHelpers";
 
 export default function PurchaseList() {
   const { purchases, purchasesPagination, refreshPurchases, bankAccounts, refreshBankAccounts, cancelPurchase, addPaymentToPurchase, currentUser, loading, error } = useData();
@@ -354,8 +354,8 @@ export default function PurchaseList() {
                     className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50"
                   >
                     <td className="p-2 sm:p-3 md:p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap text-xs sm:text-sm">
-                      <span className="hidden sm:inline">{formatBackendDateOnly(purchase.date)}</span>
-                      <span className="sm:hidden">{formatBackendDateShort(purchase.date)}</span>
+                      <span className="hidden sm:inline">{formatBackendDateUTC(purchase.date || purchase.createdAt)}</span>
+                      <span className="sm:hidden">{formatBackendDateUTC(purchase.createdAt)}</span>
                     </td>
                     <td className="p-2 sm:p-3 md:p-4 max-w-[150px] sm:max-w-[200px]">
                       <div className="line-clamp-2 sm:line-clamp-3">
@@ -506,7 +506,7 @@ export default function PurchaseList() {
                     <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Previous Payments:</p>
                     {(selectedPurchase.payments || []).map((p: PurchasePayment, idx: number) => (
                       <div key={idx} className="text-xs text-gray-600 dark:text-gray-400">
-                        {formatBackendDateOnly(p.date || selectedPurchase.date)} - {p.type.toUpperCase()}: Rs. {(p.amount || 0).toFixed(2)}
+                        {formatBackendDateUTC(p.date || selectedPurchase.date)} - {p.type.toUpperCase()}: Rs. {(p.amount || 0).toFixed(2)}
                       </div>
                     ))}
                   </div>
@@ -723,7 +723,7 @@ export default function PurchaseList() {
                           <tr key={index} className="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
                             <td className="p-3 text-gray-700 dark:text-gray-300 font-medium">{index + 1}</td>
                             <td className="p-3 text-gray-700 dark:text-gray-300">
-                              <span className="font-medium">{formatBackendDate(payment.date || selectedPurchase.date)}</span>
+                              <span className="font-medium">{formatBackendDateUTC(payment.date || selectedPurchase.date)}</span>
                             </td>
                             <td className="p-3">
                               <span className="px-2 py-1 text-xs font-medium rounded bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400 uppercase">

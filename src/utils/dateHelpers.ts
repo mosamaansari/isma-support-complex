@@ -177,6 +177,7 @@ export const formatBackendDateWithTime = (dateString: string | Date | null | und
   if (!dateString) return "";
   
   let year: number, month: number, day: number, hours: number, minutes: number, seconds: number;
+  console.log("dateString instanceof Date", dateString instanceof Date)
   if (dateString instanceof Date) {
     year = dateString.getUTCFullYear();
     month = dateString.getUTCMonth();
@@ -316,7 +317,7 @@ export const formatBackendDateUTC = (dateString: string | Date | null | undefine
   const hoursStr = String(displayHours).padStart(2, "0");
   const minutesStr = String(minutes).padStart(2, "0");
   const ampm = isPM ? "PM" : "AM";
-  const timeStr = `${hoursStr}:${minutesStr} ${ampm} UTC`;
+  const timeStr = `${hoursStr}:${minutesStr} ${ampm}`;
   
   return `${dateStr} ${timeStr}`;
 };

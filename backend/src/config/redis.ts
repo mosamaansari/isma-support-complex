@@ -5,12 +5,17 @@ import logger from "../utils/logger";
 const redisConfig: any = {
   host: process.env.REDIS_HOST || "localhost",
   port: parseInt(process.env.REDIS_PORT || "6379"),
-  password: process.env.REDIS_PASSWORD || undefined,
   retryStrategy: (times: number) => {
     const delay = Math.min(times * 50, 2000);
     return delay;
   },
 };
+
+// Only set password if it's a non-empty string
+const redisPassword = process.env.REDIS_PASSWORD;
+if (redisPassword && typeof redisPassword === "string" && redisPassword.trim() !== "") {
+  redisConfig.password = redisPassword.trim();
+}
 
 // Upstash Redis uses TLS on port 6380
 if (process.env.REDIS_PORT === "6380" || process.env.REDIS_TLS === "true") {

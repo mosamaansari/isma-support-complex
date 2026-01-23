@@ -125,6 +125,19 @@ class ProductController {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
       logger.error("Delete product error:", error);
+      
+      // Check if it's a validation error (product not found or cannot delete)
+      if (error instanceof Error && (
+        error.message.includes("Cannot delete product") ||
+        error.message === "Product not found"
+      )) {
+        return res.status(400).json({
+          message: errorMessage,
+          response: null,
+          error: errorMessage,
+        });
+      }
+      
       return res.status(500).json({
         message: errorMessage,
         response: null,

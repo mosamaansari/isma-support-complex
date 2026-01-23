@@ -458,7 +458,7 @@ export default function SalesList() {
                     </td>
                     <td className="p-2 sm:p-3 md:p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap text-xs sm:text-sm">
                       <span className="hidden sm:inline">
-                        {formatBackendDate(sale.date || sale.createdAt)}
+                        {formatBackendDate(sale.createdAt)}
                       </span>
                       <span className="sm:hidden">
                         {formatBackendDateShort(sale.date || sale.createdAt)}

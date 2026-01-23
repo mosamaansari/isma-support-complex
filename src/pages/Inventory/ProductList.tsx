@@ -10,6 +10,7 @@ import PageSizeSelector from "../../components/ui/PageSizeSelector";
 import { Modal } from "../../components/ui/modal";
 import { PencilIcon, TrashBinIcon, AlertIcon } from "../../icons";
 import { formatPriceWithCurrency } from "../../utils/priceHelpers";
+import { extractErrorMessage } from "../../utils/errorHandler";
 
 export default function ProductList() {
   const {
@@ -87,7 +88,8 @@ export default function ProductList() {
       setProductToDelete(null);
       showSuccess("Product deleted successfully!");
     } catch (err) {
-      showError("Failed to delete product. Please try again.");
+      const errorMessage = extractErrorMessage(err) || "Failed to delete product. Please try again.";
+      showError(errorMessage);
       console.error("Delete error:", err);
     } finally {
       setIsDeleting(null);
