@@ -170,37 +170,8 @@ export default function TransactionHistorySection({
           endDate || undefined
         );
         console.log("Total transactions grouped:", data);
-        let groups = Array.isArray(data) ? data : [];
-        
-        // If date range is provided, ensure all dates in range are included
-        if (startDate && endDate && groups.length > 0) {
-          const start = new Date(startDate);
-          const end = new Date(endDate);
-          const existingDates = new Set(groups.map(g => g.date));
-          const allDates: string[] = [];
-          const current = new Date(start);
-          
-          while (current <= end) {
-            const dateStr = formatDateToString(current);
-            allDates.push(dateStr);
-            current.setDate(current.getDate() + 1);
-          }
-          
-          // Add empty groups for missing dates
-          const missingDates = allDates.filter(d => !existingDates.has(d));
-          const emptyGroups = missingDates.map(date => ({
-            date,
-            cash: { income: 0, expense: 0, net: 0 },
-            banks: [],
-            total: { income: 0, expense: 0, net: 0 },
-            transactions: [],
-          }));
-          
-          groups = [...groups, ...emptyGroups].sort((a, b) => 
-            new Date(a.date).getTime() - new Date(b.date).getTime()
-          );
-        }
-        
+        // Show all groups from response (no date filtering)
+        const groups = Array.isArray(data) ? data : [];
         setDailyGroups(groups);
       } else if (type === "cash") {
         // Get cash transactions and group by day
@@ -259,35 +230,7 @@ export default function TransactionHistorySection({
             },
           }));
           
-          // If date range is provided, ensure all dates in range are included
-          if (startDate && endDate) {
-            const start = new Date(startDate);
-            const end = new Date(endDate);
-            const existingDates = new Set(filteredData.map(g => g.date));
-            const allDates: string[] = [];
-            const current = new Date(start);
-            
-            while (current <= end) {
-              const dateStr = formatDateToString(current);
-              allDates.push(dateStr);
-              current.setDate(current.getDate() + 1);
-            }
-            
-            // Add empty groups for missing dates
-            const missingDates = allDates.filter(d => !existingDates.has(d));
-            const emptyGroups = missingDates.map(date => ({
-              date,
-              cash: { income: 0, expense: 0, net: 0 },
-              banks: [],
-              total: { income: 0, expense: 0, net: 0 },
-              transactions: [],
-            }));
-            
-            filteredData = [...filteredData, ...emptyGroups].sort((a, b) => 
-              new Date(a.date).getTime() - new Date(b.date).getTime()
-            );
-          }
-          
+          // Show all filtered data from response (no date filtering)
           setDailyGroups(filteredData);
         } else {
           setDailyGroups([]);
@@ -302,51 +245,18 @@ export default function TransactionHistorySection({
   };
 
   const groupTransactionsByDay = (transactions: Transaction[]): DailyGroup[] => {
-    // Filter transactions by date range if provided
-    let filteredTransactions = transactions;
-    if (startDate || endDate) {
-      filteredTransactions = transactions.filter((transaction) => {
-        // For all transactions, prefer createdAt if available (represents when transaction actually occurred)
-        // Fallback to date field if createdAt is not available
-        // This ensures sales, purchases, and refunds are all included based on when they actually occurred
-        let dateToUse: Date;
-        if (transaction.createdAt) {
-          dateToUse = new Date(transaction.createdAt);
-        } else {
-          dateToUse = new Date(transaction.date);
-        }
-        
-        const txYear = dateToUse.getFullYear();
-        const txMonth = dateToUse.getMonth();
-        const txDay = dateToUse.getDate();
-        const txDateOnly = `${txYear}-${String(txMonth + 1).padStart(2, '0')}-${String(txDay).padStart(2, '0')}`;
-        
-        if (startDate && endDate) {
-          return txDateOnly >= startDate && txDateOnly <= endDate;
-        } else if (startDate) {
-          return txDateOnly >= startDate;
-        } else if (endDate) {
-          return txDateOnly <= endDate;
-        }
-        return true;
-      });
-    }
+    // Don't filter by date range - backend already filtered, just use all transactions from response
+    // Show all transactions that come from the API response
+    const filteredTransactions = transactions;
 
     const grouped: Record<string, Transaction[]> = {};
     for (const transaction of filteredTransactions) {
-      // For all transactions, prefer createdAt if available (represents when transaction actually occurred)
-      // Fallback to date field if createdAt is not available
-      // This ensures sales, purchases, and refunds are all included based on when they actually occurred
-      let dateToUse: Date;
-      if (transaction.createdAt) {
-        dateToUse = new Date(transaction.createdAt);
-      } else {
-        dateToUse = new Date(transaction.date);
-      }
-      
-      const txYear = dateToUse.getFullYear();
-      const txMonth = dateToUse.getMonth();
-      const txDay = dateToUse.getDate();
+      // Use date field directly from response (backend already filtered by date)
+      // Extract date string from date field (format: "2026-01-24T00:00:00.000Z" -> "2026-01-24")
+      const txDate = new Date(transaction.date);
+      const txYear = txDate.getFullYear();
+      const txMonth = txDate.getMonth();
+      const txDay = txDate.getDate();
       const dateStr = `${txYear}-${String(txMonth + 1).padStart(2, '0')}-${String(txDay).padStart(2, '0')}`;
       
       if (!grouped[dateStr]) {
@@ -355,20 +265,9 @@ export default function TransactionHistorySection({
       grouped[dateStr].push(transaction);
     }
 
-    // If date range is provided, ensure all dates in range are included (even if no transactions)
-    let datesToShow: string[] = [];
-    if (startDate && endDate) {
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-      const current = new Date(start);
-      while (current <= end) {
-        const dateStr = formatDateToString(current);
-        datesToShow.push(dateStr);
-        current.setDate(current.getDate() + 1);
-      }
-    } else {
-      datesToShow = Object.keys(grouped);
-    }
+    // Show all dates that have transactions (no date range filtering)
+    // Just use the dates from grouped transactions
+    const datesToShow = Object.keys(grouped);
 
     return datesToShow.map((date) => {
       const dayTransactions = grouped[date] || [];
@@ -832,33 +731,17 @@ export default function TransactionHistorySection({
                         return null;
                       })()}
                       {(() => {
-                        // Filter and deduplicate transactions by ID and by source+sourceId+amount to prevent duplicates
+                        // Filter and deduplicate transactions by ID only
+                        // Don't deduplicate by source+sourceId+amount because same sale can have multiple payments
                         const seenIds = new Set<string>();
-                        const seenKeys = new Set<string>(); // Track by source+sourceId+amount+paymentType for sales/purchases
                         
                         return dayGroup.transactions
                           .filter((t: any) => {
-                            // Skip duplicates by ID
+                            // Skip duplicates by ID only
                             if (seenIds.has(t.id)) {
                               return false;
                             }
                             seenIds.add(t.id);
-                            
-                            // For sales and purchases, also check for duplicates by source+sourceId+amount+paymentType
-                            // This prevents the same payment from showing twice (e.g., "sale" and "sale_payment")
-                            if (t.sourceId && (t.source === "sale" || t.source === "sale_payment" || 
-                                t.source === "purchase" || t.source === "purchase_payment")) {
-                              // Normalize source to treat "sale_payment" same as "sale"
-                              const normalizedSource = t.source === "sale_payment" ? "sale" : 
-                                                       t.source === "purchase_payment" ? "purchase" : 
-                                                       t.source;
-                              const transactionKey = `${normalizedSource}_${t.sourceId}_${Number(t.amount).toFixed(2)}_${t.paymentType || "cash"}`;
-                              
-                              if (seenKeys.has(transactionKey)) {
-                                return false; // Skip duplicate
-                              }
-                              seenKeys.add(transactionKey);
-                            }
                             
                             // Apply type filter
                             if (type === "cash") return t.paymentType === "cash";
