@@ -129,11 +129,14 @@ class ExpenseService {
 
     // Check balance from daily closing balance BEFORE creating expense
     const dailyClosingBalanceService = (await import("./dailyClosingBalance.service")).default;
-    const { formatLocalYMD } = await import("../utils/date");
+    const { formatLocalYMD, parseLocalISO, getCurrentLocalDateTime } = await import("../utils/date");
     
     // Use expense date if provided, otherwise use current date
-    const expenseDate = data.date ? new Date(data.date) : new Date();
-    const expenseDateStr = formatLocalYMD(expenseDate); // YYYY-MM-DD format in local timezone
+    // Parse date properly to avoid timezone issues - same as opening balance
+    const expenseDateForCheck = data.date 
+      ? parseLocalISO(data.date) 
+      : getCurrentLocalDateTime();
+    const expenseDateStr = formatLocalYMD(expenseDateForCheck); // YYYY-MM-DD format in local timezone
     
     // Get or calculate closing balance for expense date
     const closingBalance = await dailyClosingBalanceService.getClosingBalance(expenseDateStr);
@@ -159,14 +162,19 @@ class ExpenseService {
       }
     }
 
-    // Always use current date and time for expense
+    // Use provided date if available, otherwise use current date and time
+    // Parse date properly to avoid timezone issues - same as opening balance
+    const expenseDateForDB = data.date 
+      ? parseLocalISO(data.date) 
+      : getCurrentLocalDateTime();
+    
     const expenseData: any = {
       amount: data.amount,
       category: data.category as any,
       paymentType: (data.paymentType || "cash") as any,
       cardId: data.cardId || null,
       bankAccountId: data.bankAccountId || null,
-      date: new Date(), // Always use current date and time
+      date: expenseDateForDB, // Use provided date or current date
       userId: user.id,
       userName: user.name,
       createdBy: user.id,
@@ -192,14 +200,13 @@ class ExpenseService {
       // Import balance management service for updating balances
       const balanceManagementService = (await import("./balanceManagement.service")).default;
       
-      // Extract date components from expense.date in local timezone to avoid timezone conversion issues
-      // This ensures the same date that was intended is stored in balance_transactions
-      const expenseDate = new Date(expense.date);
-      const dateYear = expenseDate.getFullYear();
-      const dateMonth = expenseDate.getMonth();
-      const dateDay = expenseDate.getDate();
-      // Create a date object using local date components (will be normalized by balance management service)
-      const expenseDateForBalance = new Date(dateYear, dateMonth, dateDay);
+      // Use the expense date (which is already parsed correctly above)
+      // Normalize to noon (12:00:00) for @db.Date column to avoid timezone conversion issues
+      // Same as opening balance - this ensures the date stored in balance_transactions matches the expense date
+      const expenseDateYear = expense.date.getFullYear();
+      const expenseDateMonth = expense.date.getMonth();
+      const expenseDateDay = expense.date.getDate();
+      const expenseDateForBalance = new Date(expenseDateYear, expenseDateMonth, expenseDateDay, 12, 0, 0, 0);
 
       if (expense.paymentType === "cash") {
         await balanceManagementService.updateCashBalance(
