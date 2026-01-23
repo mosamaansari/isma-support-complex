@@ -4,7 +4,7 @@ import api from "../../services/api";
 import { useData } from "../../context/DataContext";
 import DatePicker from "../form/DatePicker";
 import Label from "../form/Label";
-import { getTodayDate, formatDateToString } from "../../utils/dateHelpers";
+import { getTodayDate } from "../../utils/dateHelpers";
 
 interface Transaction {
   id: string;
