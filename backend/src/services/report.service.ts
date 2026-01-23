@@ -537,7 +537,7 @@ class ReportService {
         }
         
         const amount = Number(payment.amount || 0);
-        const paymentType = payment.type || purchase.paymentType || "cash";
+        const paymentType = payment.type || "cash";
         if (paymentType === "cash") {
           runningCash -= amount;
         } else if (paymentType === "bank_transfer" && payment.bankAccountId) {
