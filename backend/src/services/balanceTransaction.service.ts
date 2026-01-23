@@ -360,36 +360,53 @@ class BalanceTransactionService {
   async getAllTransactionsGroupedByDay(startDate?: string, endDate?: string, excludeRefunds: boolean = false) {
     const where: any = {};
 
-    // Exclude refund transactions if requested (for opening balance)
-    if (excludeRefunds) {
-      where.source = {
-        not: {
-          in: ["sale_refund", "purchase_refund"],
-        },
-      };
-    }
-
     if (startDate && endDate) {
       const [sy, sm, sd] = startDate.split("-").map((v) => parseInt(v, 10));
       const [ey, em, ed] = endDate.split("-").map((v) => parseInt(v, 10));
       const start = new Date(sy, sm - 1, sd, 0, 0, 0, 0);
       const endPlus1 = new Date(ey, em - 1, ed + 1, 23, 59, 59, 999);
 
-      // For payments and refunds, also check createdAt to ensure they're included if they occurred in the date range
-      // Use OR to include transactions where either date OR createdAt (for payments/refunds) is in range
-      where.OR = [
+      // Build OR conditions for date filtering
+      const orConditions: any[] = [
         // All transactions where date field is in range
         {
           date: { gte: start, lte: endPlus1 },
         },
-        // Payments and refunds where createdAt is in range (even if date field is outside range)
+        // Payments, refunds, and opening balance additions where createdAt is in range (even if date field is outside range)
         {
           createdAt: { gte: start, lte: endPlus1 },
           source: {
-            in: ["sale_payment", "purchase_payment", "sale_refund", "purchase_refund"],
+            in: ["sale_payment", "purchase_payment", "sale_refund", "purchase_refund", "add_opening_balance", "expense"],
           },
         },
       ];
+
+      // If excludeRefunds is true, add condition to exclude refunds
+      if (excludeRefunds) {
+        where.AND = [
+          {
+            OR: orConditions,
+          },
+          {
+            source: {
+              not: {
+                in: ["sale_refund", "purchase_refund"],
+              },
+            },
+          },
+        ];
+      } else {
+        where.OR = orConditions;
+      }
+    } else {
+      // No date filter, but still exclude refunds if requested
+      if (excludeRefunds) {
+        where.source = {
+          not: {
+            in: ["sale_refund", "purchase_refund"],
+          },
+        };
+      }
     }
 
     const transactions = await prisma.balanceTransaction.findMany({
@@ -403,10 +420,41 @@ class BalanceTransactionService {
       ],
     });
 
+    logger.info(`getAllTransactionsGroupedByDay: Found ${transactions.length} transactions for date range ${startDate} to ${endDate}, excludeRefunds=${excludeRefunds}`);
+    if (transactions.length > 0) {
+      logger.info(`Sample transaction: id=${transactions[0].id}, source=${transactions[0].source}, date=${transactions[0].date}, createdAt=${transactions[0].createdAt}, paymentType=${transactions[0].paymentType}`);
+    }
+
     // Group by createdAt's local date (when the txn actually occurred) to match closing balance logic
+    // IMPORTANT: For 'add_opening_balance' transactions, also check the 'date' field
+    // because these manual additions should be grouped by their intended date, not just when they were created
     const groupedByDate: Record<string, any[]> = {};
     for (const transaction of transactions) {
-      const txDate = new Date(transaction.createdAt);
+      // For add_opening_balance transactions, prefer date field over createdAt
+      // For sale_payment and purchase_payment, also check date field if available
+      let txDate: Date;
+      if (transaction.source === "add_opening_balance" || 
+          (transaction.source && transaction.source.includes("opening_balance") && transaction.source !== "opening_balance")) {
+        // Use date field if available, otherwise use createdAt
+        txDate = transaction.date ? new Date(transaction.date) : new Date(transaction.createdAt);
+      } else if (transaction.source === "sale_payment" || transaction.source === "purchase_payment") {
+        // For payments, prefer date field if it exists and is valid, otherwise use createdAt
+        if (transaction.date) {
+          const dateFromField = new Date(transaction.date);
+          // Check if date field is valid (not invalid date)
+          if (!isNaN(dateFromField.getTime())) {
+            txDate = dateFromField;
+          } else {
+            txDate = new Date(transaction.createdAt);
+          }
+        } else {
+          txDate = new Date(transaction.createdAt);
+        }
+      } else {
+        // For other transactions, use createdAt
+        txDate = new Date(transaction.createdAt);
+      }
+      
       const year = txDate.getFullYear();
       const month = String(txDate.getMonth() + 1).padStart(2, '0');
       const day = String(txDate.getDate()).padStart(2, '0');
@@ -445,6 +493,17 @@ class BalanceTransactionService {
             bankTotals[transaction.bankAccountId].income += amount;
           } else {
             bankTotals[transaction.bankAccountId].expense += amount;
+          }
+        } else if (transaction.paymentType === "card" && transaction.bankAccountId) {
+          // Card transactions - treat bankAccountId as cardId for cards
+          const cardId = transaction.bankAccountId;
+          if (!bankTotals[cardId]) {
+            bankTotals[cardId] = { income: 0, expense: 0 };
+          }
+          if (transaction.type === "income") {
+            bankTotals[cardId].income += amount;
+          } else {
+            bankTotals[cardId].expense += amount;
           }
         }
       }
