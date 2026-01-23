@@ -48,14 +48,14 @@ class BalanceTransactionService {
               lte: end,
             },
           },
-          // Sales, purchases, expenses, and refunds where createdAt is in range (even if date field is outside range)
+          // Sales, purchases, expenses, refunds, and opening balance additions where createdAt is in range (even if date field is outside range)
           {
             createdAt: {
               gte: start,
               lte: end,
             },
             source: {
-              in: ["sale", "sale_payment", "purchase", "purchase_payment", "expense", "sale_refund", "purchase_refund"],
+              in: ["sale", "sale_payment", "purchase", "purchase_payment", "expense", "sale_refund", "purchase_refund", "add_opening_balance"],
             },
           },
         ];

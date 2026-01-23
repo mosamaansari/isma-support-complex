@@ -150,20 +150,8 @@ class OpeningBalanceController {
 
       logger.info(`Opening balance addition: ${type} ${amount} added on ${date} by ${userName}`);
       
-      // Recalculate closing balance for the date to include the new addition
-      // Parse date correctly to avoid timezone issues - use parseLocalYMD to get local date components
-      try {
-        const dailyClosingBalanceService = (await import("../services/dailyClosingBalance.service")).default;
-        const { parseLocalYMD } = await import("../utils/date");
-        // Parse date string (YYYY-MM-DD) to get local date components
-        const dateObj = parseLocalYMD(date);
-        await dailyClosingBalanceService.calculateAndStoreClosingBalance(dateObj);
-        logger.info(`Recalculated closing balance after opening balance addition for ${date}`);
-      } catch (error: any) {
-        logger.error("Error recalculating closing balance after opening balance addition:", error);
-        // Don't fail the request if closing balance recalculation fails
-        // The balance transaction is already created, so the balance is correct
-      }
+      // Note: Closing balance is already updated directly in balanceManagementService.addToOpeningBalance
+      // No need to recalculate here - the direct add method handles it
       
       // Return the updated opening balance for the date
       const openingBalance = await openingBalanceService.getOpeningBalance(date);

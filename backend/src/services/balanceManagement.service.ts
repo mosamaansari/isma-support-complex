@@ -2,6 +2,7 @@ import prisma from "../config/database";
 import logger from "../utils/logger";
 import balanceTransactionService from "./balanceTransaction.service";
 import openingBalanceService from "./openingBalance.service";
+import { formatLocalYMD } from "../utils/date";
 
 interface BalanceUpdateResult {
   beforeBalance: number;
@@ -185,12 +186,9 @@ class BalanceManagementService {
       const day = String(localDate.getDate()).padStart(2, '0');
       const dateStr = `${year}-${month}-${day}`;
 
-      // Get balance from daily closing balance
-      const dailyClosingBalanceService = (await import("./dailyClosingBalance.service")).default;
-      
-      // Get or calculate closing balance for the date (reuse dateStr which is in YYYY-MM-DD format)
-      const closingBalance = await dailyClosingBalanceService.getClosingBalance(dateStr);
-      const beforeBalance = closingBalance?.cashBalance || 0;
+      // Get current cash balance from latest transactions (not from stored closing balance)
+      // This ensures we always add to the most up-to-date balance, including all previous additions
+      const beforeBalance = await this.getCurrentCashBalance(date);
 
       // Calculate new balance
       const changeAmount = type === "income" ? amount : -amount;
@@ -330,14 +328,9 @@ class BalanceManagementService {
       const day = String(localDate.getDate()).padStart(2, '0');
       const dateStr = `${year}-${month}-${day}`;
 
-      // Get balance from daily closing balance
-      const dailyClosingBalanceService = (await import("./dailyClosingBalance.service")).default;
-      
-      // Get or calculate closing balance for the date (reuse dateStr which is in YYYY-MM-DD format)
-      const closingBalance = await dailyClosingBalanceService.getClosingBalance(dateStr);
-      const closingBankBalances = (closingBalance?.bankBalances || []) as Array<{ bankAccountId: string; balance: number }>;
-      const bankBalance = closingBankBalances.find(b => b.bankAccountId === bankAccountId);
-      const beforeBalance = bankBalance ? Number(bankBalance.balance) : 0;
+      // Get current bank balance from latest transactions (not from stored closing balance)
+      // This ensures we always add to the most up-to-date balance, including all previous additions
+      const beforeBalance = await this.getCurrentBankBalance(bankAccountId, date);
 
       // Calculate new balance
       const changeAmount = type === "income" ? amount : -amount;
@@ -711,8 +704,10 @@ class BalanceManagementService {
       cardId?: string;
     }
   ): Promise<BalanceUpdateResult> {
+    let result: BalanceUpdateResult;
+    
     if (type === "cash") {
-      return await this.updateCashBalance(
+      result = await this.updateCashBalance(
         date,
         amount,
         "income",
@@ -727,7 +722,7 @@ class BalanceManagementService {
       if (!transactionData.bankAccountId) {
         throw new Error("Bank account ID is required for bank balance updates");
       }
-      return await this.updateBankBalance(
+      result = await this.updateBankBalance(
         transactionData.bankAccountId,
         date,
         amount,
@@ -743,7 +738,7 @@ class BalanceManagementService {
       if (!transactionData.cardId) {
         throw new Error("Card ID is required for card balance updates");
       }
-      return await this.updateCardBalance(
+      result = await this.updateCardBalance(
         transactionData.cardId,
         date,
         amount,
@@ -756,6 +751,26 @@ class BalanceManagementService {
         }
       );
     }
+
+    // After transaction is committed, directly add to closing balance in daily_closing_balances table
+    // If row doesn't exist, create it. If exists, add to existing balance.
+    try {
+      const dailyClosingBalanceService = (await import("./dailyClosingBalance.service")).default;
+      await dailyClosingBalanceService.addToClosingBalance(
+        date,
+        amount,
+        type,
+        type === "bank" ? transactionData.bankAccountId : undefined,
+        type === "card" ? transactionData.cardId : undefined
+      );
+      logger.info(`Added ${amount} to closing balance in daily_closing_balances table: ${type} on ${formatLocalYMD(date)}`);
+    } catch (error: any) {
+      logger.error("Error adding to closing balance after opening balance addition:", error);
+      // Don't fail the request if closing balance update fails
+      // The balance transaction is already created, so the balance is correct
+    }
+
+    return result;
   }
 }
 

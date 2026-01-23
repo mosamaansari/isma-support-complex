@@ -109,13 +109,55 @@ class DailyClosingBalanceService {
     });
 
     // Filter by createdAt's LOCAL date so txns are assigned to the day they actually occurred
+    // IMPORTANT: For 'add_opening_balance' transactions, also check the 'date' field
+    // because these manual additions should be included based on their intended date,
+    // not just when they were created (which might be at a different time)
     const transactions = transactionsRaw.filter((tx) => {
+      // Check createdAt's local date (for most transactions)
       const txCreated = new Date(tx.createdAt);
       const ty = txCreated.getFullYear(), tm = txCreated.getMonth(), td = txCreated.getDate();
-      return ty === year && tm === month - 1 && td === day;
+      const matchesCreatedAt = ty === year && tm === month - 1 && td === day;
+      
+      // For add_opening_balance transactions, also check the date field
+      // This ensures manual cash additions are included even if created at a different time
+      if (tx.source === "add_opening_balance" || 
+          (tx.source && tx.source.includes("opening_balance") && tx.source !== "opening_balance")) {
+        const txDate = new Date(tx.date);
+        const txYear = txDate.getFullYear();
+        const txMonth = txDate.getMonth();
+        const txDay = txDate.getDate();
+        const matchesDateField = txYear === year && txMonth === month - 1 && txDay === day;
+        
+        // Include if either createdAt or date field matches
+        return matchesCreatedAt || matchesDateField;
+      }
+      
+      // For other transactions, use createdAt only
+      return matchesCreatedAt;
     });
 
-    logger.info(`Calculating closing balance for ${dateStr}: startingCash=${startingCash}, transactions=${transactions.length} (raw=${transactionsRaw.length})`);
+    // Log bank balances from starting balance
+    const startingBankList = Object.entries(startingBankBalances).map(([id, bal]) => `${id}:${bal}`).join(', ');
+    logger.info(`Calculating closing balance for ${dateStr}: startingCash=${startingCash}, startingBanks=[${startingBankList}], transactions=${transactions.length} (raw=${transactionsRaw.length})`);
+    
+    // Log add_opening_balance transactions for debugging
+    const addOpeningBalanceTxns = transactions.filter(tx => 
+      tx.source === "add_opening_balance" || 
+      (tx.source && tx.source.includes("opening_balance") && tx.source !== "opening_balance")
+    );
+    if (addOpeningBalanceTxns.length > 0) {
+      logger.info(`Found ${addOpeningBalanceTxns.length} add_opening_balance transactions:`, 
+        addOpeningBalanceTxns.map(tx => ({
+          id: tx.id,
+          paymentType: tx.paymentType,
+          bankAccountId: tx.bankAccountId,
+          amount: tx.amount,
+          type: tx.type,
+          date: tx.date,
+          createdAt: tx.createdAt
+        }))
+      );
+    }
 
     // Calculate closing balances starting from the determined baseline
     let closingCash = startingCash;
@@ -165,14 +207,17 @@ class DailyClosingBalanceService {
         }
       } else if (transaction.paymentType === "bank_transfer" && transaction.bankAccountId) {
         // Initialize bank balance to 0 if it doesn't exist (for new banks)
+        const beforeBankBalance = closingBankBalances[transaction.bankAccountId] || 0;
         if (!closingBankBalances[transaction.bankAccountId]) {
           closingBankBalances[transaction.bankAccountId] = 0;
-          logger.info(`New bank added to closing balance: ${transaction.bankAccountId}`);
+          logger.info(`New bank added to closing balance: ${transaction.bankAccountId}, source: ${transaction.source}`);
         }
         if (transaction.type === "income") {
           closingBankBalances[transaction.bankAccountId] += amount;
+          logger.info(`Bank balance updated: ${transaction.bankAccountId}, before: ${beforeBankBalance}, amount: +${amount}, after: ${closingBankBalances[transaction.bankAccountId]}, source: ${transaction.source}`);
         } else {
           closingBankBalances[transaction.bankAccountId] -= amount;
+          logger.info(`Bank balance updated: ${transaction.bankAccountId}, before: ${beforeBankBalance}, amount: -${amount}, after: ${closingBankBalances[transaction.bankAccountId]}, source: ${transaction.source}`);
         }
       } else if (transaction.paymentType === "card" && transaction.bankAccountId) {
         // We reuse bankAccountId for cardId in balance transactions
@@ -188,7 +233,8 @@ class DailyClosingBalanceService {
       }
     }
 
-    logger.info(`Closing balance calculation: processed=${processedCount}, skipped=${skippedCount}, finalCash=${closingCash}, finalBankTotal=${Object.values(closingBankBalances).reduce((sum, b) => sum + b, 0)}`);
+    const finalBankList = Object.entries(closingBankBalances).map(([id, bal]) => `${id}:${bal}`).join(', ');
+    logger.info(`Closing balance calculation: processed=${processedCount}, skipped=${skippedCount}, finalCash=${closingCash}, finalBanks=[${finalBankList}], finalBankTotal=${Object.values(closingBankBalances).reduce((sum, b) => sum + b, 0)}`);
 
     // Convert to array format
     const bankBalancesArray: BankBalance[] = Object.entries(closingBankBalances)
@@ -224,7 +270,8 @@ class DailyClosingBalanceService {
       },
     });
 
-    logger.info(`Closing balance stored for ${dateStr}: cash=${closingCash}, createdAt=${closingBalance.createdAt.toISOString()}, updatedAt=${closingBalance.updatedAt.toISOString()}`);
+    const storedBankList = bankBalancesArray.map(b => `${b.bankAccountId}:${b.balance}`).join(', ');
+    logger.info(`Closing balance stored for ${dateStr}: cash=${closingCash}, banks=[${storedBankList}], createdAt=${closingBalance.createdAt.toISOString()}, updatedAt=${closingBalance.updatedAt.toISOString()}`);
 
     // Create balance transaction for closing balance (for tracking purposes)
     try {
@@ -238,6 +285,100 @@ class DailyClosingBalanceService {
     }
 
     return closingBalance;
+  }
+
+  /**
+   * Directly add amount to closing balance without recalculating
+   * If row doesn't exist, creates it. If exists, adds to existing balance.
+   */
+  async addToClosingBalance(
+    date: Date,
+    amount: number,
+    type: "cash" | "bank" | "card",
+    bankAccountId?: string,
+    cardId?: string
+  ) {
+    const dateStr = formatLocalYMD(date);
+    const [year, month, day] = dateStr.split("-").map(v => parseInt(v, 10));
+    const dateObj = new Date(year, month - 1, day, 12, 0, 0, 0);
+
+    // Get existing closing balance or create new one
+    let existingClosing = await prisma.dailyClosingBalance.findUnique({
+      where: { date: dateObj },
+    });
+
+    if (!existingClosing) {
+      // Row doesn't exist, create it with the new amount
+      const closingBalanceData: any = {
+        date: dateObj,
+        cashBalance: type === "cash" ? amount : 0,
+        bankBalances: type === "bank" && bankAccountId
+          ? [{ bankAccountId, balance: amount }]
+          : [],
+        cardBalances: type === "card" && cardId
+          ? [{ cardId, balance: amount }]
+          : [],
+      };
+
+      const newClosing = await prisma.dailyClosingBalance.create({
+        data: closingBalanceData,
+      });
+
+      logger.info(`Created new closing balance row for ${dateStr}: ${type} ${amount} added`);
+      return newClosing;
+    }
+
+    // Row exists, add to existing balance
+    let updatedCashBalance = Number(existingClosing.cashBalance) || 0;
+    const existingBankBalances = (existingClosing.bankBalances as any[]) || [];
+    const existingCardBalances = (existingClosing.cardBalances as any[]) || [];
+
+    if (type === "cash") {
+      updatedCashBalance += amount;
+      logger.info(`Added ${amount} to cash in closing balance for ${dateStr}: ${Number(existingClosing.cashBalance)} + ${amount} = ${updatedCashBalance}`);
+    } else if (type === "bank" && bankAccountId) {
+      // Find or add bank balance
+      const bankIndex = existingBankBalances.findIndex(
+        (b: any) => b.bankAccountId === bankAccountId
+      );
+      
+      if (bankIndex >= 0) {
+        const oldBalance = Number(existingBankBalances[bankIndex].balance) || 0;
+        existingBankBalances[bankIndex].balance = oldBalance + amount;
+        logger.info(`Added ${amount} to bank ${bankAccountId} in closing balance for ${dateStr}: ${oldBalance} + ${amount} = ${existingBankBalances[bankIndex].balance}`);
+      } else {
+        existingBankBalances.push({ bankAccountId, balance: amount });
+        logger.info(`Added new bank ${bankAccountId} with ${amount} to closing balance for ${dateStr}`);
+      }
+    } else if (type === "card" && cardId) {
+      // Find or add card balance
+      const cardIndex = existingCardBalances.findIndex(
+        (c: any) => c.cardId === cardId
+      );
+      
+      if (cardIndex >= 0) {
+        const oldBalance = Number(existingCardBalances[cardIndex].balance) || 0;
+        existingCardBalances[cardIndex].balance = oldBalance + amount;
+        logger.info(`Added ${amount} to card ${cardId} in closing balance for ${dateStr}: ${oldBalance} + ${amount} = ${existingCardBalances[cardIndex].balance}`);
+      } else {
+        existingCardBalances.push({ cardId, balance: amount });
+        logger.info(`Added new card ${cardId} with ${amount} to closing balance for ${dateStr}`);
+      }
+    }
+
+    // Update the closing balance
+    const updatedClosing = await prisma.dailyClosingBalance.update({
+      where: { date: dateObj },
+      data: {
+        cashBalance: updatedCashBalance,
+        bankBalances: existingBankBalances as any,
+        cardBalances: existingCardBalances as any,
+        updatedAt: new Date(),
+      },
+    });
+
+    logger.info(`Updated closing balance for ${dateStr}: cash=${updatedCashBalance}`);
+    return updatedClosing;
   }
 
   /**
