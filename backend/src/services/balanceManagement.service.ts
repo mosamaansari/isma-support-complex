@@ -186,13 +186,48 @@ class BalanceManagementService {
       const day = String(localDate.getDate()).padStart(2, '0');
       const dateStr = `${year}-${month}-${day}`;
 
-      // Get current cash balance from latest transactions (not from stored closing balance)
-      // This ensures we always add to the most up-to-date balance, including all previous additions
-      const beforeBalance = await this.getCurrentCashBalance(date);
+      // Get beforeBalance from daily closing balance for today's date (using date field: 2026-01-24)
+      const [yearForDate, monthForDate, dayForDate] = dateStr.split("-").map(v => parseInt(v, 10));
+      const dateObjForClosing = new Date(yearForDate, monthForDate - 1, dayForDate, 12, 0, 0, 0);
+      
+      logger.info(`Getting beforeBalance from daily closing balance for date: ${dateStr} (cash)`);
+      let beforeBalance = 0;
+      const todayClosing = await tx.dailyClosingBalance.findUnique({
+        where: { date: dateObjForClosing },
+      });
+      
+      if (todayClosing) {
+        beforeBalance = Number(todayClosing.cashBalance) || 0;
+        logger.info(`Found closing balance for ${dateStr}: cashBalance=${beforeBalance}`);
+      } else {
+        logger.info(`No closing balance found for ${dateStr}, checking opening balance...`);
+        // If no closing balance exists for today, get from opening balance or previous day's closing
+        const openingBalance = await tx.dailyOpeningBalance.findUnique({
+          where: { date: dateObjForClosing },
+        });
+        if (openingBalance) {
+          beforeBalance = Number(openingBalance.cashBalance) || 0;
+          logger.info(`Using opening balance for ${dateStr}: cashBalance=${beforeBalance}`);
+        } else {
+          // Get previous day's closing balance
+          const previousDate = new Date(dateObjForClosing);
+          previousDate.setDate(previousDate.getDate() - 1);
+          const prevClosing = await tx.dailyClosingBalance.findUnique({
+            where: { date: previousDate },
+          });
+          if (prevClosing) {
+            beforeBalance = Number(prevClosing.cashBalance) || 0;
+            logger.info(`Using previous day's closing balance: cashBalance=${beforeBalance}`);
+          } else {
+            logger.info(`No balance found, using 0 as beforeBalance`);
+          }
+        }
+      }
 
-      // Calculate new balance
+      // Calculate new balance: afterBalance = beforeBalance + changeAmount (income: +amount, expense: -amount)
       const changeAmount = type === "income" ? amount : -amount;
       const afterBalance = beforeBalance + changeAmount;
+      logger.info(`Balance calculation for ${dateStr} (cash): beforeBalance=${beforeBalance}, changeAmount=${changeAmount} (${type}), afterBalance=${afterBalance}`);
 
       // Ensure balance doesn't go negative
       if (afterBalance < 0) {
@@ -346,13 +381,60 @@ class BalanceManagementService {
       const day = String(localDate.getDate()).padStart(2, '0');
       const dateStr = `${year}-${month}-${day}`;
 
-      // Get current bank balance from latest transactions (not from stored closing balance)
-      // This ensures we always add to the most up-to-date balance, including all previous additions
-      const beforeBalance = await this.getCurrentBankBalance(bankAccountId, date);
+      // Get beforeBalance from daily closing balance for today's date (using date field: 2026-01-24)
+      const [yearForDate, monthForDate, dayForDate] = dateStr.split("-").map(v => parseInt(v, 10));
+      const dateObjForClosing = new Date(yearForDate, monthForDate - 1, dayForDate, 12, 0, 0, 0);
+      
+      logger.info(`Getting beforeBalance from daily closing balance for date: ${dateStr}, bankAccountId: ${bankAccountId}`);
+      let beforeBalance = 0;
+      const todayClosing = await tx.dailyClosingBalance.findUnique({
+        where: { date: dateObjForClosing },
+      });
+      
+      if (todayClosing) {
+        const bankBalances = (todayClosing.bankBalances as Array<{ bankAccountId: string; balance: number }>) || [];
+        const bankBalance = bankBalances.find((b) => b.bankAccountId === bankAccountId);
+        if (bankBalance) {
+          beforeBalance = Number(bankBalance.balance) || 0;
+          logger.info(`Found closing balance for ${dateStr}, bank ${bankAccountId}: balance=${beforeBalance}`);
+        } else {
+          logger.info(`Bank ${bankAccountId} not found in closing balance for ${dateStr}, using 0`);
+        }
+      } else {
+        logger.info(`No closing balance found for ${dateStr}, checking opening balance...`);
+        // If no closing balance exists for today, get from opening balance or previous day's closing
+        const openingBalance = await tx.dailyOpeningBalance.findUnique({
+          where: { date: dateObjForClosing },
+        });
+        if (openingBalance) {
+          const bankBalances = (openingBalance.bankBalances as Array<{ bankAccountId: string; balance: number }>) || [];
+          const bankBalance = bankBalances.find((b) => b.bankAccountId === bankAccountId);
+          if (bankBalance) {
+            beforeBalance = Number(bankBalance.balance) || 0;
+            logger.info(`Using opening balance for ${dateStr}, bank ${bankAccountId}: balance=${beforeBalance}`);
+          }
+        } else {
+          // Get previous day's closing balance
+          const previousDate = new Date(dateObjForClosing);
+          previousDate.setDate(previousDate.getDate() - 1);
+          const prevClosing = await tx.dailyClosingBalance.findUnique({
+            where: { date: previousDate },
+          });
+          if (prevClosing) {
+            const bankBalances = (prevClosing.bankBalances as Array<{ bankAccountId: string; balance: number }>) || [];
+            const bankBalance = bankBalances.find((b) => b.bankAccountId === bankAccountId);
+            if (bankBalance) {
+              beforeBalance = Number(bankBalance.balance) || 0;
+              logger.info(`Using previous day's closing balance, bank ${bankAccountId}: balance=${beforeBalance}`);
+            }
+          }
+        }
+      }
 
-      // Calculate new balance
+      // Calculate new balance: afterBalance = beforeBalance + changeAmount (income: +amount, expense: -amount)
       const changeAmount = type === "income" ? amount : -amount;
       const afterBalance = beforeBalance + changeAmount;
+      logger.info(`Balance calculation for ${dateStr} (bank ${bankAccountId}): beforeBalance=${beforeBalance}, changeAmount=${changeAmount} (${type}), afterBalance=${afterBalance}`);
 
       // Ensure balance doesn't go negative
       if (afterBalance < 0) {
@@ -608,18 +690,60 @@ class BalanceManagementService {
       const day = String(localDate.getDate()).padStart(2, '0');
       const dateStr = `${year}-${month}-${day}`;
 
-      // Get balance from daily closing balance
-      const dailyClosingBalanceService = (await import("./dailyClosingBalance.service")).default;
+      // Get beforeBalance from daily closing balance for today's date (using date field: 2026-01-24)
+      const [yearForDate, monthForDate, dayForDate] = dateStr.split("-").map(v => parseInt(v, 10));
+      const dateObjForClosing = new Date(yearForDate, monthForDate - 1, dayForDate, 12, 0, 0, 0);
       
-      // Get or calculate closing balance for the date (reuse dateStr which is in YYYY-MM-DD format)
-      const closingBalance = await dailyClosingBalanceService.getClosingBalance(dateStr);
-      const closingCardBalances = (closingBalance?.cardBalances || []) as Array<{ cardId: string; balance: number }>;
-      const cardBalance = closingCardBalances.find(c => c.cardId === cardId);
-      const beforeBalance = cardBalance ? Number(cardBalance.balance) : 0;
+      logger.info(`Getting beforeBalance from daily closing balance for date: ${dateStr}, cardId: ${cardId}`);
+      let beforeBalance = 0;
+      const todayClosing = await tx.dailyClosingBalance.findUnique({
+        where: { date: dateObjForClosing },
+      });
+      
+      if (todayClosing) {
+        const cardBalances = (todayClosing.cardBalances as Array<{ cardId: string; balance: number }>) || [];
+        const cardBalance = cardBalances.find((c) => c.cardId === cardId);
+        if (cardBalance) {
+          beforeBalance = Number(cardBalance.balance) || 0;
+          logger.info(`Found closing balance for ${dateStr}, card ${cardId}: balance=${beforeBalance}`);
+        } else {
+          logger.info(`Card ${cardId} not found in closing balance for ${dateStr}, using 0`);
+        }
+      } else {
+        logger.info(`No closing balance found for ${dateStr}, checking opening balance...`);
+        // If no closing balance exists for today, get from opening balance or previous day's closing
+        const openingBalance = await tx.dailyOpeningBalance.findUnique({
+          where: { date: dateObjForClosing },
+        });
+        if (openingBalance) {
+          const cardBalances = (openingBalance.cardBalances as Array<{ cardId: string; balance: number }>) || [];
+          const cardBalance = cardBalances.find((c) => c.cardId === cardId);
+          if (cardBalance) {
+            beforeBalance = Number(cardBalance.balance) || 0;
+            logger.info(`Using opening balance for ${dateStr}, card ${cardId}: balance=${beforeBalance}`);
+          }
+        } else {
+          // Get previous day's closing balance
+          const previousDate = new Date(dateObjForClosing);
+          previousDate.setDate(previousDate.getDate() - 1);
+          const prevClosing = await tx.dailyClosingBalance.findUnique({
+            where: { date: previousDate },
+          });
+          if (prevClosing) {
+            const cardBalances = (prevClosing.cardBalances as Array<{ cardId: string; balance: number }>) || [];
+            const cardBalance = cardBalances.find((c) => c.cardId === cardId);
+            if (cardBalance) {
+              beforeBalance = Number(cardBalance.balance) || 0;
+              logger.info(`Using previous day's closing balance, card ${cardId}: balance=${beforeBalance}`);
+            }
+          }
+        }
+      }
 
-      // Calculate new balance
+      // Calculate new balance: afterBalance = beforeBalance + changeAmount (income: +amount, expense: -amount)
       const changeAmount = type === "income" ? amount : -amount;
       const afterBalance = beforeBalance + changeAmount;
+      logger.info(`Balance calculation for ${dateStr} (card ${cardId}): beforeBalance=${beforeBalance}, changeAmount=${changeAmount} (${type}), afterBalance=${afterBalance}`);
 
       // Ensure balance doesn't go negative
       if (afterBalance < 0) {

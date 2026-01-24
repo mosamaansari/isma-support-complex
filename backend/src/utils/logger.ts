@@ -3,12 +3,13 @@ import DailyRotateFile from "winston-daily-rotate-file";
 import path from "path";
 import fs from "fs";
 
-// Create logs directory if it doesn't exist
+// Check if file logging is disabled via environment variable (default: disabled to save disk space)
+const DISABLE_FILE_LOGGING = process.env.DISABLE_FILE_LOGGING !== "false" && process.env.DISABLE_FILE_LOGGING !== "0";
 const isVercel = process.env.VERCEL === "1" || process.env.NODE_ENV === "production";
 
-// Create logs directory if it doesn't exist (only if not on Vercel/Production)
+// Create logs directory if it doesn't exist (only if file logging is enabled and not on Vercel/Production)
 const logsDir = path.join(process.cwd(), "logs");
-if (!isVercel && !fs.existsSync(logsDir)) {
+if (!DISABLE_FILE_LOGGING && !isVercel && !fs.existsSync(logsDir)) {
   fs.mkdirSync(logsDir, { recursive: true });
 }
 
@@ -35,14 +36,8 @@ const consoleFormat = winston.format.combine(
 
 const transports = [];
 
-if (isVercel) {
-  // Use Console transport on Vercel/Production
-  transports.push(
-    new winston.transports.Console({
-      format: consoleFormat,
-    })
-  );
-} else {
+// Only add file transports if file logging is enabled and not on Vercel
+if (!DISABLE_FILE_LOGGING && !isVercel) {
   // Use File transports in Development
   transports.push(
     // Write all logs to combined.log
@@ -61,14 +56,14 @@ if (isVercel) {
       maxFiles: "30d",
     })
   );
-
-  // Also add console in dev
-  transports.push(
-    new winston.transports.Console({
-      format: consoleFormat,
-    })
-  );
 }
+
+// Always add console transport (for both dev and production)
+transports.push(
+  new winston.transports.Console({
+    format: consoleFormat,
+  })
+);
 
 // Create logger
 const logger = winston.createLogger({
