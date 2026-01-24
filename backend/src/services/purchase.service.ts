@@ -1243,10 +1243,36 @@ class PurchaseService {
       const product = await prisma.product.findUnique({ where: { id: item.productId } });
 
       if (product) {
-        const shopQtyToDeduct =
-          (item as any).shopQuantity ?? (item.toWarehouse === false ? item.quantity : 0);
-        const warehouseQtyToDeduct =
-          (item as any).warehouseQuantity ?? (item.toWarehouse === false ? 0 : item.quantity);
+        // Handle dozen quantity normalization (same logic as purchase creation)
+        const qtyMultiplier =
+          (item.priceType === "dozen" && 
+           (item.costSingle === undefined || item.costSingle === null) && 
+           (item.costDozen !== undefined && item.costDozen !== null))
+            ? 12
+            : 1;
+
+        // Normalize quantities based on whether it was purchased in dozens or singles
+        const normalizedQuantity = Number(item.quantity || 0) * qtyMultiplier;
+        const normalizedShopQuantity = item.shopQuantity !== undefined 
+          ? Number(item.shopQuantity) * qtyMultiplier 
+          : undefined;
+        const normalizedWarehouseQuantity = item.warehouseQuantity !== undefined 
+          ? Number(item.warehouseQuantity) * qtyMultiplier 
+          : undefined;
+
+        const itemForSplit = {
+          ...item,
+          quantity: normalizedQuantity,
+          shopQuantity: normalizedShopQuantity,
+          warehouseQuantity: normalizedWarehouseQuantity,
+          toWarehouse: item.toWarehouse
+        };
+
+        // Apply same quantity split logic as purchase creation
+        const { shopQuantity, warehouseQuantity } = splitPurchaseQuantities(itemForSplit);
+
+        const shopQtyToDeduct = shopQuantity;
+        const warehouseQtyToDeduct = warehouseQuantity;
 
         // Check warehouse quantity if needed
         if (warehouseQtyToDeduct > 0 && 'warehouseQuantity' in product) {
@@ -1281,10 +1307,36 @@ class PurchaseService {
       const product = await prisma.product.findUnique({ where: { id: item.productId } });
 
       if (product) {
-        const shopQtyToDeduct =
-          (item as any).shopQuantity ?? (item.toWarehouse === false ? item.quantity : 0);
-        const warehouseQtyToDeduct =
-          (item as any).warehouseQuantity ?? (item.toWarehouse === false ? 0 : item.quantity);
+        // Handle dozen quantity normalization (same logic as purchase creation)
+        const qtyMultiplier =
+          (item.priceType === "dozen" && 
+           (item.costSingle === undefined || item.costSingle === null) && 
+           (item.costDozen !== undefined && item.costDozen !== null))
+            ? 12
+            : 1;
+
+        // Normalize quantities based on whether it was purchased in dozens or singles
+        const normalizedQuantity = Number(item.quantity || 0) * qtyMultiplier;
+        const normalizedShopQuantity = item.shopQuantity !== undefined 
+          ? Number(item.shopQuantity) * qtyMultiplier 
+          : undefined;
+        const normalizedWarehouseQuantity = item.warehouseQuantity !== undefined 
+          ? Number(item.warehouseQuantity) * qtyMultiplier 
+          : undefined;
+
+        const itemForSplit = {
+          ...item,
+          quantity: normalizedQuantity,
+          shopQuantity: normalizedShopQuantity,
+          warehouseQuantity: normalizedWarehouseQuantity,
+          toWarehouse: item.toWarehouse
+        };
+
+        // Apply same quantity split logic as purchase creation
+        const { shopQuantity, warehouseQuantity } = splitPurchaseQuantities(itemForSplit);
+
+        const shopQtyToDeduct = shopQuantity;
+        const warehouseQtyToDeduct = warehouseQuantity;
 
         if (warehouseQtyToDeduct > 0 && 'warehouseQuantity' in product) {
           updateData.warehouseQuantity = {
@@ -1297,9 +1349,9 @@ class PurchaseService {
           };
         }
         if (!('shopQuantity' in product) && !('warehouseQuantity' in product)) {
-          // Fallback to old schema
+          // Fallback to old schema - use normalized quantity
           updateData.quantity = {
-            decrement: item.quantity,
+            decrement: normalizedQuantity,
           };
         }
 

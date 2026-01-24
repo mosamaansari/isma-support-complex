@@ -1098,10 +1098,32 @@ class SaleService {
       const product = await prisma.product.findUnique({ where: { id: item.productId } });
 
       if (product) {
-        const shopQtyToRestore =
-          (item as any).shopQuantity ?? (item.fromWarehouse ? 0 : item.quantity);
-        const warehouseQtyToRestore =
-          (item as any).warehouseQuantity ?? (item.fromWarehouse ? item.quantity : 0);
+        // Handle dozen quantity normalization (same logic as sale creation)
+        const rawShopQty = Number((item as any).shopQuantity ?? 0);
+        const rawWarehouseQty = Number((item as any).warehouseQuantity ?? 0);
+        const rawQty = Number(item.quantity || 0);
+
+        const shouldTreatAsDozenQty =
+          item.priceType === "dozen" &&
+          (
+            (rawShopQty > 0 && rawShopQty % 12 !== 0) ||
+            (rawWarehouseQty > 0 && rawWarehouseQty % 12 !== 0) ||
+            (rawQty > 0 && rawQty % 12 !== 0)
+          );
+
+        const qtyMultiplier = shouldTreatAsDozenQty ? 12 : 1;
+
+        const itemForSplit: any = {
+          ...item,
+          quantity: rawQty * qtyMultiplier,
+          shopQuantity: rawShopQty * qtyMultiplier,
+          warehouseQuantity: rawWarehouseQty * qtyMultiplier,
+        };
+
+        const { shopQuantity, warehouseQuantity } = splitSaleQuantities(itemForSplit);
+
+        const shopQtyToRestore = shopQuantity;
+        const warehouseQtyToRestore = warehouseQuantity;
 
         if (warehouseQtyToRestore > 0 && 'warehouseQuantity' in product) {
           updateData.warehouseQuantity = {
@@ -1114,9 +1136,10 @@ class SaleService {
           };
         }
         if (!('shopQuantity' in product) && !('warehouseQuantity' in product)) {
-          // Fallback to old schema
+          // Fallback to old schema - use normalized quantity
+          const normalizedQuantity = rawQty * qtyMultiplier;
           updateData.quantity = {
-            increment: item.quantity,
+            increment: normalizedQuantity,
           };
         }
 
