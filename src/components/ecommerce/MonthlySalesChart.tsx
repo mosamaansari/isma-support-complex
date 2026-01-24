@@ -5,7 +5,7 @@ import { Dropdown } from "../ui/dropdown/Dropdown";
 import { DropdownItem } from "../ui/dropdown/DropdownItem";
 import { MoreDotIcon } from "../../icons";
 import api from "../../services/api";
-import { formatPriceWithCurrency } from "../../utils/priceHelpers";
+import { formatPriceWithCurrencyComplete } from "../../utils/priceHelpers";
 
 type TrendData = {
   categories: string[];
@@ -168,6 +168,25 @@ export default function MonthlySalesChart() {
       title: {
         text: undefined,
       },
+      labels: {
+        formatter: (val: number) => {
+          // Format for y-axis: show abbreviated version for better readability
+          // But use complete format for values < 1M
+          if (val >= 1_000_000) {
+            const value = val / 1_000_000;
+            if (value >= 100) {
+              return `${value.toFixed(0)}M`;
+            } else if (value >= 10) {
+              return `${value.toFixed(1)}M`;
+            } else {
+              return `${value.toFixed(2)}M`;
+            }
+          } else {
+            // For values < 1M, show complete format with commas
+            return formatPriceWithCurrencyComplete(val).replace('Rs. ', '');
+          }
+        },
+      },
     },
     grid: {
       yaxis: {
@@ -184,7 +203,7 @@ export default function MonthlySalesChart() {
         show: false,
       },
       y: {
-        formatter: (val: number) => formatPriceWithCurrency(val || 0),
+        formatter: (val: number) => formatPriceWithCurrencyComplete(val || 0),
       },
     },
   }), [activeCategories]);

@@ -92,13 +92,58 @@ export default function SalesPaymentPrint() {
     );
   }
 
-  // Handle date - it might be ISO string or Date object
-  let paymentDate: Date;
-  if (payment.date) {
-    paymentDate = typeof payment.date === 'string' ? new Date(payment.date) : payment.date;
-  } else {
-    paymentDate = new Date(sale.date || sale.createdAt);
-  }
+  // Parse date string directly to extract components without UTC conversion
+  const parseDateString = (dateStr: string | Date | undefined): { dateStr: string; timeStr: string; dateTimeStr: string } => {
+    if (!dateStr) {
+      const now = new Date();
+      return {
+        dateStr: now.toLocaleDateString(),
+        timeStr: now.toLocaleTimeString(),
+        dateTimeStr: now.toLocaleString()
+      };
+    }
+
+    if (typeof dateStr === 'string') {
+      // Extract date and time from ISO string directly
+      // Format: "2026-01-24T04:36:52.331Z" or "2026-01-24T04:36:52.331"
+      const dateTimeMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/);
+      if (dateTimeMatch) {
+        const year = dateTimeMatch[1];
+        const month = dateTimeMatch[2];
+        const day = dateTimeMatch[3];
+        const hours = dateTimeMatch[4];
+        const minutes = dateTimeMatch[5];
+        const seconds = dateTimeMatch[6];
+        
+        // Format date: MM/DD/YYYY
+        const dateStr = `${month}/${day}/${year}`;
+        
+        // Format time in 12-hour format
+        const hoursNum = parseInt(hours, 10);
+        const isPM = hoursNum >= 12;
+        const displayHours = hoursNum === 0 ? 12 : hoursNum > 12 ? hoursNum - 12 : hoursNum;
+        const hoursStr = String(displayHours).padStart(2, "0");
+        const ampm = isPM ? "PM" : "AM";
+        const timeStr = `${hoursStr}:${minutes}:${seconds} ${ampm}`;
+        
+        return {
+          dateStr,
+          timeStr,
+          dateTimeStr: `${dateStr} ${timeStr}`
+        };
+      }
+    }
+    
+    // Fallback: use Date object
+    const date = typeof dateStr === 'string' ? new Date(dateStr) : dateStr;
+    return {
+      dateStr: date.toLocaleDateString(),
+      timeStr: date.toLocaleTimeString(),
+      dateTimeStr: date.toLocaleString()
+    };
+  };
+
+  const paymentDateInfo = parseDateString(payment.date || sale.date || sale.createdAt);
   // Filter out payments with invalid amounts (0, null, undefined, NaN) before calculating totalPaid
   const validPayments = (sale.payments || []).filter((p: SalePayment) => 
     p?.amount !== undefined && 
@@ -169,7 +214,7 @@ export default function SalesPaymentPrint() {
               </div>
               <div className="text-right">
                 <p className="text-sm text-gray-600">Date:</p>
-                <p className="font-semibold">{paymentDate.toLocaleDateString()}</p>
+                <p className="font-semibold">{paymentDateInfo.dateStr}</p>
               </div>
             </div>
 
@@ -180,7 +225,7 @@ export default function SalesPaymentPrint() {
               </div>
               <div className="text-right">
                 <p className="text-sm text-gray-600">Time:</p>
-                <p className="font-semibold">{paymentDate.toLocaleTimeString()}</p>
+                <p className="font-semibold">{paymentDateInfo.timeStr}</p>
               </div>
             </div>
 
@@ -302,7 +347,7 @@ export default function SalesPaymentPrint() {
           </div>
           <div className="totals-row">
             <span>Date:</span>
-            <span>{paymentDate.toLocaleString()}</span>
+            <span>{paymentDateInfo.dateTimeStr}</span>
           </div>
           <div className="totals-row">
             <span>Type:</span>
@@ -343,7 +388,7 @@ export default function SalesPaymentPrint() {
 
         <div className="footer">
           <div className="thank-you">THANK YOU!</div>
-          <div>Date: {paymentDate.toLocaleString()}</div>
+          <div>Date: {paymentDateInfo.dateTimeStr}</div>
         </div>
       </div>
 

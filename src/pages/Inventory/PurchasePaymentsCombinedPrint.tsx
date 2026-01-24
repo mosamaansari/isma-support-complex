@@ -7,6 +7,57 @@ import { ChevronLeftIcon, DownloadIcon } from "../../icons";
 import api from "../../services/api";
 import { Purchase, PurchasePayment } from "../../types";
 
+// Parse date string directly to extract components without UTC conversion
+const parseDateString = (dateStr: string | Date | undefined): { dateStr: string; timeStr: string; dateTimeStr: string } => {
+  if (!dateStr) {
+    const now = new Date();
+    return {
+      dateStr: now.toLocaleDateString(),
+      timeStr: now.toLocaleTimeString(),
+      dateTimeStr: now.toLocaleString()
+    };
+  }
+
+  if (typeof dateStr === 'string') {
+    // Extract date and time from ISO string directly
+    // Format: "2026-01-24T04:36:52.331Z" or "2026-01-24T04:36:52.331"
+    const dateTimeMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/);
+    if (dateTimeMatch) {
+      const year = dateTimeMatch[1];
+      const month = dateTimeMatch[2];
+      const day = dateTimeMatch[3];
+      const hours = dateTimeMatch[4];
+      const minutes = dateTimeMatch[5];
+      const seconds = dateTimeMatch[6];
+      
+      // Format date: MM/DD/YYYY
+      const dateStr = `${month}/${day}/${year}`;
+      
+      // Format time in 12-hour format
+      const hoursNum = parseInt(hours, 10);
+      const isPM = hoursNum >= 12;
+      const displayHours = hoursNum === 0 ? 12 : hoursNum > 12 ? hoursNum - 12 : hoursNum;
+      const hoursStr = String(displayHours).padStart(2, "0");
+      const ampm = isPM ? "PM" : "AM";
+      const timeStr = `${hoursStr}:${minutes}:${seconds} ${ampm}`;
+      
+      return {
+        dateStr,
+        timeStr,
+        dateTimeStr: `${dateStr} ${timeStr}`
+      };
+    }
+  }
+  
+  // Fallback: use Date object
+  const date = typeof dateStr === 'string' ? new Date(dateStr) : dateStr;
+  return {
+    dateStr: date.toLocaleDateString(),
+    timeStr: date.toLocaleTimeString(),
+    dateTimeStr: date.toLocaleString()
+  };
+};
+
 export default function PurchasePaymentsCombinedPrint() {
   const { purchaseId } = useParams<{ purchaseId: string }>();
   const { settings } = useData();
@@ -138,7 +189,7 @@ export default function PurchasePaymentsCombinedPrint() {
               </div>
               <div className="text-right">
                 <p className="text-sm text-gray-600">Purchase Date:</p>
-                <p className="font-semibold">{new Date(purchase.date).toLocaleDateString()}</p>
+                <p className="font-semibold">{parseDateString(purchase.date).dateStr}</p>
               </div>
             </div>
 
@@ -169,20 +220,14 @@ export default function PurchasePaymentsCombinedPrint() {
             <h3 className="text-lg font-semibold mb-4">All Payments ({payments.length})</h3>
             <div className="space-y-4">
               {payments.map((payment: PurchasePayment, index: number) => {
-                // Handle date - it might be ISO string or Date object
-                let paymentDate: Date;
-                if (payment.date) {
-                  paymentDate = typeof payment.date === 'string' ? new Date(payment.date) : payment.date;
-                } else {
-                  paymentDate = new Date(purchase.date);
-                }
+                const paymentDateInfo = parseDateString(payment.date || purchase.date);
                 return (
                   <div key={index} className="border border-gray-200 rounded p-4">
                     <div className="flex justify-between items-start mb-2">
                       <div>
                         <p className="font-semibold">Payment #{index + 1}</p>
                         <p className="text-sm text-gray-600">
-                          Date: {paymentDate.toLocaleDateString()} {paymentDate.toLocaleTimeString()}
+                          Date: {paymentDateInfo.dateStr} {paymentDateInfo.timeStr}
                         </p>
                       </div>
                       <div className="text-right">

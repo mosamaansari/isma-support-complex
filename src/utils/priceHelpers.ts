@@ -1,4 +1,33 @@
 /**
+ * Format a number as complete amount with commas (no abbreviations) for amounts < 1M
+ * For amounts >= 1M, use "M" abbreviation
+ * Examples:
+ * - 10000 -> "Rs. 10,000.00"
+ * - 2000 -> "Rs. 2,000.00"
+ * - 1500000 -> "Rs. 1.5M"
+ * - 5000000 -> "Rs. 5M"
+ */
+export function formatPriceWithCurrencyComplete(amount: number): string {
+  const absAmount = Math.abs(amount);
+  const sign = amount < 0 ? "-" : "";
+  
+  if (absAmount >= 1_000_000) {
+    // Million or more - use M abbreviation
+    const value = absAmount / 1_000_000;
+    if (value >= 100) {
+      return `${sign}Rs. ${value.toFixed(0)}M`;
+    } else if (value >= 10) {
+      return `${sign}Rs. ${value.toFixed(1)}M`;
+    } else {
+      return `${sign}Rs. ${value.toFixed(2)}M`;
+    }
+  } else {
+    // Less than 1M - show complete price with commas
+    return `${sign}Rs. ${formatCompleteAmount(absAmount)}`;
+  }
+}
+
+/**
  * Format a number with abbreviations (K, M, B, T)
  * Examples:
  * - 1030 -> "1.03K"

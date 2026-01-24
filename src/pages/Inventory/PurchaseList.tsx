@@ -15,7 +15,7 @@ import Select from "../../components/form/Select";
 import Label from "../../components/form/Label";
 import { Modal } from "../../components/ui/modal";
 import { extractErrorMessage, extractValidationErrors } from "../../utils/errorHandler";
-import { formatPriceWithCurrency } from "../../utils/priceHelpers";
+import { formatPriceWithCurrencyComplete } from "../../utils/priceHelpers";
 import { formatDateToLocalISO, getTodayDate, formatBackendDateUTC } from "../../utils/dateHelpers";
 
 export default function PurchaseList() {
@@ -215,25 +215,25 @@ export default function PurchaseList() {
           <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
             <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Total Purchases</p>
             <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-800 dark:text-white price-responsive">
-              {formatPriceWithCurrency(totalPurchases)}
+              {formatPriceWithCurrencyComplete(totalPurchases)}
             </p>
           </div>
           <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
             <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Total Paid</p>
             <p className="text-lg sm:text-xl lg:text-2xl font-bold text-green-600 dark:text-green-400 price-responsive">
-              {formatPriceWithCurrency(totalPaid)}
+              {formatPriceWithCurrencyComplete(totalPaid)}
             </p>
           </div>
           <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
             <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Total Remaining</p>
             <p className="text-lg sm:text-xl lg:text-2xl font-bold text-orange-600 dark:text-orange-400 price-responsive">
-              {formatPriceWithCurrency(totalRemaining)}
+              {formatPriceWithCurrencyComplete(totalRemaining)}
             </p>
           </div>
           <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
             <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Completed Purchases</p>
             <p className="text-lg sm:text-xl lg:text-2xl font-bold text-blue-600 dark:text-blue-400 price-responsive">
-              {formatPriceWithCurrency(completedPurchases)}
+              {formatPriceWithCurrencyComplete(completedPurchases)}
             </p>
           </div>
           <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
@@ -504,11 +504,47 @@ export default function PurchaseList() {
                 {(selectedPurchase.payments || []).length > 0 && (
                   <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
                     <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Previous Payments:</p>
-                    {(selectedPurchase.payments || []).map((p: PurchasePayment, idx: number) => (
-                      <div key={idx} className="text-xs text-gray-600 dark:text-gray-400">
-                        {formatBackendDateUTC(p.date || selectedPurchase.date)} - {p.type.toUpperCase()}: Rs. {(p.amount || 0).toFixed(2)}
-                      </div>
-                    ))}
+                    {(selectedPurchase.payments || []).map((p: PurchasePayment, idx: number) => {
+                      // Parse date string directly to extract components without UTC conversion
+                      const dateToShow = p.date || selectedPurchase.date;
+                      let displayDate = "";
+                      
+                      if (dateToShow) {
+                        if (typeof dateToShow === 'string') {
+                          // Extract date and time from ISO string directly
+                          const dateTimeMatch = dateToShow.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/);
+                          if (dateTimeMatch) {
+                            const year = dateTimeMatch[1];
+                            const month = dateTimeMatch[2];
+                            const day = dateTimeMatch[3];
+                            const hours = dateTimeMatch[4];
+                            const minutes = dateTimeMatch[5];
+                            
+                            // Format date: MMM DD, YYYY
+                            const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+                            const monthName = monthNames[parseInt(month, 10) - 1];
+                            
+                            // Format time in 12-hour format
+                            const hoursNum = parseInt(hours, 10);
+                            const isPM = hoursNum >= 12;
+                            const displayHours = hoursNum === 0 ? 12 : hoursNum > 12 ? hoursNum - 12 : hoursNum;
+                            const ampm = isPM ? "PM" : "AM";
+                            
+                            displayDate = `${monthName} ${parseInt(day, 10)}, ${year} ${displayHours}:${minutes} ${ampm}`;
+                          } else {
+                            displayDate = formatBackendDateUTC(dateToShow);
+                          }
+                        } else {
+                          displayDate = formatBackendDateUTC(dateToShow as any);
+                        }
+                      }
+                      
+                      return (
+                        <div key={idx} className="text-xs text-gray-600 dark:text-gray-400">
+                          {displayDate} - {p.type.toUpperCase()}: Rs. {(p.amount || 0).toFixed(2)}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -723,7 +759,67 @@ export default function PurchaseList() {
                           <tr key={index} className="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
                             <td className="p-3 text-gray-700 dark:text-gray-300 font-medium">{index + 1}</td>
                             <td className="p-3 text-gray-700 dark:text-gray-300">
-                              <span className="font-medium">{formatBackendDateUTC(payment.date || selectedPurchase.date)}</span>
+                              <span className="font-medium">
+                                {(() => {
+                                  // Show date/time exactly as it comes from backend without UTC conversion
+                                  const dateToShow = payment.date || selectedPurchase.date;
+                                  
+                                  if (!dateToShow) return "";
+                                  
+                                  // Parse date string directly to extract components without UTC conversion
+                                  // Handle both ISO format (2026-01-24T04:36:52.331Z) and other formats
+                                  let year: string, month: string, day: string, hours: string, minutes: string, seconds: string;
+                                  
+                                  if (typeof dateToShow === 'string') {
+                                    // Extract date and time from ISO string directly
+                                    // Format: "2026-01-24T04:36:52.331Z" or "2026-01-24T04:36:52.331"
+                                    const dateTimeMatch = dateToShow.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/);
+                                    if (dateTimeMatch) {
+                                      year = dateTimeMatch[1];
+                                      month = dateTimeMatch[2];
+                                      day = dateTimeMatch[3];
+                                      hours = dateTimeMatch[4];
+                                      minutes = dateTimeMatch[5];
+                                      seconds = dateTimeMatch[6];
+                                      
+                                      // Format time in 12-hour format
+                                      const hoursNum = parseInt(hours, 10);
+                                      const isPM = hoursNum >= 12;
+                                      const displayHours = hoursNum === 0 ? 12 : hoursNum > 12 ? hoursNum - 12 : hoursNum;
+                                      const hoursStr = String(displayHours).padStart(2, "0");
+                                      const ampm = isPM ? "PM" : "AM";
+                                      
+                                      // Show date and time: MM/DD/YYYY HH:MM:SS AM/PM
+                                      return `${month}/${day}/${year} ${hoursStr}:${minutes}:${seconds} ${ampm}`;
+                                    } else {
+                                      // Fallback: use formatBackendDateUTC for date-only
+                                      return formatBackendDateUTC(dateToShow);
+                                    }
+                                  } else {
+                                    // If it's a Date object or other type, use formatBackendDateUTC
+                                    const dateObj = (dateToShow as any) instanceof Date ? (dateToShow as Date) : new Date(dateToShow as any);
+                                    if (isNaN(dateObj.getTime())) {
+                                      return formatBackendDateUTC(dateToShow as any);
+                                    }
+                                    
+                                    year = String(dateObj.getFullYear());
+                                    month = String(dateObj.getMonth() + 1).padStart(2, "0");
+                                    day = String(dateObj.getDate()).padStart(2, "0");
+                                    hours = String(dateObj.getHours()).padStart(2, "0");
+                                    minutes = String(dateObj.getMinutes()).padStart(2, "0");
+                                    seconds = String(dateObj.getSeconds()).padStart(2, "0");
+                                    
+                                    // Format time in 12-hour format
+                                    const hoursNum = parseInt(hours, 10);
+                                    const isPM = hoursNum >= 12;
+                                    const displayHours = hoursNum === 0 ? 12 : hoursNum > 12 ? hoursNum - 12 : hoursNum;
+                                    const hoursStr = String(displayHours).padStart(2, "0");
+                                    const ampm = isPM ? "PM" : "AM";
+                                    
+                                    return `${month}/${day}/${year} ${hoursStr}:${minutes}:${seconds} ${ampm}`;
+                                  }
+                                })()}
+                              </span>
                             </td>
                             <td className="p-3">
                               <span className="px-2 py-1 text-xs font-medium rounded bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400 uppercase">

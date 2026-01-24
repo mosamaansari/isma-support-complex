@@ -9,6 +9,30 @@ import api from "../../services/api";
 import { Sale } from "../../types";
 import { formatBackendDate } from "../../utils/dateHelpers";
 
+// Parse date string directly to extract components without UTC conversion
+const parseDateString = (dateStr: string | Date | undefined): string => {
+  if (!dateStr) {
+    const now = new Date();
+    return now.toLocaleDateString();
+  }
+
+  if (typeof dateStr === 'string') {
+    // Extract date from ISO string directly
+    // Format: "2026-01-24T04:36:52.331Z" or "2026-01-24T04:36:52.331"
+    const dateTimeMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})T/);
+    if (dateTimeMatch) {
+      const year = dateTimeMatch[1];
+      const month = dateTimeMatch[2];
+      const day = dateTimeMatch[3];
+      // Format date: MM/DD/YYYY
+      return `${month}/${day}/${year}`;
+    }
+  }
+  
+  // Fallback: use formatBackendDate
+  return formatBackendDate(dateStr);
+};
+
 export default function BillPrint() {
   const { billNumber } = useParams<{ billNumber: string }>();
   const { getSale, settings, refreshSales, salesPagination, bankAccounts, refreshBankAccounts } = useData();
@@ -137,7 +161,7 @@ export default function BillPrint() {
     const remainingBalance = Math.max(0, sale.total - totalPaid);
     const change = totalPaid > sale.total ? totalPaid - sale.total : 0;
     const paymentStatus = remainingBalance > 0 ? "Pending" : "Completed";
-    const billDate = formatBackendDate(sale.date || sale.createdAt);
+    const billDate = parseDateString(sale.date || sale.createdAt);
 
     const pdfDiscountType = (sale as any).discountType || "percent";
     const pdfTaxType = (sale as any).taxType || "percent";
@@ -528,7 +552,7 @@ export default function BillPrint() {
           <div className="flex justify-between mb-2">
             <span className="text-gray-600 dark:text-gray-400">Date:</span>
             <span className="text-gray-800 dark:text-white">
-              {formatBackendDate(sale.date || sale.createdAt)}
+              {parseDateString(sale.date || sale.createdAt)}
             </span>
           </div>
           {sale.customerName && (
@@ -903,7 +927,7 @@ export default function BillPrint() {
         <div className="footer">
           <div className="thank-you">THANK YOU!</div>
           <div>Bill #: {sale.billNumber}</div>
-          <div>Date: {formatBackendDate(sale.date || sale.createdAt)}</div>
+          <div>Date: {parseDateString(sale.date || sale.createdAt)}</div>
         </div>
       </div>
 

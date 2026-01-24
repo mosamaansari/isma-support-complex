@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useData } from "../../context/DataContext";
 import { DollarLineIcon, BoxIconLine, FileIcon, AlertIcon } from "../../icons";
 import { Link } from "react-router";
-import { formatPriceWithCurrency } from "../../utils/priceHelpers";
+import { formatPriceWithCurrencyComplete } from "../../utils/priceHelpers";
 
 export default function DashboardMetrics() {
   const { sales, expenses, purchases, products, getLowStockProducts } = useData();
@@ -80,7 +80,7 @@ export default function DashboardMetrics() {
           <div className="w-full">
             <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Today's Sales</span>
             <h4 className="mt-1 sm:mt-2 font-bold text-gray-800 text-base sm:text-lg lg:text-xl dark:text-white/90 price-responsive">
-              {formatPriceWithCurrency(metrics.todaySales)}
+              {formatPriceWithCurrencyComplete(metrics.todaySales)}
             </h4>
           </div>
         </div>
@@ -95,7 +95,7 @@ export default function DashboardMetrics() {
           <div className="w-full">
             <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Total Sales</span>
             <h4 className="mt-1 sm:mt-2 font-bold text-gray-800 text-base sm:text-lg lg:text-xl dark:text-white/90 price-responsive">
-              {formatPriceWithCurrency(metrics.totalSales)}
+              {formatPriceWithCurrencyComplete(metrics.totalSales)}
             </h4>
           </div>
         </div>
@@ -110,7 +110,7 @@ export default function DashboardMetrics() {
           <div className="w-full">
             <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Total Expenses</span>
             <h4 className="mt-1 sm:mt-2 font-bold text-gray-800 text-base sm:text-lg lg:text-xl dark:text-white/90 price-responsive">
-              {formatPriceWithCurrency(metrics.totalExpenses)}
+              {formatPriceWithCurrencyComplete(metrics.totalExpenses)}
             </h4>
           </div>
         </div>
@@ -148,7 +148,7 @@ export default function DashboardMetrics() {
           <div className="w-full">
             <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Pending Sales</span>
             <h4 className="mt-1 sm:mt-2 font-bold text-gray-800 text-base sm:text-lg lg:text-xl dark:text-white/90 price-responsive">
-              {formatPriceWithCurrency(metrics.pendingSalesAmount)}
+              {formatPriceWithCurrencyComplete(metrics.pendingSalesAmount)}
             </h4>
             {metrics.pendingSalesCount > 0 && (
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
@@ -168,7 +168,7 @@ export default function DashboardMetrics() {
           <div className="w-full">
             <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Pending Purchases</span>
             <h4 className="mt-1 sm:mt-2 font-bold text-gray-800 text-base sm:text-lg lg:text-xl dark:text-white/90 price-responsive">
-              {formatPriceWithCurrency(metrics.pendingPurchasesAmount)}
+              {formatPriceWithCurrencyComplete(metrics.pendingPurchasesAmount)}
             </h4>
             {metrics.pendingPurchasesCount > 0 && (
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
@@ -195,7 +195,7 @@ export default function DashboardMetrics() {
                   : "text-red-600 dark:text-red-400"
               }`}
             >
-              {formatPriceWithCurrency(metrics.netProfit)}
+              {formatPriceWithCurrencyComplete(metrics.netProfit)}
             </h4>
           </div>
         </div>

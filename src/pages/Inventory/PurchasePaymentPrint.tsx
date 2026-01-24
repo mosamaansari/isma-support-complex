@@ -7,6 +7,57 @@ import { ChevronLeftIcon, DownloadIcon } from "../../icons";
 import api from "../../services/api";
 import { Purchase, PurchasePayment } from "../../types";
 
+// Parse date string directly to extract components without UTC conversion
+const parseDateString = (dateStr: string | Date | undefined): { dateStr: string; timeStr: string; dateTimeStr: string } => {
+  if (!dateStr) {
+    const now = new Date();
+    return {
+      dateStr: now.toLocaleDateString(),
+      timeStr: now.toLocaleTimeString(),
+      dateTimeStr: now.toLocaleString()
+    };
+  }
+
+  if (typeof dateStr === 'string') {
+    // Extract date and time from ISO string directly
+    // Format: "2026-01-24T04:36:52.331Z" or "2026-01-24T04:36:52.331"
+    const dateTimeMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/);
+    if (dateTimeMatch) {
+      const year = dateTimeMatch[1];
+      const month = dateTimeMatch[2];
+      const day = dateTimeMatch[3];
+      const hours = dateTimeMatch[4];
+      const minutes = dateTimeMatch[5];
+      const seconds = dateTimeMatch[6];
+      
+      // Format date: MM/DD/YYYY
+      const dateStr = `${month}/${day}/${year}`;
+      
+      // Format time in 12-hour format
+      const hoursNum = parseInt(hours, 10);
+      const isPM = hoursNum >= 12;
+      const displayHours = hoursNum === 0 ? 12 : hoursNum > 12 ? hoursNum - 12 : hoursNum;
+      const hoursStr = String(displayHours).padStart(2, "0");
+      const ampm = isPM ? "PM" : "AM";
+      const timeStr = `${hoursStr}:${minutes}:${seconds} ${ampm}`;
+      
+      return {
+        dateStr,
+        timeStr,
+        dateTimeStr: `${dateStr} ${timeStr}`
+      };
+    }
+  }
+  
+  // Fallback: use Date object
+  const date = typeof dateStr === 'string' ? new Date(dateStr) : dateStr;
+  return {
+    dateStr: date.toLocaleDateString(),
+    timeStr: date.toLocaleTimeString(),
+    dateTimeStr: date.toLocaleString()
+  };
+};
+
 export default function PurchasePaymentPrint() {
   const { purchaseId: rawPurchaseId, paymentIndex } = useParams<{ purchaseId?: string; paymentIndex?: string }>();
   const purchaseId = rawPurchaseId || "";
@@ -78,13 +129,7 @@ export default function PurchasePaymentPrint() {
     );
   }
 
-  // Handle date - it might be ISO string or Date object
-  let paymentDate: Date;
-  if (payment.date) {
-    paymentDate = typeof payment.date === 'string' ? new Date(payment.date) : payment.date;
-  } else {
-    paymentDate = new Date(purchase.date);
-  }
+  const paymentDateInfo = parseDateString(payment.date || purchase.date);
   const totalPaid = (purchase.payments || []).reduce((sum: number, p: PurchasePayment) => sum + (p?.amount || 0), 0);
   const paymentNumber = paymentIndex ? parseInt(paymentIndex) + 1 : 1;
   const totalPayments = (purchase.payments || []).length;
@@ -145,7 +190,7 @@ export default function PurchasePaymentPrint() {
               </div>
               <div className="text-right">
                 <p className="text-sm text-gray-600">Date:</p>
-                <p className="font-semibold">{paymentDate.toLocaleDateString()}</p>
+                <p className="font-semibold">{paymentDateInfo.dateStr}</p>
               </div>
             </div>
 
@@ -156,7 +201,7 @@ export default function PurchasePaymentPrint() {
               </div>
               <div className="text-right">
                 <p className="text-sm text-gray-600">Time:</p>
-                <p className="font-semibold">{paymentDate.toLocaleTimeString()}</p>
+                <p className="font-semibold">{paymentDateInfo.timeStr}</p>
               </div>
             </div>
 

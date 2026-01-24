@@ -9,7 +9,7 @@ import {
 } from "../ui/table";
 import Badge from "../ui/badge/Badge";
 import api from "../../services/api";
-import { formatPriceWithCurrency } from "../../utils/priceHelpers";
+import { formatPriceWithCurrencyComplete } from "../../utils/priceHelpers";
 
 interface RecentSale {
   id: string;
@@ -180,7 +180,7 @@ export default function RecentOrders() {
                     {safeSale.date ? formatDate(safeSale.date) : "N/A"}
                   </TableCell>
                   <TableCell className="py-2 sm:py-3 font-medium text-gray-800 text-xs sm:text-theme-sm dark:text-white/90 price-responsive whitespace-nowrap">
-                    {formatPriceWithCurrency(safeSale.total || 0)}
+                    {formatPriceWithCurrencyComplete(safeSale.total || 0)}
                   </TableCell>
                   <TableCell className="py-2 sm:py-3 text-gray-500 text-xs sm:text-theme-sm dark:text-gray-400">
                     {getStatusBadge(safeSale.status)}

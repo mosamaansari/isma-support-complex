@@ -9,7 +9,7 @@ import {
   TableRow,
 } from "../ui/table";
 import Badge from "../ui/badge/Badge";
-import { formatPriceWithCurrency } from "../../utils/priceHelpers";
+import { formatPriceWithCurrencyComplete } from "../../utils/priceHelpers";
 
 export default function RecentSales() {
   const { sales } = useData();
@@ -139,7 +139,7 @@ export default function RecentSales() {
                   {formatDate(sale.date || sale.createdAt)}
                 </TableCell>
                 <TableCell className="py-2 sm:py-3 font-medium text-gray-800 text-xs sm:text-theme-sm dark:text-white/90 price-responsive whitespace-nowrap">
-                  {formatPriceWithCurrency(sale.total || 0)}
+                  {formatPriceWithCurrencyComplete(sale.total || 0)}
                 </TableCell>
                 <TableCell className="py-2 sm:py-3 text-gray-500 text-xs sm:text-theme-sm dark:text-gray-400">
                   {getStatusBadge(sale)}

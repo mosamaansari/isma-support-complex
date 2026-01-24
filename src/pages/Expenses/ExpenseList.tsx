@@ -13,7 +13,7 @@ import { PencilIcon, TrashBinIcon } from "../../icons";
 import { Modal } from "../../components/ui/modal";
 import api from "../../services/api";
 import { formatDateToString } from "../../utils/dateHelpers";
-import { formatPriceWithCurrency } from "../../utils/priceHelpers";
+import { formatPriceWithCurrencyComplete } from "../../utils/priceHelpers";
 
 export default function ExpenseList() {
   const { expenses, expensesPagination, deleteExpense, currentUser, loading, error, refreshExpenses } = useData();
@@ -200,7 +200,7 @@ export default function ExpenseList() {
               <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
                 <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Total Expenses</p>
                 <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-800 dark:text-white price-responsive">
-                  {formatPriceWithCurrency(totalExpenses)}
+                  {formatPriceWithCurrencyComplete(totalExpenses)}
                 </p>
               </div>
               {Object.entries(categoryTotals)
@@ -218,7 +218,7 @@ export default function ExpenseList() {
                         {category}
                       </p>
                       <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-800 dark:text-white price-responsive">
-                        {formatPriceWithCurrency(amountValue)}
+                        {formatPriceWithCurrencyComplete(amountValue)}
                       </p>
                     </div>
                   );

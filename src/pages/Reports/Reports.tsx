@@ -9,7 +9,7 @@ import Button from "../../components/ui/button/Button";
 import { DownloadIcon } from "../../icons";
 import api from "../../services/api";
 import { DailyReport, DateRangeReport } from "../../types";
-import { getTodayDate, formatBackendDate, parseUTCDateString, formatBackendDateWithTime, formatBackendDateWithTimeWithoutUTC } from "../../utils/dateHelpers";
+import { getTodayDate, formatBackendDate, parseUTCDateString, formatBackendDateWithTimeWithoutUTC } from "../../utils/dateHelpers";
 import { extractErrorMessage } from "../../utils/errorHandler";
 import { formatCompleteAmount } from "../../utils/priceHelpers";
 
@@ -2008,16 +2008,63 @@ export default function Reports() {
                         >
                           <td className="p-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">
                             {(() => {
-                              // Prefer createdAt if available (has actual time), otherwise use date/paymentDate
-                              const dateToShow = purchaseRow.createdAt || 
+                              // Show date/time exactly as it comes from backend without UTC conversion
+                              const dateToShow = purchaseRow.paymentDate || 
                                 (isPaymentRow
                                   ? purchaseRow.paymentDate || purchaseRow.date
                                   : purchaseRow.date);
-                              // If createdAt is available, use formatBackendDateWithTime to show actual time
-                              // Otherwise use formatBackendDate for date-only fields
-                              return purchaseRow.createdAt
-                                ? formatBackendDateWithTime(dateToShow)
-                                : formatBackendDate(dateToShow);
+                              
+                              if (!dateToShow) return "";
+                              
+                              // Parse date string directly to extract components without UTC conversion
+                              // Handle both ISO format (2026-01-24T04:36:52.331Z) and other formats
+                              let year: string, month: string, day: string, hours: string, minutes: string, seconds: string;
+                              
+                              if (typeof dateToShow === 'string') {
+                                // Extract date and time from ISO string directly
+                                // Format: "2026-01-24T04:36:52.331Z" or "2026-01-24T04:36:52.331"
+                                const dateTimeMatch = dateToShow.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/);
+                                if (dateTimeMatch) {
+                                  year = dateTimeMatch[1];
+                                  month = dateTimeMatch[2];
+                                  day = dateTimeMatch[3];
+                                  hours = dateTimeMatch[4];
+                                  minutes = dateTimeMatch[5];
+                                  seconds = dateTimeMatch[6];
+                                } else {
+                                  // Fallback: try parsing as Date and extract local components
+                                  const date = new Date(dateToShow);
+                                  if (isNaN(date.getTime())) return "";
+                                  year = String(date.getFullYear());
+                                  month = String(date.getMonth() + 1).padStart(2, "0");
+                                  day = String(date.getDate()).padStart(2, "0");
+                                  hours = String(date.getHours()).padStart(2, "0");
+                                  minutes = String(date.getMinutes()).padStart(2, "0");
+                                  seconds = String(date.getSeconds()).padStart(2, "0");
+                                }
+                              } else if (dateToShow instanceof Date) {
+                                // If it's already a Date object, extract local components
+                                year = String(dateToShow.getFullYear());
+                                month = String(dateToShow.getMonth() + 1).padStart(2, "0");
+                                day = String(dateToShow.getDate()).padStart(2, "0");
+                                hours = String(dateToShow.getHours()).padStart(2, "0");
+                                minutes = String(dateToShow.getMinutes()).padStart(2, "0");
+                                seconds = String(dateToShow.getSeconds()).padStart(2, "0");
+                              } else {
+                                return "";
+                              }
+                              
+                              // Format time in 12-hour format
+                              const hoursNum = parseInt(hours, 10);
+                              const isPM = hoursNum >= 12;
+                              const displayHours = hoursNum === 0 ? 12 : hoursNum > 12 ? hoursNum - 12 : hoursNum;
+                              const hoursStr = String(displayHours).padStart(2, "0");
+                              const ampm = isPM ? "PM" : "AM";
+                              
+                              // Show date and time as-is: MM/DD/YYYY HH:MM:SS AM/PM
+                              return purchaseRow.paymentDate
+                                ? `${month}/${day}/${year} ${hoursStr}:${minutes}:${seconds} ${ampm}`
+                                : `${month}/${day}/${year}`;
                             })()}
                             {hasMultiplePayments && (
                               <span className="text-xs text-gray-500 ml-1">
@@ -2166,16 +2213,63 @@ export default function Reports() {
                               </td>
                               <td className="p-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">
                                 {(() => {
-                                  // Prefer createdAt if available (has actual time), otherwise use date/paymentDate
-                                  const dateToShow = paymentRow.createdAt || 
+                                  // Show date/time exactly as it comes from backend without UTC conversion
+                                  const dateToShow = paymentRow.paymentDate || 
                                     (isPaymentRow
                                       ? paymentRow.paymentDate || paymentRow.date
                                       : paymentRow.date);
-                                  // If createdAt is available, use formatBackendDateWithTime to show actual time
-                                  // Otherwise use formatBackendDate for date-only fields
-                                  return paymentRow.createdAt
-                                    ? formatBackendDateWithTime(dateToShow)
-                                    : formatBackendDate(dateToShow);
+                                  
+                                  if (!dateToShow) return "";
+                                  
+                                  // Parse date string directly to extract components without UTC conversion
+                                  // Handle both ISO format (2026-01-24T04:36:52.331Z) and other formats
+                                  let year: string, month: string, day: string, hours: string, minutes: string, seconds: string;
+                                  
+                                  if (typeof dateToShow === 'string') {
+                                    // Extract date and time from ISO string directly
+                                    // Format: "2026-01-24T04:36:52.331Z" or "2026-01-24T04:36:52.331"
+                                    const dateTimeMatch = dateToShow.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/);
+                                    if (dateTimeMatch) {
+                                      year = dateTimeMatch[1];
+                                      month = dateTimeMatch[2];
+                                      day = dateTimeMatch[3];
+                                      hours = dateTimeMatch[4];
+                                      minutes = dateTimeMatch[5];
+                                      seconds = dateTimeMatch[6];
+                                    } else {
+                                      // Fallback: try parsing as Date and extract local components
+                                      const date = new Date(dateToShow);
+                                      if (isNaN(date.getTime())) return "";
+                                      year = String(date.getFullYear());
+                                      month = String(date.getMonth() + 1).padStart(2, "0");
+                                      day = String(date.getDate()).padStart(2, "0");
+                                      hours = String(date.getHours()).padStart(2, "0");
+                                      minutes = String(date.getMinutes()).padStart(2, "0");
+                                      seconds = String(date.getSeconds()).padStart(2, "0");
+                                    }
+                                  } else if (dateToShow instanceof Date) {
+                                    // If it's already a Date object, extract local components
+                                    year = String(dateToShow.getFullYear());
+                                    month = String(dateToShow.getMonth() + 1).padStart(2, "0");
+                                    day = String(dateToShow.getDate()).padStart(2, "0");
+                                    hours = String(dateToShow.getHours()).padStart(2, "0");
+                                    minutes = String(dateToShow.getMinutes()).padStart(2, "0");
+                                    seconds = String(dateToShow.getSeconds()).padStart(2, "0");
+                                  } else {
+                                    return "";
+                                  }
+                                  
+                                  // Format time in 12-hour format
+                                  const hoursNum = parseInt(hours, 10);
+                                  const isPM = hoursNum >= 12;
+                                  const displayHours = hoursNum === 0 ? 12 : hoursNum > 12 ? hoursNum - 12 : hoursNum;
+                                  const hoursStr = String(displayHours).padStart(2, "0");
+                                  const ampm = isPM ? "PM" : "AM";
+                                  
+                                  // Show date and time as-is: MM/DD/YYYY HH:MM:SS AM/PM
+                                  return paymentRow.paymentDate || isPaymentRow
+                                    ? `${month}/${day}/${year} ${hoursStr}:${minutes}:${seconds} ${ampm}`
+                                    : `${month}/${day}/${year}`;
                                 })()}
                               </td>
                               <td className="p-2 text-gray-700 dark:text-gray-300 max-w-[150px]">

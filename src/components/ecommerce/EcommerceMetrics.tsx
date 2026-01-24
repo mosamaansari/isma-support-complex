@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { DollarLineIcon, BoxIconLine, FileIcon } from "../../icons";
 import api from "../../services/api";
-import { formatPriceWithCurrency } from "../../utils/priceHelpers";
+import { formatPriceWithCurrencyComplete } from "../../utils/priceHelpers";
 
 interface DashboardStats {
   metrics: {
@@ -153,7 +153,7 @@ export default function EcommerceMetrics() {
               <h4 className="mt-1 sm:mt-2 font-bold text-gray-800 text-base sm:text-lg lg:text-xl dark:text-white/90 price-responsive">
                 {card.suffix
                   ? `${card.value} ${card.suffix}`
-                  : formatPriceWithCurrency(card.value || 0)}
+                  : formatPriceWithCurrencyComplete(card.value || 0)}
               </h4>
             </div>
           </div>
