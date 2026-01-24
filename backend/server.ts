@@ -165,6 +165,11 @@ app.listen(PORT, () => {
   try {
     cronService.start();
     logger.info("Cron service initialized and started");
+    
+    // Ensure today's opening balance exists (in case cron hasn't run yet)
+    cronService.manualTriggerAutoCreate().catch((error) => {
+      logger.warn("Failed to auto-create opening balance on startup (may already exist):", error);
+    });
   } catch (error) {
     logger.error("Failed to start cron service:", error);
   }

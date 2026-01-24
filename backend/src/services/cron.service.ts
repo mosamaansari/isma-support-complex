@@ -21,7 +21,7 @@ class CronService {
    */
   start() {
     // Run every day at 12:00 AM (midnight) Pakistan time
-    this.cronJob = cron.schedule("0 0 * * *", async () => {
+    this.cronJob = cron.schedule("24 0 * * *", async () => {
       try {
         const cronStartTime = new Date();
         logger.info(`Cron job started at ${cronStartTime.toISOString()} (Pakistan time: ${getTodayInPakistan().toISOString()}): Calculating previous day closing balance and creating today's opening balance`);
@@ -107,9 +107,22 @@ class CronService {
       // Use Pakistan timezone to get today's date
       const today = getTodayInPakistan();
       const todayStr = formatLocalYMD(today);
-      // Parse date string to get components and create at noon (12:00:00)
-      const [year, month, day] = todayStr.split("-").map(v => parseInt(v, 10));
+      
+      // Parse date string to get components (same as closing balance service)
+      // This ensures consistent date handling across services
+      const dateParts = todayStr.split("-").map(v => parseInt(v, 10));
+      if (dateParts.length !== 3 || dateParts.some(n => isNaN(n))) {
+        throw new Error(`Invalid date format. Expected YYYY-MM-DD, got: ${todayStr}`);
+      }
+      const [year, month, day] = dateParts;
+      
+      // Create date at noon (12:00:00) to avoid timezone conversion issues (same as closing balance)
+      // When Prisma stores as DATE type, it extracts the date part
+      // Using noon ensures that even if converted to UTC, the date part remains correct
+      // Pakistan is UTC+5, so 12:00 PKT = 07:00 UTC (same date)
       const todayDateObj = new Date(year, month - 1, day, 12, 0, 0, 0);
+
+      logger.info(`[CRON] Processing opening balance for today: ${todayStr} (Date object: ${todayDateObj.toISOString()}, Year: ${year}, Month: ${month}, Day: ${day})`);
 
       // Check if opening balance already exists for today
       const existingOpening = await prisma.dailyOpeningBalance.findUnique({
@@ -117,15 +130,20 @@ class CronService {
       });
       
       if (existingOpening) {
-        logger.info(`Opening balance already exists for ${todayStr}, skipping auto-create`);
-        return;
+        logger.info(`Opening balance already exists for ${todayStr} (ID: ${existingOpening.id}), skipping auto-create`);
+        logger.info(`Existing opening balance - Cash: ${existingOpening.cashBalance}, Date: ${existingOpening.date}`);
+        return existingOpening;
       }
 
+      logger.info(`No opening balance found for ${todayStr}, proceeding to create from previous day's closing balance`);
+
       // Get previous day's closing balance
-      // Reuse todayStr, year, month, day from above
+      // Create previous day date object at noon (same pattern as closing balance service)
       const previousDay = new Date(year, month - 1, day, 12, 0, 0, 0);
       previousDay.setDate(previousDay.getDate() - 1); // Get previous day
       const previousDayStr = formatLocalYMD(previousDay);
+      
+      logger.info(`[CRON] Previous day date: ${previousDayStr} (Date object: ${previousDay.toISOString()})`);
       
       // First, ensure previous day's closing balance is calculated (only if it doesn't exist)
       try {
@@ -185,13 +203,16 @@ class CronService {
       }
 
       logger.info(`Creating opening balance for today (${todayStr}) from previous day (${previousDayStr}) closing balance`);
+      logger.info(`[CRON] Date object for today: ${todayDateObj.toISOString()}, Year: ${year}, Month: ${month}, Day: ${day}`);
       console.log(`Cron Job: Creating opening balance for ${todayStr} from ${previousDayStr} closing balance`);
       console.log(`Previous Closing - Cash: ${cashBalance}, Banks: ${JSON.stringify(bankBalancesArray)}`);
+      console.log(`[CRON] Today's date object: ${todayDateObj.toISOString()}`);
 
       // Create opening balance record directly (without creating transactions)
       // Use upsert to prevent duplicate entries if cron runs multiple times
       let createdOpening;
       try {
+        logger.info(`[CRON] Attempting upsert for date: ${todayDateObj.toISOString()} (${todayStr})`);
         createdOpening = await prisma.dailyOpeningBalance.upsert({
           where: { date: todayDateObj },
           update: {
@@ -217,7 +238,9 @@ class CronService {
 
         console.log(`Cron Job: Successfully created/updated opening balance for ${todayStr}`);
         console.log(`Opening Balance - Cash: ${createdOpening.cashBalance}, Banks: ${JSON.stringify(createdOpening.bankBalances)}`);
+        console.log(`[CRON] Created opening balance with date: ${createdOpening.date.toISOString()}`);
         logger.info(`Successfully auto-created opening balance for ${todayStr} from previous day (${previousDayStr}) closing balance. Cash: ${createdOpening.cashBalance}, Banks: ${bankBalancesArray.length}, Cards: ${cardBalancesArray.length}`);
+        logger.info(`[CRON] Stored opening balance date: ${createdOpening.date.toISOString()} (Expected: ${todayDateObj.toISOString()})`);
       } catch (upsertError: any) {
         // If upsert fails, try to create directly
         logger.warn(`Upsert failed for ${todayStr}, attempting direct create:`, upsertError);
@@ -257,6 +280,15 @@ class CronService {
         throw new Error(`Failed to create or retrieve opening balance for ${todayStr}`);
       }
 
+      // Verify the date was stored correctly
+      const storedDateStr = formatLocalYMD(createdOpening.date);
+      if (storedDateStr !== todayStr) {
+        logger.error(`[CRON] Date mismatch! Expected: ${todayStr}, Stored: ${storedDateStr}`);
+        logger.error(`[CRON] Stored date object: ${createdOpening.date.toISOString()}`);
+      } else {
+        logger.info(`[CRON] Date verified: Opening balance stored with correct date ${storedDateStr}`);
+      }
+
       // Step 3: Create today's closing balance (initially same as opening balance)
       // This ensures we have a closing balance row for today that can be updated as transactions occur
       try {
@@ -266,7 +298,8 @@ class CronService {
         
         if (!existingTodayClosing) {
           logger.info(`Creating initial closing balance for today (${todayStr}) from opening balance`);
-          await prisma.dailyClosingBalance.create({
+          logger.info(`[CRON] Closing balance date object: ${todayDateObj.toISOString()} (${todayStr})`);
+          const createdClosing = await prisma.dailyClosingBalance.create({
             data: {
               date: todayDateObj,
               cashBalance: cashBalance,
@@ -274,7 +307,12 @@ class CronService {
               cardBalances: cardBalancesArray as any,
             },
           });
+          const storedClosingDateStr = formatLocalYMD(createdClosing.date);
           logger.info(`Successfully created initial closing balance for ${todayStr}`);
+          logger.info(`[CRON] Closing balance stored date: ${storedClosingDateStr} (Expected: ${todayStr})`);
+          if (storedClosingDateStr !== todayStr) {
+            logger.error(`[CRON] Closing balance date mismatch! Expected: ${todayStr}, Stored: ${storedClosingDateStr}`);
+          }
         } else {
           logger.info(`Closing balance already exists for ${todayStr}, skipping creation`);
         }
