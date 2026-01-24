@@ -226,7 +226,10 @@ class ApiClient {
           data: Array.isArray(response.data.data)
             ? response.data.data.map(normalizeSale)
             : [],
-          pagination: response.data.pagination,
+          pagination: {
+            ...response.data.pagination,
+            summary: response.data.summary,
+          },
         };
       }
       // Fallback for old format
@@ -294,8 +297,10 @@ class ApiClient {
           data: Array.isArray(response.data.data)
             ? response.data.data.map(normalizeExpense)
             : [],
-          pagination: response.data.pagination,
-          summary: response.data.summary || null,
+          pagination: {
+            ...response.data.pagination,
+            summary: response.data.summary,
+          },
         };
       }
       // Fallback for old format
@@ -362,7 +367,10 @@ class ApiClient {
         data: Array.isArray(response.data.data)
           ? response.data.data.map(normalizePurchase)
           : [],
-        pagination: response.data.pagination,
+        pagination: {
+          ...response.data.pagination,
+          summary: response.data.summary,
+        },
       };
     }
     // Fallback for old format

@@ -128,6 +128,45 @@ class ProductService {
       }
     }
 
+    // Check for duplicate product name + brand combination
+    const duplicateCheckConditions = [];
+    
+    if (data.brand || brandId) {
+      // If brand is provided, check for name + brand combination
+      duplicateCheckConditions.push({
+        name: { equals: data.name, mode: "insensitive" as any },
+        AND: [
+          data.brand ? { brand: { equals: data.brand, mode: "insensitive" as any } } : {},
+          brandId ? { brandId: brandId } : {}
+        ].filter(condition => Object.keys(condition).length > 0)
+      });
+    } else {
+      // If no brand, just check for name (assuming null brand)
+      duplicateCheckConditions.push({
+        name: { equals: data.name, mode: "insensitive" as any },
+        brand: null,
+        brandId: null
+      });
+    }
+
+    if (duplicateCheckConditions.length > 0) {
+      const existingProduct = await prisma.product.findFirst({
+        where: {
+          OR: duplicateCheckConditions
+        },
+        select: {
+          id: true,
+          name: true,
+          brand: true
+        }
+      });
+
+      if (existingProduct) {
+        const brandText = existingProduct.brand ? ` (Brand: ${existingProduct.brand})` : "";
+        throw new Error(`Product "${existingProduct.name}${brandText}" already exists. Cannot create duplicate product with the same name and brand combination.`);
+      }
+    }
+
     const product = await prisma.product.create({
       data: {
         name: data.name,
@@ -205,6 +244,71 @@ class ProductService {
         brandId = brand ? brand.id : null;
       } else {
         brandId = null;
+      }
+    }
+
+    // Check for duplicate product name + brand combination if name or brand is being updated
+    if (data.name !== undefined || dataWithBrand.brand !== undefined || brandId !== undefined) {
+      // Get current product data to compare
+      const currentProduct = await prisma.product.findUnique({
+        where: { id },
+        select: { name: true, brand: true, brandId: true }
+      });
+      
+      if (!currentProduct) {
+        throw new Error("Product not found");
+      }
+
+      // Determine final values after update
+      const finalName = data.name !== undefined ? data.name : currentProduct.name;
+      const finalBrand = dataWithBrand.brand !== undefined ? dataWithBrand.brand : currentProduct.brand;
+      const finalBrandId = brandId !== undefined ? brandId : currentProduct.brandId;
+
+      // Check for duplicates only if name or brand is actually changing
+      const nameChanging = data.name !== undefined && data.name !== currentProduct.name;
+      const brandChanging = (dataWithBrand.brand !== undefined && dataWithBrand.brand !== currentProduct.brand) ||
+                           (brandId !== undefined && brandId !== currentProduct.brandId);
+
+      if (nameChanging || brandChanging) {
+        const duplicateCheckConditions = [];
+        
+        if (finalBrand || finalBrandId) {
+          // If brand exists, check for name + brand combination
+          duplicateCheckConditions.push({
+            name: { equals: finalName, mode: "insensitive" as any },
+            AND: [
+              finalBrand ? { brand: { equals: finalBrand, mode: "insensitive" as any } } : {},
+              finalBrandId ? { brandId: finalBrandId } : {}
+            ].filter(condition => Object.keys(condition).length > 0),
+            id: { not: id } // Exclude current product from check
+          });
+        } else {
+          // If no brand, just check for name (assuming null brand)
+          duplicateCheckConditions.push({
+            name: { equals: finalName, mode: "insensitive" as any },
+            brand: null,
+            brandId: null,
+            id: { not: id } // Exclude current product from check
+          });
+        }
+
+        if (duplicateCheckConditions.length > 0) {
+          const existingProduct = await prisma.product.findFirst({
+            where: {
+              OR: duplicateCheckConditions
+            },
+            select: {
+              id: true,
+              name: true,
+              brand: true
+            }
+          });
+
+          if (existingProduct) {
+            const brandText = existingProduct.brand ? ` (Brand: ${existingProduct.brand})` : "";
+            throw new Error(`Product "${existingProduct.name}${brandText}" already exists. Cannot update to duplicate name and brand combination.`);
+          }
+        }
       }
     }
 

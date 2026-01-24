@@ -80,32 +80,19 @@ export default function PurchaseList() {
     refreshPurchases(1, pageSize);
   };
 
-  const filteredPurchases = (purchases || []).filter((purchase) => {
-    if (!purchase || !purchase.supplierName) return false;
-    const matchesSearch =
-      purchase.supplierName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (purchase.supplierPhone && purchase.supplierPhone.includes(searchTerm));
-    const matchesStatus =
-      filterStatus === "all" || purchase.status === filterStatus;
-    return matchesSearch && matchesStatus;
-  });
+  // Since we're now using backend filtering, just use the purchases data as is
+  const filteredPurchases = purchases || [];
 
-  // Calculate totals for filtered purchases (all rows visible in table)
-  const totalPurchases = filteredPurchases.reduce((sum, p) => sum + (p?.total || 0), 0);
-  const totalPaid = filteredPurchases.reduce((sum, p) => {
-    const payments = (p.payments || []) as PurchasePayment[];
-    const paid = payments.reduce((pSum, payment) => pSum + (payment?.amount || 0), 0);
-    return sum + paid;
-  }, 0);
-  const totalRemaining = filteredPurchases.reduce((sum, p) => {
-    const payments = (p.payments || []) as PurchasePayment[];
-    const paid = payments.reduce((pSum, payment) => pSum + (payment?.amount || 0), 0);
-    const remaining = p.remainingBalance !== undefined && p.remainingBalance !== null 
-      ? p.remainingBalance 
-      : ((p.total || 0) - paid);
-    return sum + remaining;
-  }, 0);
-  const completedPurchases = filteredPurchases.filter((p) => p && p.status === "completed").reduce((sum, p) => sum + (p?.total || 0), 0);
+  // Get summary statistics from backend API data
+  const summaryStats = (purchasesPagination as any)?.summary || {
+    totalPurchases: 0,
+    totalPaid: 0,
+    totalRemaining: 0,
+    totalRefunded: 0, // Count of refunded purchases, not amount
+    completedPurchases: 0,
+  };
+  
+  const { totalPurchases, totalPaid, totalRemaining, totalRefunded, completedPurchases } = summaryStats;
 
   const handleAddPayment = (purchase: Purchase) => {
     setSelectedPurchase(purchase);
@@ -362,7 +349,7 @@ export default function PurchaseList() {
           </Link>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 sm:gap-4 mb-6 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 sm:gap-4 mb-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
             <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Total Purchases</p>
             <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-800 dark:text-white price-responsive">
@@ -379,6 +366,12 @@ export default function PurchaseList() {
             <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Total Remaining</p>
             <p className="text-lg sm:text-xl lg:text-2xl font-bold text-orange-600 dark:text-orange-400 price-responsive">
               {formatPriceWithCurrencyComplete(totalRemaining)}
+            </p>
+          </div>
+          <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+            <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Total Cancelled</p>
+            <p className="text-lg sm:text-xl lg:text-2xl font-bold text-red-600 dark:text-red-400">
+              {totalRefunded}
             </p>
           </div>
           <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">

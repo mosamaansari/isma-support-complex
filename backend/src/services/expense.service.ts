@@ -46,11 +46,52 @@ class ExpenseService {
       prisma.expense.count({ where }),
     ]);
 
-    // Get summary statistics (all-time totals and category totals)
-    const [allTimeTotals, categoryTotals] = await Promise.all([
-      this.getAllTimeTotals(),
-      this.getCategoryTotals(),
-    ]);
+    // Get summary statistics for all matching expenses (not just the paginated ones)
+    const allMatchingExpenses = await prisma.expense.findMany({
+      where,
+      select: {
+        id: true,
+        amount: true,
+        paymentType: true,
+        category: true,
+      },
+    });
+
+    // Calculate summary statistics
+    const summaryStats = allMatchingExpenses.reduce(
+      (acc, expense) => {
+        const expenseAmount = Number(expense.amount || 0);
+        
+        acc.totalExpenses += expenseAmount;
+        acc.totalCount += 1;
+        
+        // Count by payment type
+        if (expense.paymentType === 'cash') {
+          acc.cashExpenses += expenseAmount;
+        } else if (expense.paymentType === 'bank_transfer') {
+          acc.bankExpenses += expenseAmount;
+        } else if (expense.paymentType === 'card') {
+          acc.cardExpenses += expenseAmount;
+        }
+        
+        // Count by category
+        if (!acc.categoryTotals[expense.category]) {
+          acc.categoryTotals[expense.category] = { total: 0, count: 0 };
+        }
+        acc.categoryTotals[expense.category].total += expenseAmount;
+        acc.categoryTotals[expense.category].count += 1;
+        
+        return acc;
+      },
+      {
+        totalExpenses: 0,
+        totalCount: 0,
+        cashExpenses: 0,
+        bankExpenses: 0,
+        cardExpenses: 0,
+        categoryTotals: {} as Record<string, { total: number; count: number }>,
+      }
+    );
 
     return {
       data: expenses,
@@ -60,11 +101,7 @@ class ExpenseService {
         total,
         totalPages: Math.ceil(total / pageSize),
       },
-      summary: {
-        totalAmount: allTimeTotals.totalAmount,
-        totalCount: allTimeTotals.totalCount,
-        categoryTotals: categoryTotals,
-      },
+      summary: summaryStats,
     };
   }
 

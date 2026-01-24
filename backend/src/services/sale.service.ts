@@ -120,6 +120,62 @@ class SaleService {
         })),
       }));
 
+      // Calculate summary statistics for all matching sales (not just the paginated ones)
+      const allMatchingSales = await prisma.sale.findMany({
+        where,
+        select: {
+          id: true,
+          total: true,
+          remainingBalance: true,
+          status: true,
+          payments: true,
+        },
+      });
+
+      // Calculate summary statistics
+      const summaryStats = allMatchingSales.reduce(
+        (acc, sale) => {
+          const saleTotal = Number(sale.total || 0);
+          
+          // Filter out payments with invalid amounts (0, null, undefined, NaN)
+          const validPayments = (sale.payments as Array<{ type?: string; amount?: number; date?: string }> || [])
+            .filter((p: any) => 
+              p?.amount !== undefined && 
+              p?.amount !== null && 
+              !isNaN(Number(p.amount)) && 
+              Number(p.amount) > 0
+            );
+          const totalPaid = validPayments.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
+          
+          // Calculate remaining balance
+          const remainingBalance = Math.max(0, saleTotal - totalPaid);
+          
+          if (sale.status === 'cancelled') {
+            // For cancelled sales, count the number of cancelled sales (not amount)
+            acc.totalRefunded += 1;
+          } else {
+            // For non-cancelled sales, include in totals
+            acc.totalSales += saleTotal;
+            acc.totalRemaining += remainingBalance;
+            // Total paid should only include payments from non-cancelled sales
+            acc.totalPaid += totalPaid;
+            
+            if (sale.status === 'completed') {
+              acc.completedSales += saleTotal;
+            }
+          }
+          
+          return acc;
+        },
+        {
+          totalSales: 0,
+          totalPaid: 0,
+          totalRemaining: 0,
+          totalRefunded: 0, // Count of cancelled sales, not amount
+          completedSales: 0,
+        }
+      );
+
       return {
         data: formattedSales,
         pagination: {
@@ -128,6 +184,7 @@ class SaleService {
           total,
           totalPages: Math.ceil(total / pageSize),
         },
+        summary: summaryStats,
       };
     } catch (error: any) {
       // If card relation doesn't exist, try without it

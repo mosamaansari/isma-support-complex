@@ -460,8 +460,12 @@ class ReportService {
 
     // Filter sales by payment dates (not sale date or createdAt)
     // IMPORTANT: Only use payment.date from payments JSON, NOT sale.date or sale.createdAt
-    // IMPORTANT: Only show sales that have payments (payments.length > 0)
+    // IMPORTANT: Only show sales that have payments (payments.length > 0) and are not cancelled
     const sales = allSales.filter((sale) => {
+      // Exclude cancelled/refunded sales
+      if (sale.status === 'cancelled') {
+        return false;
+      }
       const payments = (sale.payments as Array<{ type?: string; amount?: number; date?: string; cardId?: string; bankAccountId?: string }> | null) || [];
       if (payments.length === 0) {
         // Skip sales with no payments - don't show in daily report
@@ -481,8 +485,12 @@ class ReportService {
     // Filter purchases by payment dates (not purchase date)
     // Filter purchases by payment dates (not purchase date or createdAt)
     // IMPORTANT: Only use payment.date from payments JSON, NOT purchase.date or purchase.createdAt
-    // IMPORTANT: Only show purchases that have payments (payments.length > 0)
+    // IMPORTANT: Only show purchases that have payments (payments.length > 0) and are not cancelled
     const purchases = allPurchases.filter((purchase) => {
+      // Exclude cancelled purchases
+      if (purchase.status === 'cancelled') {
+        return false;
+      }
       const payments = (purchase.payments as Array<{ type?: string; amount?: number; date?: string; cardId?: string; bankAccountId?: string }> | null) || [];
       if (payments.length === 0) {
         // Skip purchases with no payments - don't show in daily report
@@ -1830,8 +1838,12 @@ class ReportService {
       steps, // Step-by-step transactions sorted by date/time ASC
       summary: {
         sales: {
-          // Count sales that have at least one payment in the date range (only payments.length > 0)
+          // Count sales that have at least one payment in the date range (only payments.length > 0 and not cancelled)
           count: allSalesForRange.filter((sale) => {
+            // Exclude cancelled/refunded sales
+            if (sale.status === 'cancelled') {
+              return false;
+            }
             const payments = (sale.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
             if (payments.length === 0) {
               // Skip sales with no payments - don't count
@@ -1842,8 +1854,12 @@ class ReportService {
               return paymentDateStr ? paymentDateStr >= normalizedStartDate && paymentDateStr <= normalizedEndDate : false;
             });
           }).length,
-          // Calculate total from payments that occurred in the date range (only payments.length > 0)
+          // Calculate total from payments that occurred in the date range (only payments.length > 0 and not cancelled)
           total: allSalesForRange.reduce((sum, s) => {
+            // Exclude cancelled/refunded sales
+            if (s.status === 'cancelled') {
+              return sum;
+            }
             const payments = (s.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
             if (payments.length === 0) {
               // Skip sales with no payments - don't include in total
@@ -1860,8 +1876,12 @@ class ReportService {
           }, 0),
         },
         purchases: {
-          // Count purchases that have at least one payment in the date range (only payments.length > 0)
+          // Count purchases that have at least one payment in the date range (only payments.length > 0 and not cancelled)
           count: allPurchasesForRange.filter((purchase) => {
+            // Exclude cancelled purchases
+            if (purchase.status === 'cancelled') {
+              return false;
+            }
             const payments = (purchase.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
             if (payments.length === 0) {
               // Skip purchases with no payments - don't count
@@ -1872,8 +1892,12 @@ class ReportService {
               return paymentDateStr ? paymentDateStr >= normalizedStartDate && paymentDateStr <= normalizedEndDate : false;
             });
           }).length,
-          // Calculate total from payments that occurred in the date range (only payments.length > 0)
+          // Calculate total from payments that occurred in the date range (only payments.length > 0 and not cancelled)
           total: allPurchasesForRange.reduce((sum, p) => {
+            // Exclude cancelled purchases
+            if (p.status === 'cancelled') {
+              return sum;
+            }
             const payments = (p.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
             if (payments.length === 0) {
               // Skip purchases with no payments - don't include in total
@@ -1901,6 +1925,10 @@ class ReportService {
         items: (() => {
           const seenSalePayments = new Set<string>();
           return allSalesForRange.flatMap((sale) => {
+            // Exclude cancelled/refunded sales
+            if (sale.status === 'cancelled') {
+              return [];
+            }
             const payments = (sale.payments as Array<{ type?: string; amount?: number; date?: string; cardId?: string; bankAccountId?: string }> | null) || [];
             if (payments.length === 0) {
               // Skip sales with no payments - don't show in report items
@@ -1962,6 +1990,10 @@ class ReportService {
           });
         })(),
         total: allSalesForRange.reduce((sum, s) => {
+          // Exclude cancelled/refunded sales
+          if (s.status === 'cancelled') {
+            return sum;
+          }
           const payments = (s.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
           if (payments.length === 0) {
             // Skip sales with no payments - don't include in total
@@ -1976,6 +2008,10 @@ class ReportService {
           }, 0);
         }, 0),
         cash: allSalesForRange.reduce((sum, s) => {
+          // Exclude cancelled/refunded sales
+          if (s.status === 'cancelled') {
+            return sum;
+          }
           const payments = (s.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
           const cashPayments = payments.filter(p => p.type === "cash");
           return sum + cashPayments.reduce((paymentSum, payment) => {
@@ -1987,6 +2023,10 @@ class ReportService {
           }, 0);
         }, 0),
         bank_transfer: allSalesForRange.reduce((sum, s) => {
+          // Exclude cancelled/refunded sales
+          if (s.status === 'cancelled') {
+            return sum;
+          }
           const payments = (s.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
           const bankPayments = payments.filter(p => p.type === "bank_transfer");
           return sum + bankPayments.reduce((paymentSum, payment) => {
@@ -1998,6 +2038,10 @@ class ReportService {
           }, 0);
         }, 0),
         card: allSalesForRange.reduce((sum, s) => {
+          // Exclude cancelled/refunded sales
+          if (s.status === 'cancelled') {
+            return sum;
+          }
           const payments = (s.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
           const cardPayments = payments.filter(p => p.type === "card");
           return sum + cardPayments.reduce((paymentSum, payment) => {
@@ -2016,6 +2060,10 @@ class ReportService {
         items: (() => {
           const seenPurchasePayments = new Set<string>();
           return allPurchasesForRange.flatMap((purchase) => {
+            // Exclude cancelled purchases
+            if (purchase.status === 'cancelled') {
+              return [];
+            }
             const payments = (purchase.payments as Array<{ type?: string; amount?: number; date?: string; cardId?: string; bankAccountId?: string }> | null) || [];
             if (payments.length === 0) {
               // Skip purchases with no payments - don't show in report items
@@ -2077,6 +2125,10 @@ class ReportService {
           });
         })(),
         total: allPurchasesForRange.reduce((sum, p) => {
+          // Exclude cancelled purchases
+          if (p.status === 'cancelled') {
+            return sum;
+          }
           const payments = (p.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
           if (payments.length === 0) {
             // Skip purchases with no payments - don't include in total
@@ -2091,6 +2143,10 @@ class ReportService {
           }, 0);
         }, 0),
         cash: allPurchasesForRange.reduce((sum, p) => {
+          // Exclude cancelled purchases
+          if (p.status === 'cancelled') {
+            return sum;
+          }
           const payments = (p.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
           const cashPayments = payments.filter(pay => pay.type === "cash");
           return sum + cashPayments.reduce((paymentSum, payment) => {
@@ -2102,6 +2158,10 @@ class ReportService {
           }, 0);
         }, 0),
         bank_transfer: allPurchasesForRange.reduce((sum, p) => {
+          // Exclude cancelled purchases
+          if (p.status === 'cancelled') {
+            return sum;
+          }
           const payments = (p.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
           const bankPayments = payments.filter(pay => pay.type === "bank_transfer");
           return sum + bankPayments.reduce((paymentSum, payment) => {
@@ -2113,6 +2173,10 @@ class ReportService {
           }, 0);
         }, 0),
         card: allPurchasesForRange.reduce((sum, p) => {
+          // Exclude cancelled purchases
+          if (p.status === 'cancelled') {
+            return sum;
+          }
           const payments = (p.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
           const cardPayments = payments.filter(pay => pay.type === "card");
           return sum + cardPayments.reduce((paymentSum, payment) => {

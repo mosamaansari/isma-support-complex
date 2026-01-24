@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "react-router";
 import PageMeta from "../../components/common/PageMeta";
 import { useData } from "../../context/DataContext";
@@ -24,29 +24,47 @@ export default function SalesList() {
   const { sales, salesPagination, cancelSale, addPaymentToSale, currentUser, bankAccounts, refreshBankAccounts, refreshSales, loading } = useData();
   const { showSuccess, showError } = useAlert();
   
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterStatus, setFilterStatus] = useState<"all" | "completed" | "pending" | "cancelled">("all");
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
+
+  // Initial load effect - runs only once on component mount
   useEffect(() => {
-    console.log("SalesList - Sales data:", sales);
-    console.log("SalesList - Sales count:", sales?.length || 0);
-    console.log("SalesList - Loading:", loading);
-    
-    // Refresh sales if empty and not loading
-    if (!loading && (!sales || sales.length === 0)) {
-      console.log("SalesList - Refreshing sales...");
-      refreshSales(salesPagination?.page || 1, salesPagination?.pageSize || 10).catch(err => {
-        console.error("SalesList - Error refreshing sales:", err);
+    if (!initialLoadDone && !loading) {
+      console.log("SalesList - Initial load");
+      refreshSales(1, 10, { search: "", status: "all" }).then(() => {
+        setInitialLoadDone(true);
+      }).catch(err => {
+        console.error("SalesList - Error in initial load:", err);
+        setInitialLoadDone(true);
       });
     }
-  }, [sales, loading, refreshSales, salesPagination?.page, salesPagination?.pageSize]);
+  }, [initialLoadDone, loading]);
+
+  // Memoized refresh function to prevent unnecessary re-renders
+  const refreshCurrentSales = useCallback(async () => {
+    return await refreshSales(salesPagination?.page || 1, salesPagination?.pageSize || 10, { search: searchTerm, status: filterStatus });
+  }, [refreshSales, salesPagination?.page, salesPagination?.pageSize, searchTerm, filterStatus]);
+
+  // Handle search and filter changes with debouncing
+  useEffect(() => {
+    if (!initialLoadDone) return; // Don't run until initial load is done
+    
+    const delayedSearch = setTimeout(() => {
+      console.log("SalesList - Applying filters:", { searchTerm, filterStatus });
+      refreshSales(1, 10, { search: searchTerm, status: filterStatus }); // Use fixed pageSize to avoid dependency on salesPagination
+    }, 300); // 300ms debounce
+
+    return () => clearTimeout(delayedSearch);
+  }, [searchTerm, filterStatus, initialLoadDone, refreshSales]);
 
   const handlePageChange = (page: number) => {
-    refreshSales(page, salesPagination?.pageSize || 10);
+    refreshSales(page, salesPagination?.pageSize || 10, { search: searchTerm, status: filterStatus });
   };
 
   const handlePageSizeChange = (pageSize: number) => {
-    refreshSales(1, pageSize);
+    refreshSales(1, pageSize, { search: searchTerm, status: filterStatus });
   };
-  const [searchTerm, setSearchTerm] = useState("");
-  const [filterStatus, setFilterStatus] = useState<"all" | "completed" | "pending" | "cancelled">("all");
   const [selectedSale, setSelectedSale] = useState<any>(null);
   const { isOpen: isPaymentModalOpen, openModal: openPaymentModal, closeModal: closePaymentModal } = useModal();
   const { isOpen: isViewPaymentsModalOpen, openModal: openViewPaymentsModal, closeModal: closeViewPaymentsModal } = useModal();
@@ -68,43 +86,19 @@ export default function SalesList() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const filteredSales = (sales || []).filter((sale) => {
-    if (!sale || !sale.billNumber) return false;
-    const matchesSearch =
-      sale.billNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      sale.customerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      sale.customerPhone?.includes(searchTerm);
-    const matchesStatus =
-      filterStatus === "all" || sale.status === filterStatus;
-    return matchesSearch && matchesStatus;
-  });
+  // Since we're now using backend filtering, just use the sales data as is
+  const filteredSales = sales || [];
 
-  // Calculate totals for filtered sales (all rows visible in table)
-  const totalSales = filteredSales.reduce((sum, s) => sum + (s?.total || 0), 0);
-  const totalPaid = filteredSales.reduce((sum, s) => {
-    // Filter out payments with invalid amounts (0, null, undefined, NaN)
-    const validPayments = (s.payments || []).filter((p: SalePayment) => 
-      p?.amount !== undefined && 
-      p?.amount !== null && 
-      !isNaN(Number(p.amount)) && 
-      Number(p.amount) > 0
-    );
-    const paid = validPayments.reduce((pSum: number, p: SalePayment) => pSum + (p?.amount || 0), 0);
-    return sum + paid;
-  }, 0);
-  const totalRemaining = filteredSales.reduce((sum, s) => {
-    // Filter out payments with invalid amounts (0, null, undefined, NaN)
-    const validPayments = (s.payments || []).filter((p: SalePayment) => 
-      p?.amount !== undefined && 
-      p?.amount !== null && 
-      !isNaN(Number(p.amount)) && 
-      Number(p.amount) > 0
-    );
-    const paid = validPayments.reduce((pSum: number, p: SalePayment) => pSum + (p?.amount || 0), 0);
-    const remaining = Math.max(0, (s.total || 0) - paid);
-    return sum + remaining;
-  }, 0);
-  const completedSales = filteredSales.filter((s) => s && s.status === "completed").reduce((sum, s) => sum + (s?.total || 0), 0);
+  // Get summary statistics from backend API data
+  const summaryStats = (salesPagination as any)?.summary || {
+    totalSales: 0,
+    totalPaid: 0,
+    totalRemaining: 0,
+    totalRefunded: 0, // Count of refunded sales, not amount
+    completedSales: 0,
+  };
+  
+  const { totalSales, totalPaid, totalRemaining, totalRefunded, completedSales } = summaryStats;
 
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
   const [saleToCancel, setSaleToCancel] = useState<any>(null);
@@ -196,7 +190,7 @@ export default function SalesList() {
       };
       await cancelSale(saleToCancel.id, refundData);
       showSuccess(`Sale cancelled successfully! Refund processed via ${refundMethod === "cash" ? "cash" : "bank transfer"}.`);
-      refreshSales(salesPagination?.page || 1, salesPagination?.pageSize || 10);
+      refreshCurrentSales();
       setCancelModalOpen(false);
       setSaleToCancel(null);
       setRefundMethod("cash");
@@ -260,7 +254,7 @@ export default function SalesList() {
         date: new Date().toISOString() // Current date and time
       };
       await addPaymentToSale(selectedSale.id, paymentPayload);
-      await refreshSales(salesPagination?.page || 1, salesPagination?.pageSize || 10);
+      await refreshCurrentSales();
       closePaymentModal();
       setSelectedSale(null);
       setPaymentData({ type: "cash", amount: 0, date: getTodayDate(), bankAccountId: undefined });
@@ -312,7 +306,7 @@ export default function SalesList() {
           </Link>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 sm:gap-4 mb-6 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 sm:gap-4 mb-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
             <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Total Sales</p>
             <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-800 dark:text-white price-responsive">
@@ -329,6 +323,12 @@ export default function SalesList() {
             <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Total Remaining</p>
             <p className="text-lg sm:text-xl lg:text-2xl font-bold text-orange-600 dark:text-orange-400 price-responsive">
               {formatPriceWithCurrencyComplete(totalRemaining)}
+            </p>
+          </div>
+          <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+            <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Total Refunded</p>
+            <p className="text-lg sm:text-xl lg:text-2xl font-bold text-red-600 dark:text-red-400">
+              {totalRefunded}
             </p>
           </div>
           <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">

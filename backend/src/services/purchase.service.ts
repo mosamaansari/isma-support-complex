@@ -49,6 +49,8 @@ class PurchaseService {
     startDate?: string;
     endDate?: string;
     supplierId?: string;
+    status?: string;
+    search?: string;
     page?: number;
     pageSize?: number;
   }) {
@@ -63,6 +65,17 @@ class PurchaseService {
 
     if (filters.supplierId) {
       where.supplierId = filters.supplierId;
+    }
+
+    if (filters.status) {
+      where.status = filters.status;
+    }
+
+    if (filters.search) {
+      where.OR = [
+        { supplierName: { contains: filters.search, mode: "insensitive" } },
+        { supplierPhone: { contains: filters.search } },
+      ];
     }
 
     const page = filters.page || 1;
@@ -89,6 +102,62 @@ class PurchaseService {
         prisma.purchase.count({ where }),
       ]);
 
+      // Calculate summary statistics for all matching purchases (not just the paginated ones)
+      const allMatchingPurchases = await prisma.purchase.findMany({
+        where,
+        select: {
+          id: true,
+          total: true,
+          remainingBalance: true,
+          status: true,
+          payments: true,
+        },
+      });
+
+      // Calculate summary statistics
+      const summaryStats = allMatchingPurchases.reduce(
+        (acc: any, purchase: any) => {
+          const purchaseTotal = Number(purchase.total || 0);
+          
+          // Filter out payments with invalid amounts (0, null, undefined, NaN)
+          const validPayments = (purchase.payments as Array<{ type?: string; amount?: number; date?: string }> || [])
+            .filter((p: any) => 
+              p?.amount !== undefined && 
+              p?.amount !== null && 
+              !isNaN(Number(p.amount)) && 
+              Number(p.amount) > 0
+            );
+          const totalPaid = validPayments.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
+          
+          // Calculate remaining balance
+          const remainingBalance = Math.max(0, purchaseTotal - totalPaid);
+          
+          if (purchase.status === 'cancelled') {
+            // For cancelled purchases, count the number of cancelled purchases (not amount)
+            acc.totalRefunded += 1;
+          } else {
+            // For non-cancelled purchases, include in totals
+            acc.totalPurchases += purchaseTotal;
+            acc.totalRemaining += remainingBalance;
+            // Total paid should only include payments from non-cancelled purchases
+            acc.totalPaid += totalPaid;
+            
+            if (purchase.status === 'completed') {
+              acc.completedPurchases += purchaseTotal;
+            }
+          }
+          
+          return acc;
+        },
+        {
+          totalPurchases: 0,
+          totalPaid: 0,
+          totalRemaining: 0,
+          totalRefunded: 0, // Count of cancelled purchases, not amount
+          completedPurchases: 0,
+        }
+      );
+
       return {
         data: purchases,
         pagination: {
@@ -97,6 +166,7 @@ class PurchaseService {
           total,
           totalPages: Math.ceil(total / pageSize),
         },
+        summary: summaryStats,
       };
     } catch (error: any) {
       throw error;
@@ -1168,6 +1238,43 @@ class PurchaseService {
       }
     }
 
+    // VALIDATE: Check if products have enough quantity before cancellation
+    for (const item of purchase.items) {
+      const product = await prisma.product.findUnique({ where: { id: item.productId } });
+
+      if (product) {
+        const shopQtyToDeduct =
+          (item as any).shopQuantity ?? (item.toWarehouse === false ? item.quantity : 0);
+        const warehouseQtyToDeduct =
+          (item as any).warehouseQuantity ?? (item.toWarehouse === false ? 0 : item.quantity);
+
+        // Check warehouse quantity if needed
+        if (warehouseQtyToDeduct > 0 && 'warehouseQuantity' in product) {
+          const currentWarehouseQty = Number(product.warehouseQuantity) || 0;
+          if (currentWarehouseQty < warehouseQtyToDeduct) {
+            throw new Error(`Cannot cancel purchase. Product "${product.name}" has insufficient warehouse stock. Required: ${warehouseQtyToDeduct}, Available: ${currentWarehouseQty}`);
+          }
+        }
+
+        // Check shop quantity if needed
+        if (shopQtyToDeduct > 0 && 'shopQuantity' in product) {
+          const currentShopQty = Number(product.shopQuantity) || 0;
+          if (currentShopQty < shopQtyToDeduct) {
+            throw new Error(`Cannot cancel purchase. Product "${product.name}" has insufficient shop stock. Required: ${shopQtyToDeduct}, Available: ${currentShopQty}`);
+          }
+        }
+
+        // Check total quantity for old schema
+        if (!('shopQuantity' in product) && !('warehouseQuantity' in product)) {
+          const currentQty = Number(product.quantity) || 0;
+          if (currentQty < item.quantity) {
+            throw new Error(`Cannot cancel purchase. Product "${product.name}" has insufficient stock. Required: ${item.quantity}, Available: ${currentQty}`);
+          }
+        }
+      }
+    }
+
+    // All products have sufficient quantity - proceed with cancellation
     // Restore product quantities (deduct what was added during purchase)
     for (const item of purchase.items) {
       const updateData: any = {};

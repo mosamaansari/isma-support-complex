@@ -11,7 +11,6 @@ import Pagination from "../../components/ui/Pagination";
 import PageSizeSelector from "../../components/ui/PageSizeSelector";
 import { PencilIcon, TrashBinIcon } from "../../icons";
 import { Modal } from "../../components/ui/modal";
-import api from "../../services/api";
 import { formatDateToString } from "../../utils/dateHelpers";
 import { formatPriceWithCurrencyComplete } from "../../utils/priceHelpers";
 
@@ -21,11 +20,7 @@ export default function ExpenseList() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterCategory, setFilterCategory] = useState<ExpenseCategory | "all">("all");
   const [filterDate, setFilterDate] = useState("");
-  const [expenseSummary, setExpenseSummary] = useState<{
-    totalAmount: number;
-    totalCount: number;
-    categoryTotals: Record<string, { total: number; count: number }>;
-  } | null>(null);
+  // Remove expenseSummary state as we now use backend data directly
   const expensesLoadedRef = useRef(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [expenseToDelete, setExpenseToDelete] = useState<string | null>(null);
@@ -43,38 +38,7 @@ export default function ExpenseList() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Load expense summary from API response when expenses are loaded
-  useEffect(() => {
-    const loadExpenseSummary = async () => {
-      try {
-        const result = await api.getExpenses({ page: 1, pageSize: 10 });
-        if (result.summary) {
-          setExpenseSummary(result.summary);
-        }
-      } catch (err) {
-        console.error("Error loading expense summary:", err);
-      }
-    };
-    loadExpenseSummary();
-  }, []);
-
-  // Refresh summary when expenses list changes (after add/update/delete)
-  useEffect(() => {
-    const refreshSummary = async () => {
-      try {
-        const result = await api.getExpenses({ page: 1, pageSize: 10 });
-        if (result.summary) {
-          setExpenseSummary(result.summary);
-        }
-      } catch (err) {
-        console.error("Error refreshing expense summary:", err);
-      }
-    };
-    // Only refresh if we have expenses loaded
-    if (expenses && expenses.length > 0) {
-      refreshSummary();
-    }
-  }, [expenses]);
+  // Summary is now loaded from backend pagination data directly
 
   const handlePageChange = (page: number) => {
     refreshExpenses(page, expensesPagination?.pageSize || 10);
@@ -139,16 +103,7 @@ export default function ExpenseList() {
       setDeleteModalOpen(false);
       setExpenseToDelete(null);
       showSuccess("Expense deleted successfully!");
-      // Refresh summary from backend after delete
-      try {
-        const result = await api.getExpenses({ page: 1, pageSize: 10 });
-        if (result.summary) {
-          setExpenseSummary(result.summary);
-        }
-      } catch (err) {
-        console.error("Error refreshing expense summary:", err);
-      }
-      // Also refresh the paginated list
+      // Refresh the expenses list (summary will be included)
       await refreshExpenses(expensesPagination?.page || 1, expensesPagination?.pageSize || 10);
     } catch (err) {
       console.error("Error deleting expense:", err);
@@ -156,19 +111,17 @@ export default function ExpenseList() {
     }
   };
 
-  // Use summary from API response (all-time totals from start to today)
-  const totalExpenses = expenseSummary?.totalAmount
-    ? (typeof expenseSummary.totalAmount === 'number'
-      ? expenseSummary.totalAmount
-      : parseFloat(String(expenseSummary.totalAmount)) || 0)
-    : 0;
-
-  const categoryTotals = expenseSummary?.categoryTotals
-    ? Object.entries(expenseSummary.categoryTotals).reduce((acc, [category, data]) => {
-      acc[category] = typeof data.total === 'number' ? data.total : parseFloat(String(data.total)) || 0;
-      return acc;
-    }, {} as Record<string, number>)
-    : {};
+  // Get summary statistics from backend API data  
+  const summaryStats = (expensesPagination as any)?.summary || {
+    totalExpenses: 0,
+    totalCount: 0,
+    cashExpenses: 0,
+    bankExpenses: 0,
+    cardExpenses: 0,
+    categoryTotals: {},
+  };
+  
+  const { totalExpenses, totalCount, cashExpenses, bankExpenses, cardExpenses } = summaryStats;
 
   return (
     <>
@@ -196,33 +149,32 @@ export default function ExpenseList() {
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-1 gap-3 sm:gap-4 mb-6 sm:grid-cols-2 md:grid-cols-4">
+            <div className="grid grid-cols-1 gap-3 sm:gap-4 mb-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
               <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
                 <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Total Expenses</p>
                 <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-800 dark:text-white price-responsive">
                   {formatPriceWithCurrencyComplete(totalExpenses)}
                 </p>
               </div>
-              {Object.entries(categoryTotals)
-                .sort(([, a], [, b]) => {
-                  const amountA = typeof a === 'number' ? a : parseFloat(String(a)) || 0;
-                  const amountB = typeof b === 'number' ? b : parseFloat(String(b)) || 0;
-                  return amountB - amountA;
-                })
-                .slice(0, 3)
-                .map(([category, amount]) => {
-                  const amountValue = typeof amount === 'number' ? amount : parseFloat(String(amount)) || 0;
-                  return (
-                    <div key={category} className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-                      <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 capitalize">
-                        {category}
-                      </p>
-                      <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-800 dark:text-white price-responsive">
-                        {formatPriceWithCurrencyComplete(amountValue)}
-                      </p>
-                    </div>
-                  );
-                })}
+              <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+                <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Cash Expenses</p>
+                <p className="text-lg sm:text-xl lg:text-2xl font-bold text-green-600 dark:text-green-400 price-responsive">
+                  {formatPriceWithCurrencyComplete(cashExpenses)}
+                </p>
+              </div>
+              <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+                <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Bank Expenses</p>
+                <p className="text-lg sm:text-xl lg:text-2xl font-bold text-blue-600 dark:text-blue-400 price-responsive">
+                  {formatPriceWithCurrencyComplete(bankExpenses)}
+                </p>
+              </div>
+
+              <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+                <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Total Count</p>
+                <p className="text-lg sm:text-xl lg:text-2xl font-bold text-purple-600 dark:text-purple-400">
+                  {totalCount}
+                </p>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 gap-4 mb-6 md:grid-cols-3">

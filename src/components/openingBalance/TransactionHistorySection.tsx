@@ -619,12 +619,12 @@ export default function TransactionHistorySection({
                         <th className="p-2 text-left text-xs font-medium text-gray-700 dark:text-gray-300">
                           Description
                         </th>
-                        {type === "total" && (
+                        {(type === "total" || type === "banks") && (
                           <th className="p-2 text-left text-xs font-medium text-gray-700 dark:text-gray-300">
                             Payment Type
                           </th>
                         )}
-                        {type === "total" && (
+                        {(type === "total" || type === "banks") && (
                           <th className="p-2 text-left text-xs font-medium text-gray-700 dark:text-gray-300">
                             Bank
                           </th>
@@ -644,11 +644,25 @@ export default function TransactionHistorySection({
                       </tr>
                     </thead>
                     <tbody>
-                      {/* Opening Balance Row - Show first if opening balance exists */}
+                      {/* Opening Balance Row - Show first if opening balance exists and has meaningful data */}
                       {openingBalances[dayGroup.date] && (() => {
                         const opening = openingBalances[dayGroup.date];
+                        
+                        // Hide opening balance row if it has no meaningful data
+                        const hasOpeningCash = Number(opening.cashBalance || 0) > 0;
+                        const hasOpeningBanks = opening.bankBalances && opening.bankBalances.length > 0 && 
+                          opening.bankBalances.some((b: any) => Number(b.balance || 0) > 0);
+                        
+                        // Don't show opening row if no meaningful opening balance data
+                        if (!hasOpeningCash && !hasOpeningBanks) {
+                          return null;
+                        }
+                        
                         if (type === "cash") {
                           const openingCash = Number(opening.cashBalance) || 0;
+                          // Hide cash opening row if no cash balance
+                          if (openingCash <= 0) return null;
+                          
                           return (
                             <tr key={`opening-${dayGroup.date}`} className="border-b border-gray-200 dark:border-gray-700 bg-blue-50 dark:bg-blue-900/20">
                               <td className="p-2 text-gray-700 dark:text-gray-300 whitespace-nowrap text-xs">
@@ -674,6 +688,9 @@ export default function TransactionHistorySection({
                         } else if (type === "bank" && bankAccountId) {
                           const bankBalance = opening.bankBalances?.find((b: any) => b.bankAccountId === bankAccountId);
                           const openingBank = Number(bankBalance?.balance) || 0;
+                          // Hide bank opening row if no bank balance
+                          if (openingBank <= 0) return null;
+                          
                           return (
                             <tr key={`opening-${dayGroup.date}`} className="border-b border-gray-200 dark:border-gray-700 bg-blue-50 dark:bg-blue-900/20">
                               <td className="p-2 text-gray-700 dark:text-gray-300 whitespace-nowrap text-xs">
@@ -702,6 +719,9 @@ export default function TransactionHistorySection({
                           const openingCash = Number(opening.cashBalance) || 0;
                           const openingBanks = opening.bankBalances || [];
                           const totalOpening = openingCash + openingBanks.reduce((sum: number, b: any) => sum + (Number(b.balance) || 0), 0);
+                          // Hide total opening row if no meaningful balance
+                          if (totalOpening <= 0) return null;
+                          
                           return (
                             <tr key={`opening-${dayGroup.date}`} className="border-b border-gray-200 dark:border-gray-700 bg-blue-50 dark:bg-blue-900/20">
                               <td className="p-2 text-gray-700 dark:text-gray-300 whitespace-nowrap text-xs">
@@ -714,9 +734,12 @@ export default function TransactionHistorySection({
                               </td>
                               <td className="p-2 text-gray-700 dark:text-gray-300">Opening Balance</td>
                               <td className="p-2 text-gray-700 dark:text-gray-300">Previous Day Closing Balance</td>
-                              <td className="p-2 text-right text-gray-600 dark:text-gray-400 whitespace-nowrap">-</td>
-                             
-                              <td className="p-2 text-right text-gray-600 dark:text-gray-400 whitespace-nowrap">-</td>
+                              {(type === "total" || type === "banks") && (
+                                <td className="p-2 text-gray-600 dark:text-gray-400">-</td>
+                              )}
+                              {(type === "total" || type === "banks") && (
+                                <td className="p-2 text-gray-600 dark:text-gray-400">-</td>
+                              )}
                               <td className="p-2 text-right text-gray-600 dark:text-gray-400 whitespace-nowrap">-</td>
                               <td className="p-2 text-right text-blue-600 dark:text-blue-400 font-semibold whitespace-nowrap">
                                 {formatCurrency(totalOpening)}
@@ -790,12 +813,12 @@ export default function TransactionHistorySection({
                                 {transaction.description || "-"}
                               </div>
                             </td>
-                            {type === "total" && (
+                            {(type === "total" || type === "banks") && (
                               <td className="p-2 text-gray-700 dark:text-gray-300 capitalize">
                                 {transaction.paymentType === "cash" ? "Cash" : "Bank Transfer"}
                               </td>
                             )}
-                            {type === "total" && (
+                            {(type === "total" || type === "banks") && (
                               <td className="p-2 text-gray-700 dark:text-gray-300">
                                 {transaction.bankAccount ? (
                                   <div className="text-xs">
