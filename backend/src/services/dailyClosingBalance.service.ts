@@ -28,26 +28,15 @@ class DailyClosingBalanceService {
     // Pakistan is UTC+5, so 12:00 PKT = 07:00 UTC (same date)
     const dateObj = new Date(year, month - 1, day, 12, 0, 0, 0);
 
-    // Check if closing balance already exists and was calculated recently (within last hour)
-    // This prevents duplicate calculations if cron runs multiple times
+    // Check if closing balance already exists - don't overwrite if it exists
     const existingClosing = await prisma.dailyClosingBalance.findUnique({
       where: { date: dateObj },
     });
-    console.log("existingClosing", existingClosing)
-    // if (existingClosing) {
-    //   const now = new Date();
-    //   const updatedAt = new Date(existingClosing.updatedAt);
-    //   const timeDiff = now.getTime() - updatedAt.getTime();
-    //   const oneHour = 60 * 60 * 1000; // 1 hour in milliseconds
-    //   
-    //   // If closing balance was updated within last hour, skip recalculation to prevent double entry
-    //   if (timeDiff < oneHour) {
-    //     logger.info(`Closing balance for ${dateStr} already exists and was recently updated (${Math.round(timeDiff / 1000 / 60)} minutes ago), skipping recalculation to prevent double entry`);
-    //     return existingClosing;
-    //   } else {
-    //     logger.info(`Closing balance for ${dateStr} exists but is old (${Math.round(timeDiff / 1000 / 60 / 60)} hours ago), will recalculate`);
-    //   }
-    // }
+    
+    if (existingClosing) {
+      logger.info(`Closing balance already exists for ${dateStr}, skipping calculation to preserve existing data. Cash: ${existingClosing.cashBalance}, Banks: ${(existingClosing.bankBalances as any[])?.length || 0}, Cards: ${(existingClosing.cardBalances as any[])?.length || 0}`);
+      return existingClosing;
+    }
 
     // Get opening balance for this date
     const openingBalance = await prisma.dailyOpeningBalance.findUnique({
@@ -256,14 +245,9 @@ class DailyClosingBalanceService {
       cardBalances: cardBalancesArray as any,
     };
 
-    // Use upsert to prevent duplicate entries - this ensures only one entry per date
-    const closingBalance = await prisma.dailyClosingBalance.upsert({
-      where: { date: dateObj },
-      update: {
-        ...closingBalanceData,
-        updatedAt: new Date(), // Explicitly set updatedAt to current time for accurate tracking
-      },
-      create: {
+    // Create new closing balance (we already checked it doesn't exist above)
+    const closingBalance = await prisma.dailyClosingBalance.create({
+      data: {
         date: dateObj,
         ...closingBalanceData,
         createdAt: new Date(), // Explicitly set createdAt to current time for accurate tracking
@@ -648,17 +632,28 @@ class DailyClosingBalanceService {
     previousDate.setDate(previousDate.getDate() - 1);
     // Use noon for DB @db.Date column matching (same as calculateAndStoreClosingBalance)
     previousDate.setHours(12, 0, 0, 0);
+    
+    const previousDateStr = formatLocalYMD(previousDate);
+    logger.info(`getPreviousDayClosingBalance: Looking for closing balance for date ${previousDateStr} (previous day of ${date})`);
 
     let previousClosing = await prisma.dailyClosingBalance.findUnique({
       where: { date: previousDate },
     });
 
+    if (previousClosing) {
+      logger.info(`getPreviousDayClosingBalance: Found closing balance for ${previousDateStr}: Cash=${previousClosing.cashBalance}, Banks=${(previousClosing.bankBalances as any[])?.length || 0}, Cards=${(previousClosing.cardBalances as any[])?.length || 0}`);
+    } else {
+      logger.warn(`getPreviousDayClosingBalance: No closing balance found for ${previousDateStr}, attempting to calculate...`);
+    }
+
     // If not found, calculate and store it (e.g. 17th's closing when asking for 18th's opening)
     if (!previousClosing) {
       try {
+        logger.info(`getPreviousDayClosingBalance: Calculating closing balance for ${previousDateStr}`);
         const calculated = await this.calculateAndStoreClosingBalance(previousDate);
         // Use the freshly calculated result directly
         if (calculated) {
+          logger.info(`getPreviousDayClosingBalance: Successfully calculated closing balance for ${previousDateStr}: Cash=${calculated.cashBalance}, Banks=${(calculated.bankBalances as any[])?.length || 0}, Cards=${(calculated.cardBalances as any[])?.length || 0}`);
           return {
             date: formatLocalYMD(calculated.date),
             cashBalance: Number(calculated.cashBalance),
@@ -681,6 +676,7 @@ class DailyClosingBalanceService {
       };
     }
 
+    logger.warn(`getPreviousDayClosingBalance: Returning null - no closing balance found for ${previousDateStr}`);
     return null;
   }
 

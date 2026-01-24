@@ -103,10 +103,26 @@ class OpeningBalanceService {
       balance,
     }));
 
+    // Get card balances from opening balance record
+    const cardBalances = (openingBalance.cardBalances as Array<{ cardId: string; balance: number }>) || [];
+    
+    // Calculate running card balances by checking current balance for each card
+    const cardBalancesMap = new Map<string, number>();
+    for (const cardBalance of cardBalances) {
+      const currentCardBalance = await balanceManagementService.getCurrentCardBalance(cardBalance.cardId, targetDate);
+      cardBalancesMap.set(cardBalance.cardId, currentCardBalance);
+    }
+
+    const runningCardBalances = Array.from(cardBalancesMap.entries()).map(([cardId, balance]) => ({
+      cardId,
+      balance,
+    }));
+
     return {
       ...openingBalance,
       cashBalance: currentCash,
       bankBalances: runningBankBalances,
+      cardBalances: runningCardBalances,
     };
   }
 

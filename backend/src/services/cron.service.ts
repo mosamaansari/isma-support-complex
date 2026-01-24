@@ -38,8 +38,19 @@ class CronService {
         
         logger.info(`Calculating closing balance for previous day: ${yesterdayStr}`);
         try {
-          await dailyClosingBalanceService.calculateAndStoreClosingBalance(yesterday);
-          logger.info(`Successfully calculated and stored closing balance for ${yesterdayStr} at ${new Date().toISOString()}`);
+          // Check if closing balance already exists - don't overwrite if it exists
+          const [yearPrev, monthPrev, dayPrev] = yesterdayStr.split("-").map(v => parseInt(v, 10));
+          const yesterdayDateObj = new Date(yearPrev, monthPrev - 1, dayPrev, 12, 0, 0, 0);
+          const existingClosing = await prisma.dailyClosingBalance.findUnique({
+            where: { date: yesterdayDateObj },
+          });
+          
+          if (existingClosing) {
+            logger.info(`Closing balance already exists for ${yesterdayStr}, skipping calculation to preserve existing data`);
+          } else {
+            await dailyClosingBalanceService.calculateAndStoreClosingBalance(yesterday);
+            logger.info(`Successfully calculated and stored closing balance for ${yesterdayStr} at ${new Date().toISOString()}`);
+          }
         } catch (error: any) {
           logger.error(`Error calculating closing balance for ${yesterdayStr}:`, error);
           // Don't throw - continue to opening balance creation
@@ -116,15 +127,29 @@ class CronService {
       previousDay.setDate(previousDay.getDate() - 1); // Get previous day
       const previousDayStr = formatLocalYMD(previousDay);
       
-      // First, ensure previous day's closing balance is calculated
+      // First, ensure previous day's closing balance is calculated (only if it doesn't exist)
       try {
-        await dailyClosingBalanceService.calculateAndStoreClosingBalance(previousDay);
+        const existingPrevClosing = await prisma.dailyClosingBalance.findUnique({
+          where: { date: previousDay },
+        });
+        if (!existingPrevClosing) {
+          logger.info(`No closing balance found for ${previousDayStr}, calculating...`);
+          await dailyClosingBalanceService.calculateAndStoreClosingBalance(previousDay);
+        } else {
+          logger.info(`Closing balance already exists for ${previousDayStr}, skipping calculation to preserve existing data`);
+        }
       } catch (error) {
         logger.error(`Error calculating closing balance for ${previousDayStr}:`, error);
       }
 
       // Get previous day closing balance
+      logger.info(`Fetching previous day closing balance for date: ${todayStr} (should get closing balance for ${previousDayStr})`);
       const previousClosing = await dailyClosingBalanceService.getPreviousDayClosingBalance(todayStr);
+      
+      logger.info(`Previous closing balance result: ${previousClosing ? 'Found' : 'Not Found'}`);
+      if (previousClosing) {
+        logger.info(`Previous closing balance details: Cash=${previousClosing.cashBalance}, Banks=${JSON.stringify(previousClosing.bankBalances)}, Cards=${JSON.stringify(previousClosing.cardBalances)}`);
+      }
 
       let cashBalance = 0;
       let bankBalancesArray: Array<{ bankAccountId: string; balance: number }> = [];
@@ -133,7 +158,24 @@ class CronService {
 
       if (!previousClosing) {
         logger.warn(`No previous closing balance found for ${previousDayStr}, creating opening balance with zero values`);
-        notes = `Auto-created with zero balance (no previous closing balance found for ${previousDayStr}) (via cron job) at ${new Date().toISOString()}`;
+        // Try to directly fetch the closing balance for the previous day
+        try {
+          const directClosing = await prisma.dailyClosingBalance.findUnique({
+            where: { date: previousDay },
+          });
+          if (directClosing) {
+            logger.info(`Found closing balance via direct query for ${previousDayStr}`);
+            cashBalance = Number(directClosing.cashBalance) || 0;
+            bankBalancesArray = (directClosing.bankBalances as Array<{ bankAccountId: string; balance: number }>) || [];
+            cardBalancesArray = (directClosing.cardBalances as Array<{ cardId: string; balance: number }>) || [];
+            notes = `Auto-created from previous day (${previousDayStr}) closing balance (via direct query) at ${new Date().toISOString()}`;
+          } else {
+            notes = `Auto-created with zero balance (no previous closing balance found for ${previousDayStr}) (via cron job) at ${new Date().toISOString()}`;
+          }
+        } catch (directError) {
+          logger.error(`Error fetching closing balance directly for ${previousDayStr}:`, directError);
+          notes = `Auto-created with zero balance (no previous closing balance found for ${previousDayStr}) (via cron job) at ${new Date().toISOString()}`;
+        }
       } else {
         logger.info(`Found previous day (${previousDayStr}) closing balance: Cash=${previousClosing.cashBalance}, Banks=${(previousClosing.bankBalances || []).length}, Cards=${(previousClosing.cardBalances || []).length}`);
         cashBalance = Number(previousClosing.cashBalance) || 0;
@@ -213,6 +255,37 @@ class CronService {
       // Verify the record was created/retrieved
       if (!createdOpening) {
         throw new Error(`Failed to create or retrieve opening balance for ${todayStr}`);
+      }
+
+      // Step 3: Create today's closing balance (initially same as opening balance)
+      // This ensures we have a closing balance row for today that can be updated as transactions occur
+      try {
+        const existingTodayClosing = await prisma.dailyClosingBalance.findUnique({
+          where: { date: todayDateObj },
+        });
+        
+        if (!existingTodayClosing) {
+          logger.info(`Creating initial closing balance for today (${todayStr}) from opening balance`);
+          await prisma.dailyClosingBalance.create({
+            data: {
+              date: todayDateObj,
+              cashBalance: cashBalance,
+              bankBalances: bankBalancesArray as any,
+              cardBalances: cardBalancesArray as any,
+            },
+          });
+          logger.info(`Successfully created initial closing balance for ${todayStr}`);
+        } else {
+          logger.info(`Closing balance already exists for ${todayStr}, skipping creation`);
+        }
+      } catch (closingError: any) {
+        // If closing balance already exists, that's fine - just log it
+        if (closingError.code === "P2002") {
+          logger.info(`Closing balance already exists for ${todayStr} (unique constraint)`);
+        } else {
+          logger.error(`Error creating closing balance for ${todayStr}:`, closingError);
+          // Don't throw - opening balance was created successfully
+        }
       }
 
       return createdOpening;
