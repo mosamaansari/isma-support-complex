@@ -121,7 +121,7 @@ export default function ExpenseList() {
     categoryTotals: {},
   };
   
-  const { totalExpenses, totalCount, cashExpenses, bankExpenses, cardExpenses } = summaryStats;
+  const { totalExpenses, totalCount, cashExpenses, bankExpenses } = summaryStats;
 
   return (
     <>

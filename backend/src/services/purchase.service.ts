@@ -1292,9 +1292,9 @@ class PurchaseService {
 
         // Check total quantity for old schema
         if (!('shopQuantity' in product) && !('warehouseQuantity' in product)) {
-          const currentQty = Number(product.quantity) || 0;
-          if (currentQty < item.quantity) {
-            throw new Error(`Cannot cancel purchase. Product "${product.name}" has insufficient stock. Required: ${item.quantity}, Available: ${currentQty}`);
+          const currentQty = Number((product as any).quantity) || 0;
+          if (currentQty < normalizedQuantity) {
+            throw new Error(`Cannot cancel purchase. Product "${(product as any).name}" has insufficient stock. Required: ${normalizedQuantity}, Available: ${currentQty}`);
           }
         }
       }
