@@ -263,7 +263,7 @@ class ApiClient {
     return normalizeSale(sale);
   }
 
-  async cancelSale(id: string, refundData?: { refundMethod: "cash" | "bank_transfer"; bankAccountId?: string }) {
+  async cancelSale(id: string, refundData?: { refundMethod: "cash" | "bank_transfer" | "card"; bankAccountId?: string; cardId?: string }) {
     const response = await this.client.patch(`/sales/${id}/cancel`, refundData || {});
     // Response is already transformed by interceptor
     const sale = response.data?.data || response.data;
@@ -400,7 +400,7 @@ class ApiClient {
     return normalizePurchase(purchase);
   }
 
-  async cancelPurchase(id: string, refundData?: { refundMethod: "cash" | "bank_transfer"; bankAccountId?: string }) {
+  async cancelPurchase(id: string, refundData?: { refundMethod: "cash" | "bank_transfer" | "card"; bankAccountId?: string; cardId?: string }) {
     const response = await this.client.patch(`/purchases/${id}/cancel`, refundData || {});
     // Response is already transformed by interceptor
     const purchase = response.data?.data || response.data;
@@ -867,6 +867,13 @@ class ApiClient {
   async getCurrentBankBalance(bankAccountId: string) {
     const response = await this.client.get("/balance-transactions/bank-balance", {
       params: { bankAccountId },
+    });
+    return response.data?.response || response.data;
+  }
+
+  async getCurrentCardBalance(cardId: string) {
+    const response = await this.client.get("/balance-transactions/card-balance", {
+      params: { cardId },
     });
     return response.data?.response || response.data;
   }

@@ -46,5 +46,13 @@ router.get(
   balanceTransactionController.getCurrentBankBalance.bind(balanceTransactionController)
 );
 
+// Get current card balance
+router.get(
+  "/card-balance",
+  authenticate,
+  requirePermission(PERMISSIONS.BALANCE_TRANSACTIONS_VIEW),
+  balanceTransactionController.getCurrentCardBalance.bind(balanceTransactionController)
+);
+
 export default router;
 

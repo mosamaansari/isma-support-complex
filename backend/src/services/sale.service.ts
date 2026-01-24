@@ -837,8 +837,9 @@ class SaleService {
   async cancelSale(
     id: string,
     refundData?: {
-      refundMethod: "cash" | "bank_transfer";
+      refundMethod: "cash" | "bank_transfer" | "card";
       bankAccountId?: string;
+      cardId?: string;
     },
     userId?: string,
     userName?: string
@@ -887,12 +888,23 @@ class SaleService {
       // Determine refund method: use refundData if provided, otherwise refund to original sources
       const refundMethod = refundData?.refundMethod || null;
       const refundBankAccountId = refundData?.bankAccountId || null;
+      const refundCardId = refundData?.cardId || null;
 
-      // If bank transfer refund is requested, check balance first
-      if (refundMethod === "bank_transfer" && refundBankAccountId) {
-        const currentBalance = await balanceManagementService.getCurrentBankBalance(refundBankAccountId, refundDateForBalance);
-        if (currentBalance < totalPaid) {
-          throw new Error(`Insufficient bank balance. Available: Rs. ${currentBalance.toFixed(2)}, Required: Rs. ${totalPaid.toFixed(2)}`);
+      // Check balance before processing refund based on refund method
+      if (refundMethod === "cash") {
+        const currentCashBalance = await balanceManagementService.getCurrentCashBalance(refundDateForBalance);
+        if (currentCashBalance < totalPaid) {
+          throw new Error(`Insufficient cash balance. Available: Rs. ${currentCashBalance.toFixed(2)}, Required: Rs. ${totalPaid.toFixed(2)}`);
+        }
+      } else if (refundMethod === "bank_transfer" && refundBankAccountId) {
+        const currentBankBalance = await balanceManagementService.getCurrentBankBalance(refundBankAccountId, refundDateForBalance);
+        if (currentBankBalance < totalPaid) {
+          throw new Error(`Insufficient bank balance. Available: Rs. ${currentBankBalance.toFixed(2)}, Required: Rs. ${totalPaid.toFixed(2)}`);
+        }
+      } else if (refundMethod === "card" && refundCardId) {
+        const currentCardBalance = await balanceManagementService.getCurrentCardBalance(refundCardId, refundDateForBalance);
+        if (currentCardBalance < totalPaid) {
+          throw new Error(`Insufficient card balance. Available: Rs. ${currentCardBalance.toFixed(2)}, Required: Rs. ${totalPaid.toFixed(2)}`);
         }
       }
 
@@ -928,6 +940,22 @@ class SaleService {
             }
           );
           logger.info(`Refunded bank transfer: -${totalPaid} for cancelled sale ${sale.billNumber}, bank: ${refundBankAccountId}`);
+        } else if (refundMethod === "card" && refundCardId) {
+          // Refund entire amount to specified card
+          await balanceManagementService.updateCardBalance(
+            refundCardId,
+            refundDateForBalance,
+            totalPaid,
+            "expense",
+            {
+              description: `Sale Refund - Bill #${sale.billNumber}${sale.customerName ? ` - ${sale.customerName}` : ""} (Card)`,
+              source: "sale_refund",
+              sourceId: sale.id,
+              userId: userId,
+              userName: userName,
+            }
+          );
+          logger.info(`Refunded card: -${totalPaid} for cancelled sale ${sale.billNumber}, card: ${refundCardId}`);
         } else {
           // Default: Process each payment refund to its original source
           for (const payment of payments) {

@@ -1050,8 +1050,9 @@ class PurchaseService {
   async cancelPurchase(
     id: string,
     refundData?: {
-      refundMethod: "cash" | "bank_transfer";
+      refundMethod: "cash" | "bank_transfer" | "card";
       bankAccountId?: string;
+      cardId?: string;
     },
     userId?: string,
     userName?: string
@@ -1090,20 +1091,27 @@ class PurchaseService {
     // If there are payments, process refund
     if (totalPaid > 0) {
       if (!refundData || !refundData.refundMethod) {
-        throw new Error("Refund method is required. Please specify how to refund the payment (cash or bank_transfer).");
+        throw new Error("Refund method is required. Please specify how to refund the payment (cash, bank_transfer, or card).");
       }
 
       if (refundData.refundMethod === "bank_transfer" && !refundData.bankAccountId) {
         throw new Error("Bank account ID is required for bank transfer refund");
       }
 
+      if (refundData.refundMethod === "card" && !refundData.cardId) {
+        throw new Error("Card ID is required for card refund");
+      }
+
       if (!userId || !userName) {
         throw new Error("User information is required for refund processing");
       }
 
-      // Refund amount back to cash or bank balance
+      // Refund amount back to cash, bank, or card balance
       const balanceManagementService = (await import("./balanceManagement.service")).default;
       const currentDate = new Date();
+
+      // No balance check needed for purchase refunds as we're adding money back (income)
+      // Purchase refund increases balance, so no insufficient balance scenario
 
       try {
         if (refundData.refundMethod === "cash") {
@@ -1137,6 +1145,22 @@ class PurchaseService {
             }
           );
           logger.info(`Refunded bank transfer: +${totalPaid} for cancelled purchase ${purchase.id}`);
+        } else if (refundData.refundMethod === "card" && refundData.cardId) {
+          // Refund to card balance (add back)
+          await balanceManagementService.updateCardBalance(
+            refundData.cardId,
+            currentDate,
+            totalPaid,
+            "income",
+            {
+              description: `Purchase Refund - Purchase #${purchase.id}${purchase.supplierName ? ` - ${purchase.supplierName}` : ""} (Card)`,
+              source: "purchase_refund",
+              sourceId: purchase.id,
+              userId: userId,
+              userName: userName,
+            }
+          );
+          logger.info(`Refunded card: +${totalPaid} for cancelled purchase ${purchase.id}`);
         }
       } catch (error: any) {
         logger.error("Error processing refund:", error);

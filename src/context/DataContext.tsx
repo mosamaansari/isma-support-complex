@@ -47,7 +47,7 @@ interface DataContextType {
   sales: Sale[];
   salesPagination: { page: number; pageSize: number; total: number; totalPages: number };
   addSale: (sale: Omit<Sale, "id" | "createdAt">) => Promise<Sale>;
-  cancelSale: (id: string, refundData?: { refundMethod: "cash" | "bank_transfer"; bankAccountId?: string }) => Promise<void>;
+  cancelSale: (id: string, refundData?: { refundMethod: "cash" | "bank_transfer" | "card"; bankAccountId?: string; cardId?: string }) => Promise<void>;
   addPaymentToSale: (id: string, payment: SalePayment & { date?: string }) => Promise<void>;
   getSale: (idOrBillNumber: string) => Sale | undefined;
   getSalesByDateRange: (startDate: string, endDate: string) => Sale[];
@@ -67,7 +67,7 @@ interface DataContextType {
   purchasesPagination: { page: number; pageSize: number; total: number; totalPages: number };
   addPurchase: (purchase: Omit<Purchase, "id" | "createdAt">) => Promise<void>;
   updatePurchase: (id: string, purchase: Partial<Purchase>) => Promise<void>;
-  cancelPurchase: (id: string, refundData?: { refundMethod: "cash" | "bank_transfer"; bankAccountId?: string }) => Promise<void>;
+  cancelPurchase: (id: string, refundData?: { refundMethod: "cash" | "bank_transfer" | "card"; bankAccountId?: string; cardId?: string }) => Promise<void>;
   addPaymentToPurchase: (id: string, payment: PurchasePayment & { date?: string }) => Promise<void>;
   getPurchasesByDateRange: (startDate: string, endDate: string) => Purchase[];
   refreshPurchases: (page?: number, pageSize?: number) => Promise<void>;
@@ -522,7 +522,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  const cancelSale = async (id: string, refundData?: { refundMethod: "cash" | "bank_transfer"; bankAccountId?: string }) => {
+  const cancelSale = async (id: string, refundData?: { refundMethod: "cash" | "bank_transfer" | "card"; bankAccountId?: string; cardId?: string }) => {
     try {
       setError(null);
       const updatedSale = await api.cancelSale(id, refundData);
@@ -741,7 +741,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  const cancelPurchase = async (id: string, refundData?: { refundMethod: "cash" | "bank_transfer"; bankAccountId?: string }) => {
+  const cancelPurchase = async (id: string, refundData?: { refundMethod: "cash" | "bank_transfer" | "card"; bankAccountId?: string; cardId?: string }) => {
     try {
       setError(null);
       const updatedPurchase = await api.cancelPurchase(id, refundData);

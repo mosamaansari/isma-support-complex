@@ -69,10 +69,10 @@ router.patch(
   bodyValidator(
     Joi.object({
       refundMethod: Joi.string()
-        .valid("cash", "bank_transfer")
+        .valid("cash", "bank_transfer", "card")
         .optional()
         .messages({
-          "any.only": "Refund method must be either 'cash' or 'bank_transfer'",
+          "any.only": "Refund method must be either 'cash', 'bank_transfer', or 'card'",
         }),
       bankAccountId: Joi.string()
         .optional()
@@ -80,6 +80,15 @@ router.patch(
           is: "bank_transfer",
           then: Joi.required().messages({
             "any.required": "Bank account ID is required when refund method is bank_transfer",
+          }),
+          otherwise: Joi.optional(),
+        }),
+      cardId: Joi.string()
+        .optional()
+        .when("refundMethod", {
+          is: "card",
+          then: Joi.required().messages({
+            "any.required": "Card ID is required when refund method is card",
           }),
           otherwise: Joi.optional(),
         }),

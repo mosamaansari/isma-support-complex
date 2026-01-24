@@ -126,11 +126,12 @@ class PurchaseController {
   async cancelPurchase(req: AuthRequest, res: Response) {
     try {
       const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-      const { refundMethod, bankAccountId } = req.body;
+      const { refundMethod, bankAccountId, cardId } = req.body;
       
       const refundData = refundMethod ? {
-        refundMethod: refundMethod as "cash" | "bank_transfer",
+        refundMethod: refundMethod as "cash" | "bank_transfer" | "card",
         bankAccountId: bankAccountId,
+        cardId: cardId,
       } : undefined;
 
       const purchase = await purchaseService.cancelPurchase(

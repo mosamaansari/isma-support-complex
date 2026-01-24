@@ -17,9 +17,10 @@ import { Modal } from "../../components/ui/modal";
 import { extractErrorMessage, extractValidationErrors } from "../../utils/errorHandler";
 import { formatPriceWithCurrencyComplete } from "../../utils/priceHelpers";
 import { formatDateToLocalISO, getTodayDate, formatBackendDateUTC } from "../../utils/dateHelpers";
+import api from "../../services/api";
 
 export default function PurchaseList() {
-  const { purchases, purchasesPagination, refreshPurchases, bankAccounts, refreshBankAccounts, cancelPurchase, addPaymentToPurchase, currentUser, loading, error } = useData();
+  const { purchases, purchasesPagination, refreshPurchases, bankAccounts, refreshBankAccounts, cards, refreshCards, cancelPurchase, addPaymentToPurchase, currentUser, loading, error } = useData();
   const { showSuccess, showError } = useAlert();
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState<"all" | "completed" | "pending" | "cancelled">("all");
@@ -35,16 +36,25 @@ export default function PurchaseList() {
   const [backendErrors, setBackendErrors] = useState<Record<string, string>>({});
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
   const [purchaseToCancel, setPurchaseToCancel] = useState<any>(null);
+  const [refundMethod, setRefundMethod] = useState<"cash" | "bank_transfer" | "card">("cash");
+  const [selectedBankAccountId, setSelectedBankAccountId] = useState<string>("");
+  const [selectedCardId, setSelectedCardId] = useState<string>("");
+  const [bankBalance, setBankBalance] = useState<number | null>(null);
+  const [cardBalance, setCardBalance] = useState<number | null>(null);
+  const [checkingBalance, setCheckingBalance] = useState(false);
   const bankAccountsLoadedRef = useRef(false);
   const purchasesLoadedRef = useRef(false);
 
-  // Load bank accounts only once on mount
+  // Load bank accounts and cards only once on mount
   useEffect(() => {
     if (!bankAccountsLoadedRef.current && bankAccounts.length === 0) {
       bankAccountsLoadedRef.current = true;
       refreshBankAccounts().catch(console.error);
     } else if (bankAccounts.length > 0) {
       bankAccountsLoadedRef.current = true;
+    }
+    if (cards.length === 0) {
+      refreshCards().catch(console.error);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -115,19 +125,160 @@ export default function PurchaseList() {
 
   const handleCancelPurchaseClick = (purchase: any) => {
     setPurchaseToCancel(purchase);
+    setRefundMethod("cash");
+    setSelectedBankAccountId("");
+    setSelectedCardId("");
+    setBankBalance(null);
+    setCardBalance(null);
     setCancelModalOpen(true);
+  };
+
+  const checkBankBalance = async (bankAccountId: string) => {
+    if (!bankAccountId || !purchaseToCancel) return false;
+    
+    setCheckingBalance(true);
+    try {
+      const payments = (purchaseToCancel.payments || []) as PurchasePayment[];
+      const validPayments = payments.filter((p: PurchasePayment) => 
+        p?.amount !== undefined && 
+        p?.amount !== null && 
+        !isNaN(Number(p.amount)) && 
+        Number(p.amount) > 0
+      );
+      const totalPaid = validPayments.reduce((sum: number, p: PurchasePayment) => sum + (p?.amount || 0), 0);
+      
+      const response = await api.getCurrentBankBalance(bankAccountId);
+      const balance = response.balance || 0;
+      setBankBalance(balance);
+      
+      if (balance < totalPaid) {
+        showError(`Insufficient bank balance. Available: Rs. ${balance.toFixed(2)}, Required: Rs. ${totalPaid.toFixed(2)}`);
+        return false;
+      }
+      
+      return true;
+    } catch (error: any) {
+      showError("Failed to check bank balance. Please try again.");
+      setBankBalance(null);
+      return false;
+    } finally {
+      setCheckingBalance(false);
+    }
+  };
+
+  const handleRefundMethodChange = async (method: "cash" | "bank_transfer" | "card") => {
+    setRefundMethod(method);
+    setSelectedBankAccountId("");
+    setSelectedCardId("");
+    setBankBalance(null);
+    setCardBalance(null);
+    
+    if (method === "bank_transfer" && bankAccounts && bankAccounts.length > 0) {
+      const firstBankId = bankAccounts[0].id;
+      setSelectedBankAccountId(firstBankId);
+      // Auto-check balance when bank is selected
+      if (firstBankId && purchaseToCancel) {
+        await checkBankBalance(firstBankId);
+      }
+    } else if (method === "card" && cards && cards.length > 0) {
+      const firstCardId = cards[0].id;
+      setSelectedCardId(firstCardId);
+      // Auto-check balance when card is selected
+      if (firstCardId && purchaseToCancel) {
+        await checkCardBalance(firstCardId);
+      }
+    }
+  };
+
+  const handleBankAccountChange = async (bankAccountId: string) => {
+    setSelectedBankAccountId(bankAccountId);
+    setBankBalance(null);
+    if (bankAccountId) {
+      await checkBankBalance(bankAccountId);
+    }
+  };
+
+  const checkCardBalance = async (cardId: string) => {
+    if (!cardId || !purchaseToCancel) return false;
+    
+    setCheckingBalance(true);
+    try {
+      const payments = (purchaseToCancel.payments || []) as PurchasePayment[];
+      const validPayments = payments.filter((p: PurchasePayment) => 
+        p?.amount !== undefined && 
+        p?.amount !== null && 
+        !isNaN(Number(p.amount)) && 
+        Number(p.amount) > 0
+      );
+      const totalPaid = validPayments.reduce((sum: number, p: PurchasePayment) => sum + (p?.amount || 0), 0);
+      
+      const response = await api.getCurrentCardBalance(cardId);
+      const balance = response.balance || 0;
+      setCardBalance(balance);
+      
+      if (balance < totalPaid) {
+        showError(`Insufficient card balance. Available: Rs. ${balance.toFixed(2)}, Required: Rs. ${totalPaid.toFixed(2)}`);
+        return false;
+      }
+      
+      return true;
+    } catch (error: any) {
+      showError("Failed to check card balance. Please try again.");
+      setCardBalance(null);
+      return false;
+    } finally {
+      setCheckingBalance(false);
+    }
+  };
+
+  const handleCardChange = async (cardId: string) => {
+    setSelectedCardId(cardId);
+    setCardBalance(null);
+    if (cardId) {
+      await checkCardBalance(cardId);
+    }
   };
 
   const confirmCancelPurchase = async () => {
     if (!purchaseToCancel) return;
     
+    // Check balance based on refund method
+    if (refundMethod === "bank_transfer") {
+      if (!selectedBankAccountId) {
+        showError("Please select a bank account");
+        return;
+      }
+      const hasBalance = await checkBankBalance(selectedBankAccountId);
+      if (!hasBalance) {
+        return;
+      }
+    } else if (refundMethod === "card") {
+      if (!selectedCardId) {
+        showError("Please select a card");
+        return;
+      }
+      const hasBalance = await checkCardBalance(selectedCardId);
+      if (!hasBalance) {
+        return;
+      }
+    }
+    
     try {
-      // Payments will be automatically refunded to their original sources
-      await cancelPurchase(purchaseToCancel.id, undefined);
-      showSuccess("Purchase cancelled successfully! Payments have been refunded to their original sources.");
+      const refundData = {
+        refundMethod,
+        ...(refundMethod === "bank_transfer" && selectedBankAccountId ? { bankAccountId: selectedBankAccountId } : {}),
+        ...(refundMethod === "card" && selectedCardId ? { cardId: selectedCardId } : {}),
+      };
+      await cancelPurchase(purchaseToCancel.id, refundData);
+      showSuccess(`Purchase cancelled successfully! Refund processed via ${refundMethod === "cash" ? "cash" : refundMethod === "bank_transfer" ? "bank transfer" : "card"}.`);
       refreshPurchases(purchasesPagination?.page || 1, purchasesPagination?.pageSize || 10);
       setCancelModalOpen(false);
       setPurchaseToCancel(null);
+      setRefundMethod("cash");
+      setSelectedBankAccountId("");
+      setSelectedCardId("");
+      setBankBalance(null);
+      setCardBalance(null);
     } catch (error: any) {
       showError(extractErrorMessage(error) || "Failed to cancel purchase. Please try again.");
     }
@@ -920,6 +1071,11 @@ export default function PurchaseList() {
         onClose={() => {
           setCancelModalOpen(false);
           setPurchaseToCancel(null);
+          setRefundMethod("cash");
+          setSelectedBankAccountId("");
+          setSelectedCardId("");
+          setBankBalance(null);
+          setCardBalance(null);
         }}
         className="max-w-md mx-4"
         showCloseButton={true}
@@ -962,13 +1118,111 @@ export default function PurchaseList() {
                 )}
                 
                 {totalPaid > 0 && canReturn && (
-                  <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded">
-                    <p className="text-sm font-medium text-gray-800 dark:text-white mb-2">
-                      Refund Amount: Rs. {totalPaid.toFixed(2)}
-                    </p>
-                    <p className="text-sm text-gray-700 dark:text-gray-300">
-                      Payments will be automatically refunded to their original sources (cash, card, or bank account).
-                    </p>
+                  <div className="mb-6 space-y-4">
+                    <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded">
+                      <p className="text-sm font-medium text-gray-800 dark:text-white mb-2">
+                        Refund Amount: Rs. {totalPaid.toFixed(2)}
+                      </p>
+                    </div>
+                    
+                    <div className="space-y-3">
+                      <div>
+                        <Label>Refund Method *</Label>
+                        <Select
+                          value={refundMethod}
+                          onChange={(value) => handleRefundMethodChange(value as "cash" | "bank_transfer")}
+                          options={[
+                            { value: "cash", label: "Cash" },
+                            { value: "bank_transfer", label: "Bank Transfer" },
+    
+                          ]}
+                          className="w-full"
+                        />
+                      </div>
+
+                      {refundMethod === "bank_transfer" && (
+                        <div className="space-y-3">
+                          <div>
+                            <Label>Select Bank Account *</Label>
+                            <Select
+                              value={selectedBankAccountId}
+                              onChange={(value) => handleBankAccountChange(value)}
+                              options={[
+                                ...((bankAccounts || []).map((bank) => ({
+                                  value: bank.id,
+                                  label: `${bank.bankName} - ${bank.accountNumber}`,
+                                }))),
+                              ]}
+                              className="w-full"
+                            />
+                          </div>
+
+                          {selectedBankAccountId && (
+                            <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded border">
+                              {checkingBalance ? (
+                                <p className="text-sm text-gray-600 dark:text-gray-400">Checking balance...</p>
+                              ) : bankBalance !== null ? (
+                                <>
+                                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Available Balance:</p>
+                                  <p className={`text-sm font-semibold ${bankBalance >= totalPaid ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                    Rs. {bankBalance.toFixed(2)}
+                                  </p>
+                                  {bankBalance < totalPaid && (
+                                    <p className="text-xs text-red-600 dark:text-red-400 mt-1">
+                                      Insufficient balance. Required: Rs. {totalPaid.toFixed(2)}
+                                    </p>
+                                  )}
+                                </>
+                              ) : (
+                                <p className="text-sm text-gray-600 dark:text-gray-400">Select a bank account to check balance</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {refundMethod === "card" && (
+                        <div className="space-y-3">
+                          <div>
+                            <Label>Select Card *</Label>
+                            <Select
+                              value={selectedCardId}
+                              onChange={(value) => handleCardChange(value)}
+                              options={[
+                                { value: "", label: "Select Card" },
+                                ...((cards || []).map((card) => ({
+                                  value: card.id,
+                                  label: `${card.cardName} - ${card.cardNumber}`,
+                                }))),
+                              ]}
+                              className="w-full"
+                            />
+                          </div>
+
+                          {selectedCardId && (
+                            <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded border">
+                              {checkingBalance ? (
+                                <p className="text-sm text-gray-600 dark:text-gray-400">Checking balance...</p>
+                              ) : cardBalance !== null ? (
+                                <>
+                                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Available Balance:</p>
+                                  <p className={`text-sm font-semibold ${cardBalance >= totalPaid ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                    Rs. {cardBalance.toFixed(2)}
+                                  </p>
+                                  {cardBalance < totalPaid && (
+                                    <p className="text-xs text-red-600 dark:text-red-400 mt-1">
+                                      Insufficient balance. Required: Rs. {totalPaid.toFixed(2)}
+                                    </p>
+                                  )}
+                                </>
+                              ) : (
+                                <p className="text-sm text-gray-600 dark:text-gray-400">Select a card to check balance</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
                 
@@ -979,6 +1233,11 @@ export default function PurchaseList() {
                     onClick={() => {
                       setCancelModalOpen(false);
                       setPurchaseToCancel(null);
+                      setRefundMethod("cash");
+                      setSelectedBankAccountId("");
+                      setSelectedCardId("");
+                      setBankBalance(null);
+                      setCardBalance(null);
                     }}
                   >
                     Cancel
@@ -987,7 +1246,9 @@ export default function PurchaseList() {
                     size="sm"
                     onClick={confirmCancelPurchase}
                     className="bg-orange-600 hover:bg-orange-700 text-white"
-                    disabled={!canReturn}
+                    disabled={!canReturn || 
+                      (refundMethod === "bank_transfer" && (!selectedBankAccountId || (bankBalance !== null && bankBalance < totalPaid))) ||
+                      (refundMethod === "card" && (!selectedCardId || (cardBalance !== null && cardBalance < totalPaid)))}
                   >
                     Cancel Purchase
                   </Button>

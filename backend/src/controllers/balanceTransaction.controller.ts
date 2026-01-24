@@ -157,6 +157,40 @@ class BalanceTransactionController {
       });
     }
   }
+
+  async getCurrentCardBalance(req: AuthRequest, res: Response) {
+    try {
+      const { cardId } = req.query;
+      if (!cardId) {
+        return res.status(400).json({
+          message: "Card ID is required",
+          response: null,
+          error: "Card ID is required",
+        });
+      }
+      const today = new Date();
+      const balance = await balanceManagementService.getCurrentCardBalance(
+        cardId as string,
+        today
+      );
+      return res.status(200).json({
+        message: "Card balance retrieved successfully",
+        response: {
+          balance,
+        },
+        error: null,
+      });
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
+      logger.error("Get card balance error:", error);
+      return res.status(500).json({
+        message: errorMessage,
+        response: null,
+        error: errorMessage,
+      });
+    }
+  }
 }
 
 export default new BalanceTransactionController();
