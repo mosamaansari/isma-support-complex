@@ -1246,6 +1246,38 @@ class PurchaseService {
       throw new Error("Payment amount exceeds remaining balance");
     }
 
+    // IMPORTANT: Check balance BEFORE adding payment to purchase
+    // Get balance management service for balance check
+    try {
+      const balanceManagementService = (await import("./balanceManagement.service")).default;
+      
+      // Check if sufficient balance exists for this payment
+      const paymentDateForBalance = parseLocalYMDForDB(formatLocalYMD(getTodayInPakistan()));
+      
+      if (payment.type === "cash") {
+        const currentCashBalance = await balanceManagementService.getCurrentCashBalance(paymentDateForBalance);
+        if (currentCashBalance < paymentAmount) {
+          throw new Error(`Insufficient cash balance. Available: Rs. ${currentCashBalance.toFixed(2)}, Required: Rs. ${paymentAmount.toFixed(2)}`);
+        }
+      } else if (payment.type === "bank_transfer" && payment.bankAccountId) {
+        const currentBankBalance = await balanceManagementService.getCurrentBankBalance(payment.bankAccountId, paymentDateForBalance);
+        if (currentBankBalance < paymentAmount) {
+          throw new Error(`Insufficient bank balance. Available: Rs. ${currentBankBalance.toFixed(2)}, Required: Rs. ${paymentAmount.toFixed(2)}`);
+        }
+      } else if (payment.type === "card" && (payment.cardId || payment.bankAccountId)) {
+        const cardId = payment.cardId || payment.bankAccountId;
+        if (cardId) {
+          const currentCardBalance = await balanceManagementService.getCurrentCardBalance(cardId, paymentDateForBalance);
+          if (currentCardBalance < paymentAmount) {
+            throw new Error(`Insufficient card balance. Available: Rs. ${currentCardBalance.toFixed(2)}, Required: Rs. ${paymentAmount.toFixed(2)}`);
+          }
+        }
+      }
+    } catch (error: any) {
+      // If balance check fails, throw the error to prevent payment
+      throw error;
+    }
+
     // Update status based on remaining balance
     const newStatus = remainingBalance <= 0 ? "completed" : "pending";
 

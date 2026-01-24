@@ -460,13 +460,12 @@ class ReportService {
 
     // Filter sales by payment dates (not sale date or createdAt)
     // IMPORTANT: Only use payment.date from payments JSON, NOT sale.date or sale.createdAt
+    // IMPORTANT: Only show sales that have payments (payments.length > 0)
     const sales = allSales.filter((sale) => {
       const payments = (sale.payments as Array<{ type?: string; amount?: number; date?: string; cardId?: string; bankAccountId?: string }> | null) || [];
       if (payments.length === 0) {
-        // If no payments array, check if sale date matches (fallback only)
-        const saleDateStr = extractDateString(sale.date);
-        const targetDateStr = formatLocalYMD(startOfDay);
-        return saleDateStr === targetDateStr;
+        // Skip sales with no payments - don't show in daily report
+        return false;
       }
       // Check if any payment has a date matching the target date
       // IMPORTANT: Only use payment.date from payments JSON, NOT sale.date
@@ -482,13 +481,12 @@ class ReportService {
     // Filter purchases by payment dates (not purchase date)
     // Filter purchases by payment dates (not purchase date or createdAt)
     // IMPORTANT: Only use payment.date from payments JSON, NOT purchase.date or purchase.createdAt
+    // IMPORTANT: Only show purchases that have payments (payments.length > 0)
     const purchases = allPurchases.filter((purchase) => {
       const payments = (purchase.payments as Array<{ type?: string; amount?: number; date?: string; cardId?: string; bankAccountId?: string }> | null) || [];
       if (payments.length === 0) {
-        // If no payments array, check if purchase date matches (fallback only)
-        const purchaseDateStr = extractDateString(purchase.date);
-        const targetDateStr = formatLocalYMD(startOfDay);
-        return purchaseDateStr === targetDateStr;
+        // Skip purchases with no payments - don't show in daily report
+        return false;
       }
       // Check if any payment has a date matching the target date
       // IMPORTANT: Only use payment.date from payments JSON, NOT purchase.date
@@ -653,12 +651,8 @@ class ReportService {
           total: sales.reduce((sum, s) => {
             const payments = (s.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
             if (payments.length === 0) {
-            // No payments array, use total if sale date matches
-            // Database stores dates in UTC, so we extract UTC date components for correct comparison
-            const saleDate = new Date(s.date);
-            const { year, month, day } = extractDateComponents(saleDate);
-            const saleDateNormalized = new Date(year, month, day, 12, 0, 0, 0);
-            return saleDateNormalized.getTime() === startOfDay.getTime() ? sum + Number(s.total || 0) : sum;
+            // Skip sales with no payments - don't include in total
+            return sum;
             }
             // Sum only payments that occurred on this date
             return sum + payments.reduce((paymentSum, payment) => {
@@ -678,10 +672,8 @@ class ReportService {
           total: purchases.reduce((sum, p) => {
             const payments = (p.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
             if (payments.length === 0) {
-              // No payments array, use total if purchase date matches
-              const purchaseDate = new Date(p.date);
-              purchaseDate.setHours(0, 0, 0, 0);
-              return purchaseDate.getTime() === startOfDay.getTime() ? sum + Number(p.total || 0) : sum;
+              // Skip purchases with no payments - don't include in total
+              return sum;
             }
             // Sum only payments that occurred on this date
             return sum + payments.reduce((paymentSum, payment) => {
@@ -708,31 +700,7 @@ class ReportService {
           return sales.flatMap((sale) => {
             const payments = (sale.payments as Array<{ type?: string; amount?: number; date?: string; cardId?: string; bankAccountId?: string }> | null) || [];
             if (payments.length === 0) {
-              // If no payments array, create a single row from sale date
-              // Database stores dates in UTC, so we extract UTC date components for correct comparison
-              const saleDate = new Date(sale.date);
-              const { year, month, day } = extractDateComponents(saleDate);
-              // Normalize to noon (12:00:00) for consistent date comparison
-              const saleDateNormalized = new Date(year, month, day, 12, 0, 0, 0);
-              if (saleDateNormalized.getTime() === startOfDay.getTime()) {
-                const paymentKey = `${sale.id}-0`;
-                if (seenSalePayments.has(paymentKey)) {
-                  return [];
-                }
-                seenSalePayments.add(paymentKey);
-                // Get createdAt from balance transactions for this sale
-                const balanceTxCreatedAt = getCreatedAtFromBalanceTx("sale_payment", sale.id, Number(sale.total || 0), sale.date);
-                return [{
-                  ...sale,
-                  paymentAmount: Number(sale.total || 0),
-                  paymentDate: sale.date,
-                  paymentType: sale.paymentType || "cash",
-                  paymentIndex: 0,
-                  // Use createdAt from balance transactions only, not sale.createdAt
-                  // Fallback to sale.date if balance transaction not found
-                  createdAt: balanceTxCreatedAt || (sale.date ? new Date(sale.date) : null),
-                }];
-              }
+              // Skip sales with no payments - don't show in daily report items
               return [];
             }
             // Create a row for each payment that matches the target date
@@ -816,9 +784,8 @@ class ReportService {
         total: sales.reduce((sum, s) => {
           const payments = (s.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
           if (payments.length === 0) {
-            const saleDate = new Date(s.date);
-            saleDate.setHours(0, 0, 0, 0);
-            return saleDate.getTime() === startOfDay.getTime() ? sum + Number(s.total || 0) : sum;
+            // Skip sales with no payments - don't include in total
+            return sum;
           }
           return sum + payments.reduce((paymentSum, payment) => {
             const paymentDateOnly = payment.date ? parsePaymentDate(payment.date) : null;
@@ -863,11 +830,8 @@ class ReportService {
             }, 0);
           }
           if (payments.length === 0) {
-            const saleDate = new Date(s.date);
-            saleDate.setHours(0, 0, 0, 0);
-            if (saleDate.getTime() === startOfDay.getTime()) {
-              return sum + Number(s.total || 0);
-            }
+            // Skip sales with no payments - don't include in total
+            return sum;
           }
           return sum;
         }, 0),
@@ -914,23 +878,7 @@ class ReportService {
           return purchases.flatMap((purchase) => {
             const payments = (purchase.payments as Array<{ type?: string; amount?: number; date?: string; cardId?: string; bankAccountId?: string }> | null) || [];
             if (payments.length === 0) {
-              // If no payments array, create a single row from purchase date
-              // Normalize to noon (12:00:00) for consistent date comparison
-              const purchaseDate = normalizeDateToNoon(new Date(purchase.date));
-              if (purchaseDate.getTime() === startOfDay.getTime()) {
-                const paymentKey = `${purchase.id}-0`;
-                if (seenPurchasePayments.has(paymentKey)) {
-                  return [];
-                }
-                seenPurchasePayments.add(paymentKey);
-                return [{
-                  ...purchase,
-                  paymentAmount: Number(purchase.total || 0),
-                  paymentDate: purchase.date,
-                  paymentType: "cash",
-                  paymentIndex: 0,
-                }];
-              }
+              // Skip purchases with no payments - don't show in daily report items
               return [];
             }
             // Create a row for each payment that matches the target date
@@ -980,9 +928,8 @@ class ReportService {
         total: purchases.reduce((sum, p) => {
           const payments = (p.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
           if (payments.length === 0) {
-            // Normalize to noon (12:00:00) for consistent date comparison
-            const purchaseDate = normalizeDateToNoon(new Date(p.date));
-            return purchaseDate.getTime() === startOfDay.getTime() ? sum + Number(p.total || 0) : sum;
+            // Skip purchases with no payments - don't include in total
+            return sum;
           }
           return sum + payments.reduce((paymentSum, payment) => {
             const paymentDateOnly = payment.date ? parsePaymentDate(payment.date) : null;
@@ -1491,7 +1438,7 @@ class ReportService {
         // Get payment datetime for steps - use payment date only, not sale.createdAt
         // IMPORTANT: Preserve UTC time from payment.date (don't convert to local timezone)
         // If payment.date is "2026-01-19T23:22:06.835Z", use time 23:22:06 as-is (not 04:22:06)
-        const paymentDateForLookup = sale.date;
+        const paymentDateForLookup = payment.date || sale.date;
         const balanceTxCreatedAt = getCreatedAtFromBalanceTx("sale_payment", sale.id, amount, paymentDateForLookup);
         // Use payment date with UTC time components treated as local, fallback to sale.date (never use sale.createdAt)
         let paymentDateTime: Date;
@@ -1616,7 +1563,7 @@ class ReportService {
         // Get payment datetime for steps - use payment date only, not purchase.createdAt
         // IMPORTANT: Preserve UTC time from payment.date (don't convert to local timezone)
         // If payment.date is "2026-01-19T23:22:06.835Z", use time 23:22:06 as-is (not 04:22:06)
-        const paymentDateForLookup =  purchase.date;
+        const paymentDateForLookup = payment.date || purchase.date;
         const balanceTxCreatedAt = getCreatedAtFromBalanceTx("purchase_payment", purchase.id, amount, paymentDateForLookup);
         // Use payment date with UTC time components treated as local, fallback to purchase.date (never use purchase.createdAt)
         let paymentDateTime: Date;
@@ -1763,12 +1710,12 @@ class ReportService {
     });
 
     // Filter sales by payment dates within the range using string comparison to avoid timezone issues
+    // IMPORTANT: Only show sales that have payments (payments.length > 0)
     const sales = allSalesForRange.filter((sale) => {
       const payments = (sale.payments as Array<{ type?: string; amount?: number; date?: string; cardId?: string; bankAccountId?: string }> | null) || [];
       if (payments.length === 0) {
-        // If no payments array, check if sale date is in range
-        const saleDateStr = extractDateString(sale.date);
-        return saleDateStr ? saleDateStr >= normalizedStartDate && saleDateStr <= normalizedEndDate : false;
+        // Skip sales with no payments - don't show in report
+        return false;
       }
       // Check if any payment has a date within the range
       // IMPORTANT: Only use payment.date from payments JSON, NOT sale.date or sale.createdAt
@@ -1780,12 +1727,12 @@ class ReportService {
     });
 
     // Filter purchases by payment dates within the range using string comparison to avoid timezone issues
+    // IMPORTANT: Only show purchases that have payments (payments.length > 0)
     const purchases = allPurchasesForRange.filter((purchase) => {
       const payments = (purchase.payments as Array<{ type?: string; amount?: number; date?: string; cardId?: string; bankAccountId?: string }> | null) || [];
       if (payments.length === 0) {
-        // If no payments array, check if purchase date is in range
-        const purchaseDateStr = extractDateString(purchase.date);
-        return purchaseDateStr ? purchaseDateStr >= normalizedStartDate && purchaseDateStr <= normalizedEndDate : false;
+        // Skip purchases with no payments - don't show in report
+        return false;
       }
       // Check if any payment has a date within the range
       // IMPORTANT: Only use payment.date from payments JSON, NOT purchase.date or purchase.createdAt
@@ -1883,27 +1830,24 @@ class ReportService {
       steps, // Step-by-step transactions sorted by date/time ASC
       summary: {
         sales: {
-          // Count sales that have at least one payment in the date range
+          // Count sales that have at least one payment in the date range (only payments.length > 0)
           count: allSalesForRange.filter((sale) => {
             const payments = (sale.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
             if (payments.length === 0) {
-              const saleDateStr = extractDateString(sale.date);
-              return saleDateStr ? saleDateStr >= normalizedStartDate && saleDateStr <= normalizedEndDate : false;
+              // Skip sales with no payments - don't count
+              return false;
             }
             return payments.some((payment) => {
               const paymentDateStr = extractDateString(payment.date || sale.date);
               return paymentDateStr ? paymentDateStr >= normalizedStartDate && paymentDateStr <= normalizedEndDate : false;
             });
           }).length,
-          // Calculate total from payments that occurred in the date range
+          // Calculate total from payments that occurred in the date range (only payments.length > 0)
           total: allSalesForRange.reduce((sum, s) => {
             const payments = (s.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
             if (payments.length === 0) {
-              // No payments array, use total if sale date is in range
-              const saleDateStr = extractDateString(s.date);
-              return (saleDateStr && saleDateStr >= normalizedStartDate && saleDateStr <= normalizedEndDate) 
-                ? sum + Number(s.total || 0) 
-                : sum;
+              // Skip sales with no payments - don't include in total
+              return sum;
             }
             // Sum only payments that occurred in the date range
             return sum + payments.reduce((paymentSum, payment) => {
@@ -1916,27 +1860,24 @@ class ReportService {
           }, 0),
         },
         purchases: {
-          // Count purchases that have at least one payment in the date range
+          // Count purchases that have at least one payment in the date range (only payments.length > 0)
           count: allPurchasesForRange.filter((purchase) => {
             const payments = (purchase.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
             if (payments.length === 0) {
-              const purchaseDateStr = extractDateString(purchase.date);
-              return purchaseDateStr ? purchaseDateStr >= normalizedStartDate && purchaseDateStr <= normalizedEndDate : false;
+              // Skip purchases with no payments - don't count
+              return false;
             }
             return payments.some((payment) => {
               const paymentDateStr = extractDateString(payment.date || purchase.date);
               return paymentDateStr ? paymentDateStr >= normalizedStartDate && paymentDateStr <= normalizedEndDate : false;
             });
           }).length,
-          // Calculate total from payments that occurred in the date range
+          // Calculate total from payments that occurred in the date range (only payments.length > 0)
           total: allPurchasesForRange.reduce((sum, p) => {
             const payments = (p.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
             if (payments.length === 0) {
-              // No payments array, use total if purchase date is in range
-              const purchaseDateStr = extractDateString(p.date);
-              return (purchaseDateStr && purchaseDateStr >= normalizedStartDate && purchaseDateStr <= normalizedEndDate)
-                ? sum + Number(p.total || 0)
-                : sum;
+              // Skip purchases with no payments - don't include in total
+              return sum;
             }
             // Sum only payments that occurred in the date range
             return sum + payments.reduce((paymentSum, payment) => {
@@ -1962,27 +1903,7 @@ class ReportService {
           return allSalesForRange.flatMap((sale) => {
             const payments = (sale.payments as Array<{ type?: string; amount?: number; date?: string; cardId?: string; bankAccountId?: string }> | null) || [];
             if (payments.length === 0) {
-              // If no payments array, create a single row from sale date if in range
-              const saleDateStr = extractDateString(sale.date);
-              if (saleDateStr && saleDateStr >= normalizedStartDate && saleDateStr <= normalizedEndDate) {
-                const paymentKey = `${sale.id}-0`;
-                if (seenSalePayments.has(paymentKey)) {
-                  return [];
-                }
-                seenSalePayments.add(paymentKey);
-                // Get createdAt from balance transactions for this sale
-                const balanceTxCreatedAt = getCreatedAtFromBalanceTx("sale_payment", sale.id, Number(sale.total || 0), sale.date);
-                return [{
-                  ...sale,
-                  paymentAmount: Number(sale.total || 0),
-                  paymentDate: sale.date,
-                  paymentType: sale.paymentType || "cash",
-                  paymentIndex: 0,
-                  // Use createdAt from balance transactions only, not sale.createdAt
-                  // Fallback to sale.date if balance transaction not found
-                  createdAt: balanceTxCreatedAt || (sale.date ? new Date(sale.date) : null),
-                }];
-              }
+              // Skip sales with no payments - don't show in report items
               return [];
             }
             // Create a row for each payment that matches the date range
@@ -2043,8 +1964,8 @@ class ReportService {
         total: allSalesForRange.reduce((sum, s) => {
           const payments = (s.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
           if (payments.length === 0) {
-            const saleDateStr = extractDateString(s.date);
-            return saleDateStr && saleDateStr >= normalizedStartDate && saleDateStr <= normalizedEndDate ? sum + Number(s.total || 0) : sum;
+            // Skip sales with no payments - don't include in total
+            return sum;
           }
           return sum + payments.reduce((paymentSum, payment) => {
             const paymentDateStr = extractDateString(payment.date || s.date);
@@ -2097,26 +2018,7 @@ class ReportService {
           return allPurchasesForRange.flatMap((purchase) => {
             const payments = (purchase.payments as Array<{ type?: string; amount?: number; date?: string; cardId?: string; bankAccountId?: string }> | null) || [];
             if (payments.length === 0) {
-              // If no payments array, create a single row from purchase date if in range
-              const purchaseDateStr = extractDateString(purchase.date);
-              if (purchaseDateStr && purchaseDateStr >= normalizedStartDate && purchaseDateStr <= normalizedEndDate) {
-                const paymentKey = `${purchase.id}-0`;
-                if (seenPurchasePayments.has(paymentKey)) {
-                  return [];
-                }
-                seenPurchasePayments.add(paymentKey);
-                // Get createdAt from balance transactions for this purchase
-                const balanceTxCreatedAt = getCreatedAtFromBalanceTx("purchase_payment", purchase.id, Number(purchase.total || 0), purchase.date);
-                return [{
-                  ...purchase,
-                  paymentAmount: Number(purchase.total || 0),
-                  paymentDate: purchase.date,
-                  paymentType: "cash",
-                  paymentIndex: 0,
-                  // Use createdAt from balance transactions only, not purchase.createdAt
-                  createdAt: balanceTxCreatedAt || (purchase.date ? new Date(purchase.date) : null),
-                }];
-              }
+              // Skip purchases with no payments - don't show in report items
               return [];
             }
             // Create a row for each payment that matches the date range
@@ -2177,8 +2079,8 @@ class ReportService {
         total: allPurchasesForRange.reduce((sum, p) => {
           const payments = (p.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
           if (payments.length === 0) {
-            const purchaseDateStr = extractDateString(p.date);
-            return purchaseDateStr && purchaseDateStr >= normalizedStartDate && purchaseDateStr <= normalizedEndDate ? sum + Number(p.total || 0) : sum;
+            // Skip purchases with no payments - don't include in total
+            return sum;
           }
           return sum + payments.reduce((paymentSum, payment) => {
             const paymentDateStr = extractDateString(payment.date || p.date);
