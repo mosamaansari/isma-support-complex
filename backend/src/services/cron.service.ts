@@ -21,7 +21,7 @@ class CronService {
    */
   start() {
     // Run every day at 12:00 AM (midnight) Pakistan time
-    this.cronJob = cron.schedule("24 0 * * *", async () => {
+    this.cronJob = cron.schedule("0 0 * * *", async () => {
       try {
         const cronStartTime = new Date();
         logger.info(`Cron job started at ${cronStartTime.toISOString()} (Pakistan time: ${getTodayInPakistan().toISOString()}): Calculating previous day closing balance and creating today's opening balance`);
