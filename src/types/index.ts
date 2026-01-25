@@ -87,19 +87,7 @@ export interface Sale {
 }
 
 // Expense Types
-export type ExpenseCategory =
-  | "rent"
-  | "bills"
-  | "transport"
-  | "salaries"
-  | "maintenance"
-  | "marketing"
-  | "tea"
-  | "breakfast"
-  | "lunch"
-  | "dinner"
-  | "refreshment"
-  | "other";
+export type ExpenseCategory = string;
 
 export interface Expense {
   id: string;

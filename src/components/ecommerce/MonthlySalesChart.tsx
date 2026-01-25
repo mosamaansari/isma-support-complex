@@ -124,7 +124,7 @@ export default function MonthlySalesChart() {
       : normalize(monthlyData?.purchases, (monthlyData?.categories || defaultCategories).length);
 
   const options: ApexOptions = useMemo(() => ({
-    colors: ["#465fff", "#EF4444", "#8b5cf6"],
+    colors: ["#10B981", "#EF4444", "#8b5cf6"], // Sales (green), Expenses (red), Purchases (purple)
     chart: {
       fontFamily: "Outfit, sans-serif",
       type: "bar",

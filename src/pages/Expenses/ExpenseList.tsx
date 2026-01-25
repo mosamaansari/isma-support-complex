@@ -15,7 +15,7 @@ import { formatDateToString } from "../../utils/dateHelpers";
 import { formatPriceWithCurrencyComplete } from "../../utils/priceHelpers";
 
 export default function ExpenseList() {
-  const { expenses, expensesPagination, deleteExpense, currentUser, loading, error, refreshExpenses } = useData();
+  const { expenses, expensesPagination, deleteExpense, currentUser, loading, error, refreshExpenses, categories, refreshCategories } = useData();
   const { showSuccess, showError } = useAlert();
   const [searchTerm, setSearchTerm] = useState("");
   const [filterCategory, setFilterCategory] = useState<ExpenseCategory | "all">("all");
@@ -34,6 +34,10 @@ export default function ExpenseList() {
           console.error("ExpenseList - Error refreshing expenses:", err);
         });
       }
+    }
+    // Load categories if empty
+    if (categories.length === 0) {
+      refreshCategories().catch(console.error);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -191,18 +195,11 @@ export default function ExpenseList() {
                 className="px-4 py-2 border border-gray-300 rounded-lg dark:bg-gray-800 dark:border-gray-700 dark:text-white"
               >
                 <option value="all">All Categories</option>
-                <option value="rent">Rent</option>
-                <option value="bills">Bills</option>
-                <option value="transport">Transport</option>
-                <option value="salaries">Salaries</option>
-                <option value="maintenance">Maintenance</option>
-                <option value="marketing">Marketing</option>
-                <option value="tea">Tea</option>
-                <option value="breakfast">Breakfast</option>
-                <option value="lunch">Lunch</option>
-                <option value="dinner">Dinner</option>
-                <option value="refreshment">Refreshment</option>
-                <option value="other">Other</option>
+                {categories.map((cat) => (
+                  <option key={cat.id} value={cat.name}>
+                    {cat.name}
+                  </option>
+                ))}
               </select>
               <DatePicker
                 value={filterDate}

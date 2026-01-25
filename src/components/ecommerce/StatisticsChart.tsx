@@ -126,7 +126,7 @@ export default function StatisticsChart() {
       position: "top",
       horizontalAlign: "left",
     },
-    colors: ["#465FFF", "#EF4444", "#8b5cf6"], // Sales, Expenses, Purchases
+    colors: ["#10B981", "#EF4444", "#8b5cf6"], // Sales (green), Expenses (red), Purchases (purple)
     chart: {
       fontFamily: "Outfit, sans-serif",
       height: 310,

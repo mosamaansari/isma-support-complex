@@ -11,6 +11,7 @@ import Input from "../../components/form/input/InputField";
 import DatePicker from "../../components/form/DatePicker";
 import Label from "../../components/form/Label";
 import Select from "../../components/form/Select";
+import CategorySelect from "../../components/form/CategorySelect";
 import Button from "../../components/ui/button/Button";
 import { ChevronLeftIcon } from "../../icons";
 import { getTodayDate } from "../../utils/dateHelpers";
@@ -25,7 +26,8 @@ const expenseFormSchema = yup.object().shape({
   category: yup
     .string()
     .required("Category is required")
-    .oneOf(["rent", "bills", "transport", "salaries", "maintenance", "marketing", "tea", "breakfast", "lunch", "dinner", "refreshment", "other"], "Invalid category"),
+    .min(1, "Category is required")
+    .max(100, "Category cannot exceed 100 characters"),
   description: yup
     .string()
     .optional()
@@ -57,7 +59,7 @@ const expenseFormSchema = yup.object().shape({
 export default function ExpenseForm() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { expenses, addExpense, updateExpense, currentUser, cards, refreshCards, bankAccounts, refreshBankAccounts, refreshExpenses } = useData();
+  const { expenses, addExpense, updateExpense, currentUser, cards, refreshCards, bankAccounts, refreshBankAccounts, refreshExpenses, categories, refreshCategories } = useData();
   const { showSuccess, showError } = useAlert();
   const isEdit = !!id;
   const [backendErrors, setBackendErrors] = useState<Record<string, string>>({});
@@ -75,7 +77,7 @@ export default function ExpenseForm() {
     resolver: yupResolver(expenseFormSchema),
     defaultValues: {
       amount: undefined,
-      category: "other" as ExpenseCategory,
+      category: "" as ExpenseCategory,
       description: "",
       paymentType: "cash" as PaymentType,
       cardId: "",
@@ -107,6 +109,10 @@ export default function ExpenseForm() {
       refreshBankAccounts();
     } else if (bankAccounts.length > 0) {
       bankAccountsLoadedRef.current = true;
+    }
+    // Load categories if empty
+    if (categories.length === 0) {
+      refreshCategories().catch(console.error);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -259,25 +265,12 @@ export default function ExpenseForm() {
             <Label>
               Category <span className="text-error-500">*</span>
             </Label>
-            <Select
-              value={formData.category}
+            <CategorySelect
+              value={formData.category || ""}
               onChange={(value) => {
                 setValue("category", value);
               }}
-              options={[
-                { value: "rent", label: "Rent" },
-                { value: "bills", label: "Bills" },
-                { value: "transport", label: "Transport" },
-                { value: "salaries", label: "Salaries" },
-                { value: "maintenance", label: "Maintenance" },
-                { value: "marketing", label: "Marketing" },
-                { value: "tea", label: "Tea" },
-                { value: "breakfast", label: "Breakfast" },
-                { value: "lunch", label: "Lunch" },
-                { value: "dinner", label: "Dinner" },
-                { value: "refreshment", label: "Refreshment" },
-                { value: "other", label: "Other" },
-              ]}
+              required
             />
             {errors.category && (
               <p className="mt-1.5 text-xs text-error-500">{errors.category.message}</p>

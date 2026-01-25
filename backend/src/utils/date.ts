@@ -101,7 +101,6 @@ export function getCurrentLocalDateTime(): Date {
   const milliseconds = now.getMilliseconds();
   
   // Create a new date using local components (this avoids UTC conversion)
-  console.log("year", new Date(year, month, day, hours, minutes, seconds, milliseconds))
   return new Date(year, month, day, hours, minutes, seconds, milliseconds);
 }
 

@@ -45,23 +45,6 @@ async function main() {
     },
   });
 
-  // Create default categories
-  const defaultCategories = [
-    { name: "Sports Equipment", description: "Sports and fitness equipment" },
-    { name: "Clothing", description: "Sports clothing and apparel" },
-    { name: "Footwear", description: "Sports shoes and footwear" },
-    { name: "Accessories", description: "Sports accessories" },
-    { name: "Nutrition", description: "Sports nutrition and supplements" },
-  ];
-
-  for (const cat of defaultCategories) {
-    await prisma.category.upsert({
-      where: { name: cat.name },
-      update: {},
-      create: cat,
-    });
-  }
-
   // Create default settings
   const existingSettings = await prisma.shopSettings.findFirst();
   if (!existingSettings) {

@@ -32,20 +32,6 @@ enum SaleStatus {
   cancelled
 }
 
-enum ExpenseCategory {
-  rent
-  bills
-  transport
-  salaries
-  maintenance
-  marketing
-  tea
-  breakfast
-  lunch
-  dinner
-  refreshment
-  other
-}
 
 model AdminUser {
   id               String    @id @default(cuid())
@@ -224,7 +210,7 @@ model SaleItem {
 model Expense {
   id            String          @id @default(cuid())
   amount        Decimal         @db.Decimal(10, 2)
-  category      ExpenseCategory
+  category      String          @db.VarChar(100)
   description   String?
   paymentType   PaymentType     @default(cash)
   cardId        String?

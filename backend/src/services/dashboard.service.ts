@@ -1,11 +1,20 @@
 import prisma from "../config/database";
 import logger from "../utils/logger";
+import { formatLocalYMD, getTodayInPakistan } from "../utils/date";
 
 class DashboardService {
   async getDashboardStats() {
     try {
-      const today = new Date();
+      // Get today's date in Pakistan timezone (start of day)
+      const todayPakistan = getTodayInPakistan(); // Returns date with 00:00:00 in Pakistan timezone
+      const todayStr = formatLocalYMD(todayPakistan); // YYYY-MM-DD string
+      
+      // For database queries, we need Date objects
+      // Create start and end of today in local timezone
+      const today = new Date(todayPakistan);
       today.setHours(0, 0, 0, 0);
+      
+      // End of today in local time
       const todayEnd = new Date(today);
       todayEnd.setHours(23, 59, 59, 999);
 
@@ -28,16 +37,66 @@ class DashboardService {
       // 2. Payments made today to existing sales (count payment amounts only)
       let todaySalesTotal = 0;
 
+      // Calculate today's sales (only non-cancelled, non-refunded)
+      // Use createdAt to check if sale was created today
+      // Only count sale.total amount, not payment amounts
+      let todaySalesNonCancelled = 0;
+      const todaySalesNonCancelledList = allSales.filter((sale) => {
+        // Use createdAt to check if sale was created today
+        const saleCreatedAt = new Date(sale.createdAt);
+        // Convert to local date string for comparison (handles timezone properly)
+        const saleDateStr = formatLocalYMD(saleCreatedAt);
+        // Exclude cancelled sales and check if created today
+        return saleDateStr === todayStr && sale.status !== "cancelled";
+      });
+      // Sum only the sale.total amounts (not payment amounts)
+      todaySalesNonCancelled = todaySalesNonCancelledList.reduce(
+        (sum, sale) => sum + Number(sale.total || 0),
+        0
+      );
+
+      // Calculate today's purchases (only non-cancelled)
+      // Use createdAt to check if purchase was created today
+      const allPurchases = await prisma.purchase.findMany({
+        where: {
+          status: {
+            not: "cancelled",
+          },
+        },
+        select: {
+          total: true,
+          createdAt: true,
+        },
+      });
+      
+      // Filter purchases by createdAt date string to handle timezone properly
+      // Only count purchases created today
+      const todayPurchasesFiltered = allPurchases.filter((purchase) => {
+        const purchaseCreatedAt = new Date(purchase.createdAt);
+        const purchaseDateStr = formatLocalYMD(purchaseCreatedAt);
+        return purchaseDateStr === todayStr;
+      });
+      
+      // Sum only the purchase.total amounts
+      const todayPurchasesNonCancelled = todayPurchasesFiltered.reduce(
+        (sum, purchase) => sum + Number(purchase.total || 0),
+        0
+      );
+
+      // Calculate todaySalesTotal (for backward compatibility, but not used in todaySalesNonCancelled)
+      // This is kept for other metrics but todaySalesNonCancelled uses only sale.total
       allSales.forEach((sale) => {
+        if (sale.status === "cancelled") return; // Skip cancelled sales
+        
         const saleDate = sale.date ? new Date(sale.date) : new Date(sale.createdAt);
-        saleDate.setHours(0, 0, 0, 0);
-        const saleCreatedToday = saleDate.getTime() === today.getTime();
+        const saleDateStr = formatLocalYMD(saleDate);
+        const saleCreatedToday = saleDateStr === todayStr;
         const isCompletedToday = saleCreatedToday && sale.status === "completed";
         
         // If sale was created and completed today, count the full sale total
         if (isCompletedToday) {
           todaySalesTotal += Number(sale.total || 0);
-          return; // Skip payment check to avoid double counting
+          return;
         }
 
         // Check payments made today for sales not created today
@@ -49,21 +108,23 @@ class DashboardService {
         
         payments.forEach((payment) => {
           if (payment.date) {
-            const paymentDate = new Date(payment.date);
-            paymentDate.setHours(0, 0, 0, 0);
-            if (paymentDate.getTime() === today.getTime()) {
-              // Count payment amount for sales not created today
+            const paymentDateStr = formatLocalYMD(new Date(payment.date));
+            if (paymentDateStr === todayStr) {
               todaySalesTotal += Number(payment.amount || 0);
             }
           } else if (saleCreatedToday && !isCompletedToday) {
-            // If sale created today but not completed, count payments without date
             todaySalesTotal += Number(payment.amount || 0);
           }
         });
       });
 
-      // Total sales (all time, including pending/cancelled to show full billed value)
+      // Total sales (all time, excluding cancelled)
       const totalSalesResult = await prisma.sale.aggregate({
+        where: {
+          status: {
+            not: "cancelled",
+          },
+        },
         _sum: {
           total: true,
         },
@@ -78,8 +139,13 @@ class DashboardService {
       });
       const totalExpenses = Number(totalExpensesResult._sum.amount || 0);
 
-      // Total purchases
+      // Total purchases (excluding cancelled)
       const totalPurchasesResult = await prisma.purchase.aggregate({
+        where: {
+          status: {
+            not: "cancelled",
+          },
+        },
         _sum: {
           total: true,
         },
@@ -168,6 +234,8 @@ class DashboardService {
       return {
         metrics: {
           todaySales: todaySalesTotal || 0,
+          todaySalesNonCancelled: todaySalesNonCancelled || 0,
+          todayPurchasesNonCancelled: todayPurchasesNonCancelled || 0,
           totalSales: totalSales || 0,
           totalExpenses: totalExpenses || 0,
           totalPurchases: totalPurchases || 0,

@@ -207,7 +207,7 @@ class ExpenseService {
     
     const expenseData: any = {
       amount: data.amount,
-      category: data.category as any,
+      category: data.category,
       paymentType: (data.paymentType || "cash") as any,
       cardId: data.cardId || null,
       bankAccountId: data.bankAccountId || null,
@@ -335,7 +335,7 @@ class ExpenseService {
 
     const updateData: any = {};
     if (data.amount !== undefined) updateData.amount = data.amount;
-    if (data.category !== undefined) updateData.category = data.category as any;
+    if (data.category !== undefined) updateData.category = data.category;
     if (data.description !== undefined) updateData.description = data.description;
     if (data.paymentType !== undefined) updateData.paymentType = data.paymentType as any;
     if (data.cardId !== undefined) updateData.cardId = data.cardId || null;
