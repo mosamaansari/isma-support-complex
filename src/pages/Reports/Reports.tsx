@@ -124,7 +124,18 @@ export default function Reports() {
                 datetime: parsedDate || (dateInput instanceof Date ? dateInput : new Date(dateInput || 0))
               };
             })
-            .filter((t: any) => t.datetime && !isNaN(t.datetime.getTime())) // Filter out invalid dates
+            .filter((t: any) => {
+              // Filter out invalid dates
+              if (!t.datetime || isNaN(t.datetime.getTime())) return false;
+              
+              // Filter out opening balance transactions with 0 amount
+              if ((t.type === "Opening Balance" || t.type === "Opening Balance Addition") && 
+                  (t.cashChange <= 0 || Math.abs(t.cashChange) < 0.01)) {
+                return false;
+              }
+              
+              return true;
+            })
             .sort((a, b) => {
               const dateA = a.datetime instanceof Date ? a.datetime : parseUTCDateString(a.datetime) || new Date(0);
               const dateB = b.datetime instanceof Date ? b.datetime : parseUTCDateString(b.datetime) || new Date(0);
