@@ -30,6 +30,7 @@ import searchRoutes from "./routes/search.routes";
 import dashboardRoutes from "./routes/dashboard.routes";
 import backupRoutes from "./routes/backup.routes";
 import suppliersRoutes from "./routes/suppliers.routes";
+import cronRoutes from "./routes/cron.routes";
 import cronService from "./services/cron.service";
 
 // Load environment variables
@@ -139,6 +140,7 @@ app.use("/api/opening-balances", openingBalanceRoutes);
 app.use("/api/daily-confirmation", dailyConfirmationRoutes);
 app.use("/api/balance-transactions", balanceTransactionRoutes);
 app.use("/api/daily-closing-balance", dailyClosingBalanceRoutes);
+app.use("/api/cron", cronRoutes);
 
 // 404 handler
 app.use((req: Request, res: Response) => {
@@ -162,7 +164,12 @@ app.listen(PORT, () => {
   // Start cron service for automated tasks
   try {
     cronService.start();
-    logger.info("Cron service initialized");
+    logger.info("Cron service initialized and started");
+    
+    // Manual trigger on startup (for testing/initialization)
+    cronService.manualTriggerAutoCreate().catch((error) => {
+      logger.error("Manual cron trigger failed on startup:", error);
+    });
   } catch (error) {
     logger.error("Failed to start cron service:", error);
   }

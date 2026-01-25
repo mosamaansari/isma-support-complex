@@ -21,5 +21,11 @@
       "dest": "/index.js"
     }
   ],
-  "outputDirectory": "."
+  "outputDirectory": ".",
+  "crons": [
+    {
+      "path": "/api/opening-balances/trigger-cron",
+      "schedule": "0 19 * * *"
+    }
+  ]
 }

@@ -21,10 +21,13 @@ class CronService {
    */
   start() {
     // Run every day at 12:00 AM (midnight) Pakistan time
-    this.cronJob = cron.schedule("0 0 * * *", async () => {
-      try {
-        const cronStartTime = new Date();
-        logger.info(`Cron job started at ${cronStartTime.toISOString()} (Pakistan time: ${getTodayInPakistan().toISOString()}): Calculating previous day closing balance and creating today's opening balance`);
+    // Cron pattern: "0 0 * * *" = minute=0, hour=0 (midnight), every day, every month, every day of week
+    this.cronJob = cron.schedule(
+      "0 0 * * *", 
+      async () => {
+        try {
+          const cronStartTime = new Date();
+          logger.info(`🕐 CRON JOB TRIGGERED at ${cronStartTime.toISOString()} (Pakistan time: ${getTodayInPakistan().toISOString()}): Calculating previous day closing balance and creating today's opening balance`);
         
         // Step 1: Calculate and store previous day's closing balance
         // Use Pakistan timezone to get yesterday's date
@@ -69,9 +72,9 @@ class CronService {
         
         const cronEndTime = new Date();
         const duration = cronEndTime.getTime() - cronStartTime.getTime();
-        logger.info(`Cron job completed successfully in ${duration}ms at ${cronEndTime.toISOString()}`);
+        logger.info(`✅ Cron job completed successfully in ${duration}ms at ${cronEndTime.toISOString()}`);
       } catch (error: any) {
-        logger.error(`Error in cron job at ${new Date().toISOString()}:`, error);
+        logger.error(`❌ Error in cron job at ${new Date().toISOString()}:`, error);
         // Try to create opening balance even if there was an error in closing balance calculation
         try {
           logger.info(`Attempting to create opening balance despite previous errors`);
@@ -84,7 +87,13 @@ class CronService {
       timezone: "Asia/Karachi",
     });
 
-    logger.info("Cron service started - will run daily at 12:00 AM (midnight)");
+    // Validate that the cron job is scheduled
+    if (this.cronJob) {
+      logger.info("✅ Cron service started successfully - will run daily at 12:00 AM Pakistan time (midnight)");
+      logger.info(`⏰ Next execution: The cron job will trigger at next midnight (00:00:00 Asia/Karachi timezone)`);
+    } else {
+      logger.error("❌ Failed to create cron job");
+    }
   }
 
   /**
