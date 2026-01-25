@@ -4,7 +4,7 @@ import { useData } from "../../context/DataContext";
 import { useAlert } from "../../context/AlertContext";
 import PageMeta from "../../components/common/PageMeta";
 import Button from "../../components/ui/button/Button";
-import { ChevronLeftIcon, DownloadIcon } from "../../icons";
+import { ChevronLeftIcon, DownloadIcon, PencilIcon } from "../../icons";
 import api from "../../services/api";
 import { Sale } from "../../types";
 import { formatBackendDate } from "../../utils/dateHelpers";
@@ -514,7 +514,30 @@ export default function BillPrint() {
           <DownloadIcon className="w-4 h-4 mr-2" />
           Print
         </Button>
-      
+        {sale.status === "pending" ? (
+          <Button
+            onClick={() => navigate(`/sales/edit/${sale.id}`)}
+            size="sm"
+            className="mr-2"
+          >
+            <PencilIcon className="w-4 h-4 mr-2" />
+            Edit Sale
+          </Button>
+        ) : (
+          <div className="relative group inline-block">
+            <button
+              disabled
+              className="px-4 py-2 bg-gray-400 text-white rounded-lg cursor-not-allowed opacity-50 flex items-center gap-2 text-sm"
+              title={sale.status === "completed" ? "Completed payment edit nhi ho skti sale ki" : "Cancelled sales cannot be edited"}
+            >
+              <PencilIcon className="w-4 h-4" />
+              Edit Sale
+            </button>
+            <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 text-xs text-white bg-gray-800 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
+              {sale.status === "completed" ? "Completed payment edit nhi ho skti sale ki" : "Cancelled sales cannot be edited"}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Screen View - Old UI Design */}

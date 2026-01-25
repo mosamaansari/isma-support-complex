@@ -891,6 +891,477 @@ class SaleService {
     return sale;
   }
 
+  async updateSale(
+    id: string,
+    data: {
+      customerName?: string;
+      customerPhone?: string;
+      customerCity?: string;
+      items?: Array<{
+        productId: string;
+        quantity: number;
+        unitPrice: number;
+        customPrice?: number;
+        priceType?: "single" | "dozen";
+        priceSingle?: number;
+        priceDozen?: number;
+        discount?: number;
+        discountType?: "percent" | "value";
+        fromWarehouse?: boolean;
+        shopQuantity?: number;
+        warehouseQuantity?: number;
+      }>;
+      subtotal?: number;
+      discount?: number;
+      discountType?: "percent" | "value";
+      tax?: number;
+      taxType?: "percent" | "value";
+      total?: number;
+      payments?: Array<{
+        type: "cash" | "card" | "credit" | "bank_transfer";
+        amount: number;
+        cardId?: string;
+        bankAccountId?: string;
+      }>;
+    },
+    userId: string
+  ) {
+    const sale = await prisma.sale.findUnique({
+      where: { id },
+      include: { items: true },
+    });
+
+    if (!sale) {
+      throw new Error("Sale not found");
+    }
+
+    // Prevent edits on cancelled sales
+    if (sale.status === "cancelled") {
+      throw new Error("Cannot edit cancelled sales.");
+    }
+
+    // Prevent edits on completed sales that are older than 7 days
+    if (sale.status === "completed") {
+      const saleDate = new Date(sale.date);
+      const today = new Date();
+      const daysDiff = Math.floor((today.getTime() - saleDate.getTime()) / (1000 * 60 * 60 * 24));
+      
+      if (daysDiff > 7) {
+        throw new Error(`Cannot edit completed sales older than 7 days. This sale is ${daysDiff} days old.`);
+      }
+    }
+
+    // For pending sales, enforce restrictions
+    if (sale.status === "pending") {
+      // Store original product IDs with quantities
+      const originalProductIds = new Set(sale.items.map(item => item.productId));
+      
+      // Prevent editing/deleting old products
+      if (data.items) {
+        // Group items by productId to handle multiple rows of same product
+        const oldItemsByProductId = new Map();
+        for (const oldItem of sale.items) {
+          if (!oldItemsByProductId.has(oldItem.productId)) {
+            oldItemsByProductId.set(oldItem.productId, []);
+          }
+          oldItemsByProductId.get(oldItem.productId).push(oldItem);
+        }
+
+        const newItemsByProductId = new Map();
+        for (const newItem of data.items) {
+          if (!newItemsByProductId.has(newItem.productId)) {
+            newItemsByProductId.set(newItem.productId, []);
+          }
+          newItemsByProductId.get(newItem.productId).push(newItem);
+        }
+
+        // Check each old product
+        for (const [productId, oldItems] of oldItemsByProductId.entries()) {
+          const newItems = newItemsByProductId.get(productId) || [];
+          
+          // Must have at least as many new items as old items (can't delete)
+          if (newItems.length < oldItems.length) {
+            throw new Error(`Cannot delete old products. Product "${oldItems[0].productName || productId}" cannot be removed from pending sales.`);
+          }
+          
+          // For the old items (first N items), check that price hasn't changed
+          // New items beyond the old count are new additions and can have any price
+          for (let i = 0; i < oldItems.length; i++) {
+            const oldItem = oldItems[i];
+            const newItem = newItems[i];
+            
+            if (!newItem) {
+              throw new Error(`Cannot delete old products. Product "${oldItem.productName || productId}" cannot be removed.`);
+            }
+            
+            // Prevent editing old product price (compare with small tolerance for floating point)
+            const oldPrice = Number(oldItem.customPrice ?? oldItem.unitPrice ?? 0);
+            const newPrice = Number((newItem as any).customPrice ?? (newItem as any).unitPrice ?? 0);
+            const priceDiff = Math.abs(oldPrice - newPrice);
+            
+            if (priceDiff > 0.01) { // Tolerance of 0.01 for floating point comparison
+              throw new Error(`Cannot update price for old products. Product "${oldItem.productName || productId}" price cannot be changed from ${oldPrice} to ${newPrice}.`);
+            }
+            
+            // Also check quantity hasn't changed for old items
+            const oldQty = Number(oldItem.quantity || 0);
+            const newQty = Number(newItem.quantity || 0);
+            const qtyDiff = Math.abs(oldQty - newQty);
+            
+            if (qtyDiff > 0.01) {
+              throw new Error(`Cannot update quantity for old products. Product "${oldItem.productName || productId}" quantity cannot be changed.`);
+            }
+          }
+        }
+      }
+      
+      // Prevent editing payments
+      if (data.payments !== undefined) {
+        const oldPayments = (sale.payments as Array<any>) || [];
+        // Check if payments are being modified (not just adding new ones)
+        if (data.payments.length < oldPayments.length) {
+          throw new Error("Cannot delete payments for pending sales.");
+        }
+        // Check if existing payments are being modified
+        for (let i = 0; i < oldPayments.length; i++) {
+          const oldPayment = oldPayments[i];
+          const newPayment = data.payments[i];
+          if (!newPayment) {
+            throw new Error("Cannot modify existing payments for pending sales.");
+          }
+          // Check if payment details changed
+          if (oldPayment.type !== newPayment.type || 
+              oldPayment.amount !== newPayment.amount ||
+              oldPayment.bankAccountId !== newPayment.bankAccountId ||
+              oldPayment.cardId !== newPayment.cardId) {
+            throw new Error("Cannot edit existing payments for pending sales. You can only add new payments.");
+          }
+        }
+      }
+      
+      // Prevent editing tax
+      if (data.tax !== undefined || data.taxType !== undefined) {
+        const oldTax = Number(sale.tax || 0);
+        const newTax = data.tax !== undefined ? Number(data.tax) : oldTax;
+        const oldTaxType = sale.taxType || "percent";
+        const newTaxType = data.taxType || oldTaxType;
+        
+        if (oldTax !== newTax || oldTaxType !== newTaxType) {
+          throw new Error("Cannot edit tax for pending sales.");
+        }
+      }
+    }
+
+    const updateData: any = {};
+
+    // Update customer info (allowed for all statuses)
+    if (data.customerName) {
+      updateData.customerName = data.customerName;
+    }
+    if (data.customerPhone !== undefined) {
+      updateData.customerPhone = data.customerPhone || null;
+    }
+    if (data.customerCity !== undefined) {
+      updateData.customerCity = data.customerCity || null;
+    }
+
+    // Update items if provided, adjusting stock differences
+    if (data.items) {
+      // 1) Revert old stock
+      for (const oldItem of sale.items) {
+        const product: any = await prisma.product.findUnique({ where: { id: oldItem.productId } });
+        if (product) {
+          const revertShopQty = Number((oldItem as any).shopQuantity ?? 0);
+          const revertWarehouseQty = Number((oldItem as any).warehouseQuantity ?? 0);
+
+          // Revert old stock
+          if (revertWarehouseQty > 0) {
+            await prisma.product.update({
+              where: { id: product.id },
+              data: { warehouseQuantity: { increment: revertWarehouseQty } },
+            });
+          }
+
+          if (revertShopQty > 0) {
+            await prisma.product.update({
+              where: { id: product.id },
+              data: { shopQuantity: { increment: revertShopQty } },
+            });
+          }
+        }
+      }
+
+      // Delete old items
+      await prisma.saleItem.deleteMany({
+        where: { saleId: id },
+      });
+
+      // 2) Create new items and apply stock decrements
+      const saleItems: any[] = [];
+      for (const item of data.items) {
+        const product: any = await prisma.product.findUnique({
+          where: { id: item.productId },
+        });
+
+        if (!product) {
+          throw new Error(`Product ${item.productId} not found`);
+        }
+
+        const qtyMultiplier =
+          (item.priceType === "dozen" && (item.priceSingle === undefined || item.priceSingle === null) && (item.priceDozen !== undefined && item.priceDozen !== null))
+            ? 12
+            : 1;
+
+        const itemForSplit = {
+          ...item,
+          quantity: Number(item.quantity || 0) * qtyMultiplier,
+          shopQuantity: item.shopQuantity !== undefined ? Number(item.shopQuantity) * qtyMultiplier : undefined,
+          warehouseQuantity: item.warehouseQuantity !== undefined ? Number(item.warehouseQuantity) * qtyMultiplier : undefined,
+        };
+
+        const { shopQuantity, warehouseQuantity, totalQuantity } = splitSaleQuantities(itemForSplit);
+
+        // Normalize price fields
+        const priceType: "single" | "dozen" = (item.priceType as any) || "single";
+        const baseUnitPrice = product.salePrice ? Number(product.salePrice) : 0;
+        const effectiveUnitPrice = item.customPrice ?? baseUnitPrice;
+
+        let priceSingle =
+          item.priceSingle !== undefined && item.priceSingle !== null
+            ? Number(item.priceSingle)
+            : Number(effectiveUnitPrice);
+        let priceDozen =
+          item.priceDozen !== undefined && item.priceDozen !== null
+            ? Number(item.priceDozen)
+            : Number(priceSingle * 12);
+
+        if (priceType === "dozen") {
+          if (item.priceDozen !== undefined && item.priceDozen !== null) {
+            priceDozen = Number(item.priceDozen);
+            if (!(item.priceSingle !== undefined && item.priceSingle !== null)) {
+              priceSingle = priceDozen / 12;
+            }
+          } else {
+            priceDozen = priceSingle * 12;
+          }
+        } else {
+          priceDozen = priceDozen || priceSingle * 12;
+        }
+
+        const unitPrice = product.salePrice ? limitDecimalPlaces(Number(product.salePrice)) : 0;
+        const effectivePrice = item.customPrice ?? priceSingle ?? 0;
+        const itemSubtotal = limitDecimalPlaces(effectivePrice * totalQuantity);
+
+        // Calculate discount based on type
+        let itemDiscount = 0;
+        if (item.discount && item.discount > 0) {
+          if (item.discountType === "value") {
+            itemDiscount = limitDecimalPlaces(item.discount);
+          } else {
+            itemDiscount = limitDecimalPlaces((itemSubtotal * item.discount) / 100);
+          }
+        }
+
+        const itemTotal = limitDecimalPlaces(itemSubtotal - itemDiscount);
+
+        saleItems.push({
+          productId: product.id,
+          productName: product.name,
+          quantity: totalQuantity,
+          shopQuantity,
+          warehouseQuantity,
+          unitPrice,
+          customPrice: item.customPrice !== undefined ? item.customPrice : null,
+          priceType,
+          priceSingle,
+          priceDozen,
+          discount: item.discount || 0,
+          discountType: item.discountType || "percent",
+          total: itemTotal,
+          fromWarehouse: warehouseQuantity > 0 && shopQuantity === 0 ? true : item.fromWarehouse ?? false,
+        });
+
+        // Apply stock decrement based on source
+        if (warehouseQuantity > 0) {
+          await prisma.product.update({
+            where: { id: product.id },
+            data: { warehouseQuantity: { decrement: warehouseQuantity } },
+          });
+        }
+        if (shopQuantity > 0) {
+          await prisma.product.update({
+            where: { id: product.id },
+            data: { shopQuantity: { decrement: shopQuantity } },
+          });
+        }
+      }
+
+      updateData.items = {
+        create: saleItems,
+      };
+      
+      // Calculate subtotal from items
+      const calculatedSubtotal = saleItems.reduce((sum, item) => sum + Number(item.total || 0), 0);
+      updateData.subtotal = limitDecimalPlaces(calculatedSubtotal);
+    }
+
+    // Calculate total with discount and tax
+    const subtotal = updateData.subtotal !== undefined ? updateData.subtotal : Number(sale.subtotal);
+    const discount = data.discount !== undefined ? Number(data.discount || 0) : Number(sale.discount || 0);
+    const discountType = data.discountType || sale.discountType || "percent";
+    const tax = data.tax !== undefined ? Number(data.tax || 0) : Number(sale.tax || 0);
+    const taxType = data.taxType || sale.taxType || "percent";
+
+    // Calculate discount amount
+    let discountAmount = 0;
+    if (discount > 0) {
+      if (discountType === "value") {
+        discountAmount = limitDecimalPlaces(discount);
+      } else {
+        discountAmount = limitDecimalPlaces((subtotal * discount) / 100);
+      }
+    }
+
+    // Calculate tax amount
+    let taxAmount = 0;
+    if (tax > 0) {
+      const afterDiscount = subtotal - discountAmount;
+      if (taxType === "value") {
+        taxAmount = limitDecimalPlaces(tax);
+      } else {
+        taxAmount = limitDecimalPlaces((afterDiscount * tax) / 100);
+      }
+    }
+
+    const calculatedTotal = limitDecimalPlaces(subtotal - discountAmount + taxAmount);
+
+    // Update totals with calculated values
+    updateData.subtotal = limitDecimalPlaces(subtotal);
+    updateData.discount = discount;
+    updateData.discountType = discountType;
+    updateData.tax = tax;
+    updateData.taxType = taxType;
+    updateData.total = calculatedTotal;
+    
+    // Track old payments to detect new ones
+    const oldPayments = (sale.payments as Array<{
+      type: string;
+      amount: number;
+      cardId?: string;
+      bankAccountId?: string;
+      date?: string | Date;
+    }>) || [];
+    
+    if (data.payments) {
+      updateData.payments = data.payments as any;
+      // Recalculate remaining balance using calculated total
+      const totalPaid = data.payments.reduce((sum, payment) => sum + (payment.amount || 0), 0);
+      const saleTotal = calculatedTotal;
+      if (totalPaid > saleTotal) {
+        throw new Error("Total paid amount cannot exceed total amount");
+      }
+      updateData.remainingBalance = limitDecimalPlaces(saleTotal - totalPaid);
+      
+      // Update status based on remaining balance
+      if (updateData.remainingBalance <= 0) {
+        updateData.status = "completed";
+      } else {
+        updateData.status = "pending";
+      }
+    }
+
+    const updatedSale = await prisma.sale.update({
+      where: { id },
+      data: {
+        ...updateData,
+        updatedAt: getCurrentLocalDateTime(),
+      },
+      include: {
+        items: {
+          include: {
+            product: true,
+          },
+        },
+        customer: true,
+        card: true,
+        bankAccount: true,
+      },
+    });
+
+    // Create balance transactions for new payments added during edit
+    if (data.payments && data.payments.length > oldPayments.length) {
+      const balanceManagementService = (await import("./balanceManagement.service")).default;
+      const newPayments = data.payments.slice(oldPayments.length);
+      
+      for (const payment of newPayments) {
+        const paymentAmount = payment.amount || 0;
+        if (paymentAmount <= 0) continue;
+
+        const paymentDate = getCurrentLocalDateTime();
+
+        if (payment.type === "cash") {
+          await balanceManagementService.updateCashBalance(
+            paymentDate,
+            paymentAmount,
+            "income",
+            {
+              description: `Sale Payment - Bill #${sale.billNumber}${sale.customerName ? ` - ${sale.customerName}` : ""}`,
+              source: "sale_payment",
+              sourceId: sale.id,
+              userId: userId,
+              userName: (await prisma.user.findUnique({ where: { id: userId }, select: { name: true } }))?.name || "System",
+            }
+          );
+        } else if (payment.type === "bank_transfer" && payment.bankAccountId) {
+          await balanceManagementService.updateBankBalance(
+            payment.bankAccountId,
+            paymentDate,
+            paymentAmount,
+            "income",
+            {
+              description: `Sale Payment - Bill #${sale.billNumber}${sale.customerName ? ` - ${sale.customerName}` : ""}`,
+              source: "sale_payment",
+              sourceId: sale.id,
+              userId: userId,
+              userName: (await prisma.user.findUnique({ where: { id: userId }, select: { name: true } }))?.name || "System",
+            }
+          );
+        } else if (payment.type === "card" && payment.cardId) {
+          await balanceManagementService.updateCardBalance(
+            payment.cardId,
+            paymentDate,
+            paymentAmount,
+            "income",
+            {
+              description: `Sale Payment - Bill #${sale.billNumber}${sale.customerName ? ` - ${sale.customerName}` : ""}`,
+              source: "sale_payment",
+              sourceId: sale.id,
+              userId: userId,
+              userName: (await prisma.user.findUnique({ where: { id: userId }, select: { name: true } }))?.name || "System",
+            }
+          );
+        }
+      }
+    }
+
+    // Update customer due amount
+    if (updatedSale.customerId) {
+      const oldDue = Number(sale.customer?.dueAmount || 0);
+      const newRemainingBalance = Number(updatedSale.remainingBalance || 0);
+      const oldRemainingBalance = Number(sale.remainingBalance || 0);
+      const dueChange = newRemainingBalance - oldRemainingBalance;
+
+      await prisma.customer.update({
+        where: { id: updatedSale.customerId },
+        data: {
+          dueAmount: Math.max(0, oldDue + dueChange),
+        },
+      });
+    }
+
+    return updatedSale;
+  }
+
   async cancelSale(
     id: string,
     refundData?: {

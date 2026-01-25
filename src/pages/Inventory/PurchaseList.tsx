@@ -596,14 +596,29 @@ export default function PurchaseList() {
                               <FaUndo className="w-3 h-3 sm:w-4 sm:h-4" />
                             </button>
                           )}
-                        <Link to={`/inventory/purchase/edit/${purchase.id}`}>
-                          <button 
-                            className="p-1.5 sm:p-2 text-blue-600 hover:bg-blue-50 rounded dark:hover:bg-blue-900/20 flex-shrink-0"
-                            title="Edit Purchase"
-                          >
-                            <PencilIcon className="w-3 h-3 sm:w-4 sm:h-4" />
-                          </button>
-                        </Link>
+                        {purchase.status === "completed" || purchase.status === "cancelled" ? (
+                          <div className="relative group">
+                            <button 
+                              disabled
+                              className="p-1.5 sm:p-2 text-gray-400 cursor-not-allowed rounded dark:bg-gray-900/20 flex-shrink-0 opacity-50"
+                              title={purchase.status === "completed" ? "Completed payment edit nhi ho skti purchase ki" : "Cancelled purchases cannot be edited"}
+                            >
+                              <PencilIcon className="w-3 h-3 sm:w-4 sm:h-4" />
+                            </button>
+                            <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 text-xs text-white bg-gray-800 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
+                              {purchase.status === "completed" ? "Completed payment edit nhi ho skti purchase ki" : "Cancelled purchases cannot be edited"}
+                            </div>
+                          </div>
+                        ) : (
+                          <Link to={`/inventory/purchase/edit/${purchase.id}`}>
+                            <button 
+                              className="p-1.5 sm:p-2 text-blue-600 hover:bg-blue-50 rounded dark:hover:bg-blue-900/20 flex-shrink-0"
+                              title="Edit Purchase"
+                            >
+                              <PencilIcon className="w-3 h-3 sm:w-4 sm:h-4" />
+                            </button>
+                          </Link>
+                        )}
                       </div>
                     </td>
                   </tr>

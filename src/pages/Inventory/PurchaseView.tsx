@@ -100,9 +100,24 @@ export default function PurchaseView() {
               <DownloadIcon className="w-4 h-4" />
               Print
             </button>
-            <Link to={`/inventory/purchase/edit/${purchase.id}`}>
-              <Button>Edit Purchase</Button>
-            </Link>
+            {purchase.status === "pending" ? (
+              <Link to={`/inventory/purchase/edit/${purchase.id}`}>
+                <Button>Edit Purchase</Button>
+              </Link>
+            ) : (
+              <div className="relative group">
+                <button
+                  disabled
+                  className="px-4 py-2 bg-gray-400 text-white rounded-lg cursor-not-allowed opacity-50 flex items-center gap-2"
+                  title={purchase.status === "completed" ? "Completed payment edit nhi ho skti purchase ki" : "Cancelled purchases cannot be edited"}
+                >
+                  Edit Purchase
+                </button>
+                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 text-xs text-white bg-gray-800 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
+                  {purchase.status === "completed" ? "Completed payment edit nhi ho skti purchase ki" : "Cancelled purchases cannot be edited"}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

@@ -702,6 +702,11 @@ class PurchaseService {
       throw new Error("Purchase not found");
     }
 
+    // Prevent edits on cancelled purchases
+    if (purchase.status === "cancelled") {
+      throw new Error("Cannot edit cancelled purchases.");
+    }
+
     // Prevent edits on completed purchases that are older than 7 days
     if (purchase.status === "completed") {
       const purchaseDate = new Date(purchase.date);
@@ -713,9 +718,68 @@ class PurchaseService {
       }
     }
 
+    // For pending purchases, enforce restrictions
+    if (purchase.status === "pending") {
+      // Store original product IDs
+      const originalProductIds = new Set(purchase.items.map(item => item.productId));
+      
+      // Prevent editing/deleting old products
+      if (data.items) {
+        for (const oldItem of purchase.items) {
+          const newItem = data.items.find((item: any) => item.productId === oldItem.productId);
+          if (!newItem) {
+            throw new Error(`Cannot delete old products. Product "${oldItem.productName || oldItem.productId}" cannot be removed from pending purchases.`);
+          }
+          
+          // Prevent editing old product cost
+          const oldCost = Number(oldItem.cost || 0);
+          const newCost = Number((newItem as any).cost || 0);
+          if (oldCost !== newCost) {
+            throw new Error(`Cannot update cost for old products. Product "${oldItem.productName || oldItem.productId}" cost cannot be changed.`);
+          }
+        }
+      }
+      
+      // Prevent editing payments
+      if (data.payments !== undefined) {
+        const oldPayments = (purchase.payments as Array<any>) || [];
+        // Check if payments are being modified (not just adding new ones)
+        if (data.payments.length < oldPayments.length) {
+          throw new Error("Cannot delete payments for pending purchases.");
+        }
+        // Check if existing payments are being modified
+        for (let i = 0; i < oldPayments.length; i++) {
+          const oldPayment = oldPayments[i];
+          const newPayment = data.payments[i];
+          if (!newPayment) {
+            throw new Error("Cannot modify existing payments for pending purchases.");
+          }
+          // Check if payment details changed
+          if (oldPayment.type !== newPayment.type || 
+              oldPayment.amount !== newPayment.amount ||
+              oldPayment.bankAccountId !== newPayment.bankAccountId ||
+              oldPayment.cardId !== newPayment.cardId) {
+            throw new Error("Cannot edit existing payments for pending purchases. You can only add new payments.");
+          }
+        }
+      }
+      
+      // Prevent editing tax
+      if (data.tax !== undefined || data.taxType !== undefined) {
+        const oldTax = Number(purchase.tax || 0);
+        const newTax = data.tax !== undefined ? Number(data.tax) : oldTax;
+        const oldTaxType = purchase.taxType || "percent";
+        const newTaxType = data.taxType || oldTaxType;
+        
+        if (oldTax !== newTax || oldTaxType !== newTaxType) {
+          throw new Error("Cannot edit tax for pending purchases.");
+        }
+      }
+    }
+
     const updateData: any = {};
 
-    // Update supplier if name changed
+    // Update supplier if name changed (allowed for all statuses)
     // Update supplier name/phone (store in purchase, not linked via ID)
     if (data.supplierName) {
       updateData.supplierName = data.supplierName;
@@ -942,7 +1006,8 @@ class PurchaseService {
     }>) || [];
     
     if (data.payments) {
-      // Allow payment removal and editing - no restrictions
+      // For pending purchases, restrictions already validated above
+      // For completed purchases, allow full editing
       updateData.payments = data.payments as any;
       // Recalculate remaining balance
       const totalPaid = data.payments.reduce((sum, payment) => sum + (payment.amount || 0), 0);

@@ -120,6 +120,51 @@ class SaleController {
     }
   }
 
+  async updateSale(req: AuthRequest, res: Response) {
+    try {
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      const sale = await saleService.updateSale(
+        id,
+        req.body,
+        req.user!.id
+      );
+      return res.status(200).json({
+        message: "Sale updated successfully",
+        response: {
+          data: sale,
+        },
+        error: null,
+      });
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
+      logger.error("Update sale error:", error);
+      
+      if (error instanceof Error) {
+        if (error.message === "Sale not found") {
+          return res.status(404).json({
+            message: "Sale not found",
+            response: null,
+            error: "Sale not found",
+          });
+        }
+        if (error.message.includes("Cannot edit") || error.message.includes("Cannot delete") || error.message.includes("Cannot update")) {
+          return res.status(400).json({
+            message: error.message,
+            response: null,
+            error: error.message,
+          });
+        }
+      }
+      
+      return res.status(500).json({
+        message: errorMessage,
+        response: null,
+        error: errorMessage,
+      });
+    }
+  }
+
   async addPaymentToSale(req: AuthRequest, res: Response) {
     try {
       const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;

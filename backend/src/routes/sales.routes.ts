@@ -53,6 +53,23 @@ router.post(
   saleController.createSale.bind(saleController)
 );
 
+// Update sale
+router.put(
+  "/:id",
+  authenticate,
+  requirePermission(PERMISSIONS.SALES_CREATE),
+  paramsValidator(
+    Joi.object({
+      id: Joi.string().required().trim().min(1).messages({
+        "string.empty": "Sale ID is required",
+        "any.required": "Sale ID is required",
+      }),
+    })
+  ),
+  bodyValidator(createSaleSchema), // Reuse createSaleSchema for validation
+  saleController.updateSale.bind(saleController)
+);
+
 // Cancel sale
 router.patch(
   "/:id/cancel",

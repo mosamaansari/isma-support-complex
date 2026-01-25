@@ -49,7 +49,7 @@ export default function PurchaseEntry() {
   const { showSuccess, showError } = useAlert();
   const navigate = useNavigate();
   const [selectedProducts, setSelectedProducts] = useState<
-    (PurchaseItem & { product: Product })[]
+    (PurchaseItem & { product: Product; rowId: string })[]
   >([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [date, setDate] = useState(getTodayDate());
@@ -60,6 +60,9 @@ export default function PurchaseEntry() {
   const [loading, setLoading] = useState(false);
   const [isPaymentMethodsOpen, setIsPaymentMethodsOpen] = useState(true);
   const [isSummaryOpen, setIsSummaryOpen] = useState(true);
+  const [purchaseStatus, setPurchaseStatus] = useState<"completed" | "pending" | "cancelled" | null>(null);
+  const [originalProductIds, setOriginalProductIds] = useState<Set<string>>(new Set());
+  const [originalRowIds, setOriginalRowIds] = useState<Set<string>>(new Set());
 
   const {
     register,
@@ -109,6 +112,9 @@ export default function PurchaseEntry() {
       setLoading(true);
       api.getPurchase(id)
         .then((purchase: any) => {
+          // Store purchase status
+          setPurchaseStatus(purchase.status || "pending");
+          
           setValue("supplierName", purchase.supplierName);
           setValue("supplierPhone", purchase.supplierPhone || "");
           // Use the purchase's actual date, not today's date
@@ -119,6 +125,11 @@ export default function PurchaseEntry() {
           setTax(purchase.tax ? Number(purchase.tax) : null);
           setPayments((purchase.payments || []) as PurchasePayment[]);
 
+          // Store original product IDs for pending purchases (to prevent editing/deleting)
+          const originalIds = new Set(purchase.items.map((item: any) => item.productId));
+          setOriginalProductIds(originalIds);
+          const originalRowIdsSet = new Set<string>();
+
           // Load products for items
           const itemsWithProducts = purchase.items.map((item: any) => {
             const product = products.find(p => p.id === item.productId);
@@ -127,9 +138,12 @@ export default function PurchaseEntry() {
             const rawWarehouseQty = Number(item.warehouseQuantity || 0);
             const displayShopQty = priceType === "dozen" ? rawShopQty / 12 : rawShopQty;
             const displayWarehouseQty = priceType === "dozen" ? rawWarehouseQty / 12 : rawWarehouseQty;
+            const rowId = item.productId; // Use productId as rowId for original items
+            originalRowIdsSet.add(rowId);
             return {
               ...item,
               productId: item.productId?.trim() || item.productId,
+              rowId,
               priceType,
               costSingle: item.costSingle ?? item.cost,
               costDozen: item.costDozen ?? ((item.costSingle ?? item.cost ?? 0) * 12),
@@ -145,6 +159,7 @@ export default function PurchaseEntry() {
               product: product || { id: item.productId, name: item.productName } as Product,
             };
           });
+          setOriginalRowIds(originalRowIdsSet);
           setSelectedProducts(itemsWithProducts);
         })
         .catch((err) => {
@@ -174,46 +189,96 @@ export default function PurchaseEntry() {
       return;
     }
 
-    const existingItem = selectedProducts.find(
-      (item) => item.productId === product.id
-    );
-
-    if (existingItem) {
-      setSelectedProducts(
-        selectedProducts.map((item) =>
-          item.productId === product.id
-            ? {
-              ...item,
-              shopQuantity: (item.shopQuantity || 0) + 1,
-              quantity: ((item.shopQuantity || 0) + 1) + (item.warehouseQuantity || 0),
-              total: (item.cost || 0) * (((item.shopQuantity || 0) + 1) + (item.warehouseQuantity || 0))
-            }
-            : item
-        )
+    // In edit mode with pending purchases, check if there's a locked row for this product
+    if (isEdit && purchaseStatus === "pending") {
+      // Check if there's an unlocked (new) row for this product
+      const unlockedRow = selectedProducts.find(
+        (item) => item.productId === product.id && !originalRowIds.has(item.rowId)
       );
+      
+      if (unlockedRow) {
+        // Update the unlocked row's quantity
+        setSelectedProducts(
+          selectedProducts.map((item) =>
+            item.rowId === unlockedRow.rowId
+              ? {
+                ...item,
+                shopQuantity: (item.shopQuantity || 0) + 1,
+                quantity: ((item.shopQuantity || 0) + 1) + (item.warehouseQuantity || 0),
+                total: (item.cost || 0) * (((item.shopQuantity || 0) + 1) + (item.warehouseQuantity || 0))
+              }
+              : item
+          )
+        );
+      } else {
+        // No unlocked row exists, create a new one
+        const rowId = `${product.id}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        
+        setSelectedProducts([
+          ...selectedProducts,
+          {
+            productId: product.id.trim(),
+            productName: product.name,
+            quantity: undefined as any,
+            shopQuantity: undefined as any,
+            warehouseQuantity: undefined as any,
+            cost: undefined as any,
+            priceType: "single",
+            costSingle: undefined,
+            costDozen: undefined,
+            total: 0,
+            product,
+            rowId,
+          },
+        ]);
+      }
     } else {
-      setSelectedProducts([
-        ...selectedProducts,
-        {
-          productId: product.id.trim(),
-          productName: product.name,
-          quantity: undefined as any,
-          shopQuantity: undefined as any,
-          warehouseQuantity: undefined as any,
-          cost: undefined as any,
-          priceType: "single",
-          costSingle: undefined,
-          costDozen: undefined,
-          total: 0,
-          product,
-        },
-      ]);
+      // Create mode: normal behavior - check if product exists
+      const existingItem = selectedProducts.find(
+        (item) => item.productId === product.id
+      );
+
+      if (existingItem) {
+        setSelectedProducts(
+          selectedProducts.map((item) =>
+            item.productId === product.id
+              ? {
+                ...item,
+                shopQuantity: (item.shopQuantity || 0) + 1,
+                quantity: ((item.shopQuantity || 0) + 1) + (item.warehouseQuantity || 0),
+                total: (item.cost || 0) * (((item.shopQuantity || 0) + 1) + (item.warehouseQuantity || 0))
+              }
+              : item
+          )
+        );
+      } else {
+        // New product: Add as new row
+        const rowId = product.id;
+        
+        setSelectedProducts([
+          ...selectedProducts,
+          {
+            productId: product.id.trim(),
+            productName: product.name,
+            quantity: undefined as any,
+            shopQuantity: undefined as any,
+            warehouseQuantity: undefined as any,
+            cost: undefined as any,
+            priceType: "single",
+            costSingle: undefined,
+            costDozen: undefined,
+            total: 0,
+            product,
+            rowId,
+          },
+        ]);
+      }
     }
     setSearchTerm("");
   };
 
   const recalcItem = (
-    item: PurchaseItem & { product: Product },
+    item: PurchaseItem & { product: Product; rowId: string },
     overrides: Partial<PurchaseItem> = {}
   ) => {
     const updated: any = { ...item, ...overrides };
@@ -238,10 +303,15 @@ export default function PurchaseEntry() {
     };
   };
 
-  const updateItemShopQuantity = (productId: string, shopQuantity: number | undefined) => {
+  const updateItemShopQuantity = (rowId: string, shopQuantity: number | undefined) => {
+    // For pending purchases, prevent editing of original products
+    if (isEdit && purchaseStatus === "pending" && originalRowIds.has(rowId)) {
+      showError("Old products cannot be edited. You can only add new products.");
+      return;
+    }
     setSelectedProducts(
       selectedProducts.map((item) => {
-        if (item.productId === productId) {
+        if (item.rowId === rowId) {
           return recalcItem(item as any, { shopQuantity });
         }
         return item;
@@ -249,10 +319,15 @@ export default function PurchaseEntry() {
     );
   };
 
-  const updateItemWarehouseQuantity = (productId: string, warehouseQuantity: number | undefined) => {
+  const updateItemWarehouseQuantity = (rowId: string, warehouseQuantity: number | undefined) => {
+    // For pending purchases, prevent editing of original products
+    if (isEdit && purchaseStatus === "pending" && originalRowIds.has(rowId)) {
+      showError("Old products cannot be edited. You can only add new products.");
+      return;
+    }
     setSelectedProducts(
       selectedProducts.map((item) => {
-        if (item.productId === productId) {
+        if (item.rowId === rowId) {
           return recalcItem(item as any, { warehouseQuantity });
         }
         return item;
@@ -260,10 +335,15 @@ export default function PurchaseEntry() {
     );
   };
 
-  const updateItemPriceType = (productId: string, priceType: "single" | "dozen") => {
+  const updateItemPriceType = (rowId: string, priceType: "single" | "dozen") => {
+    // For pending purchases, prevent editing of original products
+    if (isEdit && purchaseStatus === "pending" && originalRowIds.has(rowId)) {
+      showError("Old products cannot be edited. You can only add new products.");
+      return;
+    }
     setSelectedProducts(
       selectedProducts.map((item: any) => {
-        if (item.productId !== productId) return item;
+        if (item.rowId !== rowId) return item;
         // Keep existing prices and derive missing one when switching type
         const currentSingle = item.costSingle ?? item.cost ?? undefined;
         const currentDozen = item.costDozen ?? (currentSingle !== undefined ? currentSingle * 12 : undefined);
@@ -304,10 +384,15 @@ export default function PurchaseEntry() {
     );
   };
 
-  const updateItemPrice = (productId: string, price: number | undefined) => {
+  const updateItemPrice = (rowId: string, price: number | undefined) => {
+    // For pending purchases, prevent editing of original products
+    if (isEdit && purchaseStatus === "pending" && originalRowIds.has(rowId)) {
+      showError("Old products cannot be edited. You can only add new products.");
+      return;
+    }
     setSelectedProducts(
       selectedProducts.map((item) => {
-        if (item.productId === productId) {
+        if (item.rowId === rowId) {
           const priceType: "single" | "dozen" = (item as any).priceType || "single";
           if (price === undefined || price === null) {
             return recalcItem(item as any, { cost: undefined, costSingle: undefined, costDozen: undefined } as any);
@@ -322,9 +407,14 @@ export default function PurchaseEntry() {
     );
   };
 
-  const removeItem = (productId: string) => {
+  const removeItem = (rowId: string) => {
+    // For pending purchases, prevent deletion of original products
+    if (isEdit && purchaseStatus === "pending" && originalRowIds.has(rowId)) {
+      showError("Old products cannot be deleted. You can only add new products.");
+      return;
+    }
     setSelectedProducts(
-      selectedProducts.filter((item) => item.productId !== productId)
+      selectedProducts.filter((item) => item.rowId !== rowId)
     );
   };
 
@@ -673,9 +763,14 @@ export default function PurchaseEntry() {
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200 dark:bg-gray-800 dark:divide-gray-700">
-                        {selectedProducts.map((item) => (
+                        {selectedProducts.map((item) => {
+                          const isOldProduct = originalRowIds.has(item.rowId);
+                          const isPendingPurchase = purchaseStatus === "pending";
+                          const disableOldProductFields = isEdit && isPendingPurchase && isOldProduct;
+                          
+                          return (
                           <tr
-                            key={item.productId}
+                            key={item.rowId}
                             className="hover:bg-gray-50 dark:hover:bg-gray-700/50"
                           >
                             <td className="p-2 overflow-hidden">
@@ -688,11 +783,12 @@ export default function PurchaseEntry() {
                             <td className="p-2">
                               <Select
                                 value={((item as any).priceType || "single") as any}
-                                onChange={(value) => updateItemPriceType(item.productId, value as any)}
+                                onChange={(value) => updateItemPriceType(item.rowId, value as any)}
                                 options={[
                                   { value: "single", label: "Per Qty" },
                                   { value: "dozen", label: "Dozen" },
                                 ]}
+                                disabled={disableOldProductFields}
                               />
                             </td>
                             <td className="p-2">
@@ -708,14 +804,15 @@ export default function PurchaseEntry() {
                                 onChange={(e) => {
                                   const value = e.target.value;
                                   if (value === "" || value === null || value === undefined) {
-                                    updateItemPrice(item.productId, undefined);
+                                    updateItemPrice(item.rowId, undefined);
                                   } else {
                                     const numValue = parseFloat(value);
-                                    updateItemPrice(item.productId, isNaN(numValue) ? undefined : numValue);
+                                    updateItemPrice(item.rowId, isNaN(numValue) ? undefined : numValue);
                                   }
                                 }}
                                 className="w-full text-[11px]"
                                 placeholder="0"
+                                disabled={disableOldProductFields}
                               />
                             </td>
                             <td className="p-2 text-[11px] text-gray-700 dark:text-gray-300">
@@ -730,12 +827,13 @@ export default function PurchaseEntry() {
                                   onChange={(e) => {
                                     const value = e.target.value;
                                     if (value === "" || value === null || value === undefined) {
-                                      updateItemShopQuantity(item.productId, undefined);
+                                      updateItemShopQuantity(item.rowId, undefined);
                                     } else {
                                       const numValue = parseInt(value);
-                                      updateItemShopQuantity(item.productId, isNaN(numValue) ? undefined : numValue);
+                                      updateItemShopQuantity(item.rowId, isNaN(numValue) ? undefined : numValue);
                                     }
                                   }}
+                                  disabled={disableOldProductFields}
                                   className="w-full text-[11px]"
                                   placeholder="0"
                                 />
@@ -755,12 +853,13 @@ export default function PurchaseEntry() {
                                   onChange={(e) => {
                                     const value = e.target.value;
                                     if (value === "" || value === null || value === undefined) {
-                                      updateItemWarehouseQuantity(item.productId, undefined);
+                                      updateItemWarehouseQuantity(item.rowId, undefined);
                                     } else {
                                       const numValue = parseInt(value);
-                                      updateItemWarehouseQuantity(item.productId, isNaN(numValue) ? undefined : numValue);
+                                      updateItemWarehouseQuantity(item.rowId, isNaN(numValue) ? undefined : numValue);
                                     }
                                   }}
+                                  disabled={disableOldProductFields}
                                   className="w-full text-[11px]"
                                   placeholder="0"
                                 />
@@ -777,15 +876,31 @@ export default function PurchaseEntry() {
                               </div>
                             </td>
                             <td className="p-2 text-center">
-                              <button
-                                onClick={() => removeItem(item.productId)}
-                                className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 transition-colors"
-                              >
-                                <TrashBinIcon className="w-5 h-5" />
-                              </button>
+                              {disableOldProductFields ? (
+                                <div className="relative group">
+                                  <button
+                                    disabled
+                                    className="text-gray-400 cursor-not-allowed opacity-50"
+                                    title="Cannot delete old products from pending purchase"
+                                  >
+                                    <TrashBinIcon className="w-5 h-5" />
+                                  </button>
+                                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 text-xs text-white bg-gray-800 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
+                                    Cannot delete old products from pending purchase
+                                  </div>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => removeItem(item.rowId)}
+                                  className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 transition-colors"
+                                >
+                                  <TrashBinIcon className="w-5 h-5" />
+                                </button>
+                              )}
                             </td>
                           </tr>
-                        ))}
+                        );
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -872,19 +987,31 @@ export default function PurchaseEntry() {
                         <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
                           Payment {index + 1}
                         </span>
-                        <button
-                          onClick={() => removePayment(index)}
-                          className="text-red-600 hover:text-red-700"
-                        >
-                          <TrashBinIcon className="w-4 h-4" />
-                        </button>
+                        {!(isEdit && purchaseStatus === "pending") && (
+                          <button
+                            onClick={() => removePayment(index)}
+                            className="text-red-600 hover:text-red-700"
+                          >
+                            <TrashBinIcon className="w-4 h-4" />
+                          </button>
+                        )}
+                        {isEdit && purchaseStatus === "pending" && (
+                          <span className="text-xs text-gray-500 dark:text-gray-400"></span>
+                        )}
                       </div>
                       <div className="space-y-2">
                         <div>
                           <Label className="text-xs">Payment Type <span className="text-error-500">*</span></Label>
                           <Select
                             value={payment.type}
-                            onChange={(value) => updatePayment(index, "type", value)}
+                            onChange={(value) => {
+                              if (isEdit && purchaseStatus === "pending") {
+                                showError("Payments cannot be edited for pending purchases.");
+                                return;
+                              }
+                              updatePayment(index, "type", value);
+                            }}
+                            disabled={isEdit && purchaseStatus === "pending"}
                             options={[
                               { value: "cash", label: "Cash" },
                               { value: "bank_transfer", label: "Bank Transfer" },
@@ -904,7 +1031,14 @@ export default function PurchaseEntry() {
                               <>
                                 <Select
                                   value={payment.bankAccountId || ""}
-                                  onChange={(value) => updatePayment(index, "bankAccountId", value)}
+                                  onChange={(value) => {
+                                    if (isEdit && purchaseStatus === "pending") {
+                                      showError("Payments cannot be edited for pending purchases.");
+                                      return;
+                                    }
+                                    updatePayment(index, "bankAccountId", value);
+                                  }}
+                                  disabled={isEdit && purchaseStatus === "pending"}
                                   options={[
                                     { value: "", label: "Select a bank account" },
                                     ...bankAccounts
@@ -938,9 +1072,14 @@ export default function PurchaseEntry() {
                             max={String(total - totalPaid + (payment.amount || 0))}
                             value={(payment.amount !== null && payment.amount !== undefined && payment.amount !== 0) ? String(payment.amount) : ""}
                             onChange={(e) => {
+                              if (isEdit && purchaseStatus === "pending") {
+                                showError("Payments cannot be edited for pending purchases.");
+                                return;
+                              }
                               const value = e.target.value === "" ? undefined : parseFloat(e.target.value);
                               updatePayment(index, "amount", isNaN(value as any) || value === null ? undefined : value);
                             }}
+                            disabled={isEdit && purchaseStatus === "pending"}
                             placeholder="Enter amount (optional)"
                           />
                         </div>
@@ -954,15 +1093,22 @@ export default function PurchaseEntry() {
                       </p>
                     </div>
                   )}
-                  <Button
-                    onClick={addPayment}
-                    variant="outline"
-                    size="sm"
-                    className="w-full"
-                  >
-                    <PlusIcon className="w-4 h-4 mr-2" />
-                    Add Payment
-                  </Button>
+                  {!(isEdit && purchaseStatus === "pending") && (
+                    <Button
+                      onClick={addPayment}
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                    >
+                      <PlusIcon className="w-4 h-4 mr-2" />
+                      Add Payment
+                    </Button>
+                  )}
+                  {isEdit && purchaseStatus === "pending" && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
+                      Payments cannot be added or modified for pending purchases
+                    </p>
+                  )}
                   {totalPaid > total && (
                     <div className="p-2 text-sm text-error-500 bg-error-50 border border-error-200 rounded dark:bg-error-900/20 dark:border-error-700">
                       Total paid amount cannot exceed total amount.
@@ -1005,12 +1151,21 @@ export default function PurchaseEntry() {
                         value={tax}
                         type={taxType}
                         onValueChange={(value) => {
+                          if (isEdit && purchaseStatus === "pending") {
+                            showError("Tax cannot be edited for pending purchases.");
+                            return;
+                          }
                           setTax(value || null);
                           setValue("tax", value || null);
                         }}
                         onTypeChange={(type) => {
+                          if (isEdit && purchaseStatus === "pending") {
+                            showError("Tax cannot be edited for pending purchases.");
+                            return;
+                          }
                           setTaxType(type);
                         }}
+                        disabled={isEdit && purchaseStatus === "pending"}
                         placeholder="0"
                         className="w-32"
                       />

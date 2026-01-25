@@ -12,7 +12,7 @@ import { useModal } from "../../hooks/useModal";
 import Pagination from "../../components/ui/Pagination";
 import PageSizeSelector from "../../components/ui/PageSizeSelector";
 import DatePicker from "../../components/form/DatePicker";
-import { DownloadIcon } from "../../icons";
+import { DownloadIcon, PencilIcon } from "../../icons";
 import { FaEye, FaCreditCard, FaListAlt, FaUndo } from "react-icons/fa";
 import { SalePayment } from "../../types";
 import { extractErrorMessage } from "../../utils/errorHandler";
@@ -533,6 +533,25 @@ export default function SalesList() {
                             title="Add Payment"
                           >
                             <FaCreditCard className="w-3 h-3 sm:w-4 sm:h-4" />
+                          </button>
+                        )}
+                        {/* Edit Sale Button */}
+                        {sale.status === "pending" ? (
+                          <Link to={`/sales/edit/${sale.id}`}>
+                            <button
+                              className="p-1.5 sm:p-2 text-blue-600 hover:bg-blue-50 rounded dark:hover:bg-blue-900/20 flex-shrink-0"
+                              title="Edit Sale"
+                            >
+                              <PencilIcon className="w-3 h-3 sm:w-4 sm:h-4" />
+                            </button>
+                          </Link>
+                        ) : (
+                          <button
+                            disabled
+                            className="p-1.5 sm:p-2 text-gray-400 cursor-not-allowed rounded dark:bg-gray-900/20 flex-shrink-0 opacity-50"
+                            title={sale.status === "completed" ? "Completed sales cannot be edited" : "Cancelled sales cannot be edited"}
+                          >
+                            <PencilIcon className="w-3 h-3 sm:w-4 sm:h-4" />
                           </button>
                         )}
                         {/* Cancel Sale Button */}

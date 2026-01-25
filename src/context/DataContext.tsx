@@ -47,6 +47,7 @@ interface DataContextType {
   sales: Sale[];
   salesPagination: { page: number; pageSize: number; total: number; totalPages: number };
   addSale: (sale: Omit<Sale, "id" | "createdAt">) => Promise<Sale>;
+  updateSale: (id: string, sale: Partial<Omit<Sale, "id" | "createdAt">>) => Promise<Sale>;
   cancelSale: (id: string, refundData?: { refundMethod: "cash" | "bank_transfer" | "card"; bankAccountId?: string; cardId?: string }) => Promise<void>;
   addPaymentToSale: (id: string, payment: SalePayment & { date?: string }) => Promise<void>;
   getSale: (idOrBillNumber: string) => Sale | undefined;
@@ -560,6 +561,53 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       return newSale;
     } catch (err: any) {
       setError(extractErrorMessage(err) || "Failed to create sale");
+      throw err;
+    }
+  };
+
+  const updateSale = async (id: string, saleData: Partial<Omit<Sale, "id" | "createdAt">>) => {
+    try {
+      setError(null);
+      // Transform sale data for API
+      const apiData: any = {};
+      
+      if (saleData.items) {
+        apiData.items = saleData.items.map((item) => ({
+          productId: item.productId,
+          productName: item.productName,
+          quantity: item.quantity,
+          shopQuantity: (item as any).shopQuantity ?? item.quantity,
+          warehouseQuantity: (item as any).warehouseQuantity ?? 0,
+          unitPrice: item.unitPrice,
+          customPrice: item.customPrice || undefined,
+          priceType: (item as any).priceType,
+          priceSingle: (item as any).priceSingle,
+          priceDozen: (item as any).priceDozen,
+          discount: item.discount ?? 0,
+          discountType: item.discountType || "percent",
+        }));
+      }
+      
+      if (saleData.customerName !== undefined) apiData.customerName = saleData.customerName;
+      if (saleData.customerPhone !== undefined) apiData.customerPhone = saleData.customerPhone;
+      if (saleData.customerCity !== undefined) apiData.customerCity = saleData.customerCity;
+      if (saleData.discount !== undefined) apiData.discount = saleData.discount;
+      if (saleData.discountType !== undefined) apiData.discountType = saleData.discountType;
+      if (saleData.tax !== undefined) apiData.tax = saleData.tax;
+      if (saleData.taxType !== undefined) apiData.taxType = saleData.taxType;
+      if (saleData.subtotal !== undefined) apiData.subtotal = saleData.subtotal;
+      if (saleData.total !== undefined) apiData.total = saleData.total;
+      
+      if (saleData.payments !== undefined && Array.isArray(saleData.payments)) {
+        apiData.payments = saleData.payments;
+      }
+
+      const updatedSale = await api.updateSale(id, apiData);
+      await refreshSales(salesPagination?.page || 1, salesPagination?.pageSize || 10);
+      await refreshProducts(productsPagination?.page || 1, productsPagination?.pageSize || 10); // Refresh products to update stock
+      return updatedSale;
+    } catch (err: any) {
+      setError(extractErrorMessage(err) || "Failed to update sale");
       throw err;
     }
   };
@@ -1157,6 +1205,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     sales,
     salesPagination,
     addSale,
+    updateSale,
     cancelSale,
     addPaymentToSale,
     getSale,

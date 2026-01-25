@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useParams } from "react-router";
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import * as yup from "yup";
@@ -14,6 +14,7 @@ import Select from "../../components/form/Select";
 import TaxDiscountInput from "../../components/form/TaxDiscountInput";
 import Button from "../../components/ui/button/Button";
 import { TrashBinIcon, PlusIcon, ChevronDownIcon, ChevronUpIcon } from "../../icons";
+import api from "../../services/api";
 import { getTodayDate, formatDateToString, formatDateToLocalISO } from "../../utils/dateHelpers";
 import { extractErrorMessage, extractValidationErrors } from "../../utils/errorHandler";
 import { restrictDecimalInput } from "../../utils/numberHelpers";
@@ -40,11 +41,13 @@ const salesEntrySchema = yup.object().shape({
 });
 
 export default function SalesEntry() {
-  const { products, currentUser, addSale, sales, loading, error, bankAccounts, refreshBankAccounts, cards, refreshCards, refreshProducts } = useData();
-  const { showError } = useAlert();
+  const { id } = useParams<{ id: string }>();
+  const isEdit = !!id;
+  const { products, currentUser, addSale, updateSale, sales, loading, error, bankAccounts, refreshBankAccounts, cards, refreshCards, refreshProducts } = useData();
+  const { showError, showSuccess } = useAlert();
   const navigate = useNavigate();
   const [selectedProducts, setSelectedProducts] = useState<
-    (SaleItem & { product: Product })[]
+    (SaleItem & { product: Product; rowId: string })[]
   >([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [payments, setPayments] = useState<SalePayment[]>([]);
@@ -60,6 +63,11 @@ export default function SalesEntry() {
   const bankAccountsLoadedRef = useRef(false);
   const [isPaymentDetailsOpen, setIsPaymentDetailsOpen] = useState(true);
   const [isBillSummaryOpen, setIsBillSummaryOpen] = useState(true);
+  const [saleStatus, setSaleStatus] = useState<"completed" | "pending" | "cancelled" | null>(null);
+  const [originalProductIds, setOriginalProductIds] = useState<Set<string>>(new Set());
+  const [originalRowIds, setOriginalRowIds] = useState<Set<string>>(new Set());
+  const [loadingSale, setLoadingSale] = useState(false);
+  const [originalPaymentsLength, setOriginalPaymentsLength] = useState(0);
 
   const {
     register,
@@ -110,6 +118,88 @@ export default function SalesEntry() {
       setIsBillSummaryOpen(true);
     }
   }, [selectedProducts.length]);
+
+  // Load sale data for edit
+  useEffect(() => {
+    if (isEdit && id) {
+      setLoadingSale(true);
+      api.getSale(id)
+        .then((sale: any) => {
+          // Store sale status
+          setSaleStatus(sale.status || "pending");
+          
+          setValue("customerName", sale.customerName || "");
+          setValue("customerPhone", sale.customerPhone || "");
+          setValue("customerCity", sale.customerCity || "");
+          const saleDate = sale.date ? new Date(sale.date).toISOString().split('T')[0] : getTodayDate();
+          setDate(saleDate);
+          setValue("date", saleDate);
+          setGlobalTaxType((sale.taxType as "percent" | "value") || "percent");
+          setGlobalTax(sale.tax ? Number(sale.tax) : null);
+          setGlobalDiscountType((sale.discountType as "percent" | "value") || "percent");
+          setGlobalDiscount(sale.discount ? Number(sale.discount) : null);
+          setPayments((sale.payments || []) as SalePayment[]);
+          setOriginalPaymentsLength((sale.payments || []).length);
+
+          // Store original row IDs for pending sales (to prevent editing/deleting)
+          const originalIds = new Set(sale.items.map((item: any) => item.productId));
+          setOriginalProductIds(originalIds);
+          const originalRowIdsSet = new Set<string>();
+
+          // Load products for items
+          const itemsWithProducts = sale.items.map((item: any) => {
+            const product = products.find(p => p.id === item.productId);
+            const priceType: "single" | "dozen" = item.priceType || "single";
+            const rawShopQty = Number(item.shopQuantity || 0);
+            const rawWarehouseQty = Number(item.warehouseQuantity || 0);
+            const displayShopQty = priceType === "dozen" ? rawShopQty / 12 : rawShopQty;
+            const displayWarehouseQty = priceType === "dozen" ? rawWarehouseQty / 12 : rawWarehouseQty;
+            const rowId = item.productId; // Use productId as rowId for original items
+            originalRowIdsSet.add(rowId);
+            return {
+              ...item,
+              productId: item.productId?.trim() || item.productId,
+              rowId,
+              priceType,
+              priceSingle: item.priceSingle ?? item.unitPrice,
+              priceDozen: item.priceDozen ?? ((item.priceSingle ?? item.unitPrice ?? 0) * 12),
+              customPrice: item.customPrice ?? null,
+              shopQuantity: displayShopQty,
+              warehouseQuantity: displayWarehouseQty,
+              quantity: priceType === "dozen"
+                ? (displayShopQty + displayWarehouseQty) * 12
+                : (displayShopQty + displayWarehouseQty),
+              product: product || { id: item.productId, name: item.productName } as Product,
+            };
+          });
+          setOriginalRowIds(originalRowIdsSet);
+          setSelectedProducts(itemsWithProducts);
+        })
+        .catch((err) => {
+          console.error("Error loading sale:", err);
+          showError("Failed to load sale data");
+          navigate("/sales");
+        })
+        .finally(() => setLoadingSale(false));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEdit, id]);
+
+  if (loadingSale) {
+    return (
+      <>
+        <PageMeta
+          title={`${isEdit ? "Edit" : "Add"} Sale | Isma Sports Complex`}
+          description={`${isEdit ? "Edit" : "Add"} sale entry`}
+        />
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="text-center">
+            <p className="text-gray-500">Loading sale data...</p>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   if (!currentUser) {
     return (
@@ -168,11 +258,21 @@ export default function SalesEntry() {
   };
 
   const removePayment = (index: number) => {
+    // For pending sales, prevent deleting old payments
+    if (isEdit && saleStatus === "pending" && index < originalPaymentsLength) {
+      showError("Cannot delete old payments for pending sales. You can only add new payments.");
+      return;
+    }
     // Allow removing payments even if it's the last one (payments are optional)
     setPayments(payments.filter((_, i) => i !== index));
   };
 
   const updatePayment = (index: number, field: keyof SalePayment, value: any) => {
+    // For pending sales, prevent editing old payments
+    if (isEdit && saleStatus === "pending" && index < originalPaymentsLength) {
+      showError("Cannot edit old payments for pending sales. You can only add new payments.");
+      return;
+    }
     setPayments(
       payments.map((payment, i) => {
         if (i === index) {
@@ -196,7 +296,7 @@ export default function SalesEntry() {
   };
 
   const recalcItemTotals = (
-    item: SaleItem & { product: Product },
+    item: SaleItem & { product: Product; rowId: string },
     overrides: Partial<SaleItem & { shopQuantity?: number; warehouseQuantity?: number }> = {}
   ) => {
     const updated = { ...item, ...overrides };
@@ -270,57 +370,183 @@ export default function SalesEntry() {
   };
 
   const addProductToCart = (product: Product) => {
-    const existingItem = selectedProducts.find(
-      (item) => item.productId === product.id
-    );
-
-    if (existingItem) {
-      setSelectedProducts(
-        selectedProducts.map((item) =>
-          item.productId === product.id
-            ? (() => {
-              const nextShopQty = (item.shopQuantity || 0) + 1;
-              const priceType: "single" | "dozen" = (item as any).priceType || "single";
-              const nextShopUnits = priceType === "dozen" ? nextShopQty * 12 : nextShopQty;
-              if (nextShopUnits > (item.product.shopQuantity || 0)) {
-                showError(`Shop stock for ${item.productName} is only ${item.product.shopQuantity || 0}`);
-                return item;
-              }
-              return recalcItemTotals(item as any, {
-                shopQuantity: nextShopQty,
-                warehouseQuantity: item.warehouseQuantity || 0,
-              });
-            })()
-            : item
-        )
+    // In edit mode with pending sales, check if there's a locked row for this product
+    if (isEdit && saleStatus === "pending") {
+      // Check if there's an unlocked (new) row for this product
+      const unlockedRow = selectedProducts.find(
+        (item) => item.productId === product.id && !originalRowIds.has(item.rowId)
       );
-    } else {
-      const baseItem = {
-        productId: product.id,
-        productName: product.name,
-        quantity: 1,
-        shopQuantity: null as any,
-        warehouseQuantity: null as any,
-        unitPrice: product.salePrice || 0,
-        customPrice: undefined,
-        priceType: "single",
-        priceSingle: product.salePrice || 0,
-        priceDozen: (product.salePrice || 0) * 12,
-        discount: undefined,
-        discountType: "percent",
-        total: 0,
-        product,
-      } as SaleItem & { product: Product };
+      
+      if (unlockedRow) {
+        // Update the unlocked row's quantity - but only if there's stock available
+        const currentShopQty = unlockedRow.shopQuantity || 0;
+        const currentWarehouseQty = unlockedRow.warehouseQuantity || 0;
+        const priceType: "single" | "dozen" = (unlockedRow as any).priceType || "single";
+        
+        // Use fresh product data from search dropdown, not stale data from unlockedRow
+        const availableShop = product.shopQuantity ?? 0;
+        const availableWarehouse = product.warehouseQuantity ?? 0;
+        const totalAvailable = availableShop + availableWarehouse;
+        
+        // If no stock available at all, don't auto-increment, just show message
+        if (totalAvailable === 0) {
+          showError(`No stock available for ${unlockedRow.productName}. Please manually adjust quantities.`);
+          return;
+        }
+        
+        // Try to increment shop quantity first, if not available try warehouse
+        let nextShopQty = currentShopQty;
+        let nextWarehouseQty = currentWarehouseQty;
+        
+        const qtyMultiplier = priceType === "dozen" ? 12 : 1;
+        const incrementUnits = 1 * qtyMultiplier;
+        
+        if (availableShop >= (currentShopQty * qtyMultiplier) + incrementUnits) {
+          // Add to shop
+          nextShopQty = currentShopQty + 1;
+          setSelectedProducts(
+            selectedProducts.map((item) =>
+              item.rowId === unlockedRow.rowId
+                ? recalcItemTotals({ ...item, product } as any, {
+                    shopQuantity: nextShopQty,
+                    warehouseQuantity: nextWarehouseQty,
+                  })
+                : item
+            )
+          );
+        } else if (availableWarehouse >= (currentWarehouseQty * qtyMultiplier) + incrementUnits) {
+          // Add to warehouse
+          nextWarehouseQty = currentWarehouseQty + 1;
+          setSelectedProducts(
+            selectedProducts.map((item) =>
+              item.rowId === unlockedRow.rowId
+                ? recalcItemTotals({ ...item, product } as any, {
+                    shopQuantity: nextShopQty,
+                    warehouseQuantity: nextWarehouseQty,
+                  })
+                : item
+            )
+          );
+        } else {
+          // No space in either location
+          showError(`Insufficient stock for ${unlockedRow.productName}. Shop: ${availableShop}, Warehouse: ${availableWarehouse}`);
+        }
+      } else {
+        // No unlocked row exists, create a new one (with empty quantities - user will fill them)
+        const rowId = `${product.id}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        
+        const baseItem = {
+          productId: product.id,
+          productName: product.name,
+          quantity: 1,
+          shopQuantity: null as any,
+          warehouseQuantity: null as any,
+          unitPrice: product.salePrice || 0,
+          customPrice: undefined,
+          priceType: "single",
+          priceSingle: product.salePrice || 0,
+          priceDozen: (product.salePrice || 0) * 12,
+          discount: undefined,
+          discountType: "percent",
+          total: 0,
+          product,
+          rowId,
+        } as SaleItem & { product: Product; rowId: string };
 
-      setSelectedProducts([...selectedProducts, recalcItemTotals(baseItem)]);
+        setSelectedProducts([...selectedProducts, recalcItemTotals(baseItem)]);
+      }
+    } else {
+      // Create mode: normal behavior - check if product exists
+      const existingItem = selectedProducts.find(
+        (item) => item.productId === product.id
+      );
+
+      if (existingItem) {
+        // Product already exists - update quantity only if stock available
+        const currentShopQty = existingItem.shopQuantity || 0;
+        const currentWarehouseQty = existingItem.warehouseQuantity || 0;
+        const priceType: "single" | "dozen" = (existingItem as any).priceType || "single";
+        
+        // Use fresh product data from search dropdown, not stale data from existingItem
+        const availableShop = product.shopQuantity ?? 0;
+        const availableWarehouse = product.warehouseQuantity ?? 0;
+        const totalAvailable = availableShop + availableWarehouse;
+        
+        // If no stock available at all, don't auto-increment
+        if (totalAvailable === 0) {
+          showError(`No stock available for ${existingItem.productName}. Please manually adjust quantities.`);
+          return;
+        }
+        
+        // Try to increment shop quantity first, if not available try warehouse
+        let nextShopQty = currentShopQty;
+        let nextWarehouseQty = currentWarehouseQty;
+        
+        const qtyMultiplier = priceType === "dozen" ? 12 : 1;
+        const incrementUnits = 1 * qtyMultiplier;
+        
+        if (availableShop >= (currentShopQty * qtyMultiplier) + incrementUnits) {
+          // Add to shop
+          nextShopQty = currentShopQty + 1;
+          setSelectedProducts(
+            selectedProducts.map((item) =>
+              item.productId === product.id
+                ? recalcItemTotals({ ...item, product } as any, {
+                    shopQuantity: nextShopQty,
+                    warehouseQuantity: nextWarehouseQty,
+                  })
+                : item
+            )
+          );
+        } else if (availableWarehouse >= (currentWarehouseQty * qtyMultiplier) + incrementUnits) {
+          // Add to warehouse
+          nextWarehouseQty = currentWarehouseQty + 1;
+          setSelectedProducts(
+            selectedProducts.map((item) =>
+              item.productId === product.id
+                ? recalcItemTotals({ ...item, product } as any, {
+                    shopQuantity: nextShopQty,
+                    warehouseQuantity: nextWarehouseQty,
+                  })
+                : item
+            )
+          );
+        } else {
+          // No space in either location
+          showError(`Insufficient stock for ${existingItem.productName}. Shop: ${availableShop}, Warehouse: ${availableWarehouse}`);
+        }
+      } else {
+        // New product: Add as new row (with empty quantities - user will fill them)
+        const rowId = product.id;
+        
+        const baseItem = {
+          productId: product.id,
+          productName: product.name,
+          quantity: 1,
+          shopQuantity: null as any,
+          warehouseQuantity: null as any,
+          unitPrice: product.salePrice || 0,
+          customPrice: undefined,
+          priceType: "single",
+          priceSingle: product.salePrice || 0,
+          priceDozen: (product.salePrice || 0) * 12,
+          discount: undefined,
+          discountType: "percent",
+          total: 0,
+          product,
+          rowId,
+        } as SaleItem & { product: Product; rowId: string };
+
+        setSelectedProducts([...selectedProducts, recalcItemTotals(baseItem)]);
+      }
     }
     setSearchTerm("");
   };
 
-  const updateItemPriceType = (productId: string, priceType: "single" | "dozen") => {
+  const updateItemPriceType = (rowId: string, priceType: "single" | "dozen") => {
     setSelectedProducts(
       selectedProducts.map((item: any) => {
-        if (item.productId !== productId) return item;
+        if (item.rowId !== rowId) return item;
 
         const unitPrice = item.unitPrice || 0;
         const currentSingle =
@@ -345,10 +571,10 @@ export default function SalesEntry() {
     );
   };
 
-  const updateItemPrice = (productId: string, price: number | undefined) => {
+  const updateItemPrice = (rowId: string, price: number | undefined) => {
     setSelectedProducts(
       selectedProducts.map((item: any) => {
-        if (item.productId === productId) {
+        if (item.rowId === rowId) {
           const priceType: "single" | "dozen" = item.priceType || "single";
           // Allow 0 price - user can intentionally set price to 0
           if (price === 0) {
@@ -395,7 +621,7 @@ export default function SalesEntry() {
   };
 
   const updateItemLocationQuantity = (
-    productId: string,
+    rowId: string,
     location: "shop" | "warehouse",
     rawQty: string
   ) => {
@@ -403,10 +629,12 @@ export default function SalesEntry() {
     const quantity = (rawQty === "" || Number.isNaN(parsed)) ? null : parsed;
     setSelectedProducts(
       selectedProducts.map((item) => {
-        if (item.productId === productId) {
+        if (item.rowId === rowId) {
           const priceType: "single" | "dozen" = (item as any).priceType || "single";
-          const availableShop = item.product?.shopQuantity ?? 0;
-          const availableWarehouse = item.product?.warehouseQuantity ?? 0;
+          // Get fresh product data from products array
+          const freshProduct = products.find(p => p.id === item.productId);
+          const availableShop = freshProduct?.shopQuantity ?? item.product?.shopQuantity ?? 0;
+          const availableWarehouse = freshProduct?.warehouseQuantity ?? item.product?.warehouseQuantity ?? 0;
           const qtyMultiplier = priceType === "dozen" ? 12 : 1;
           const unitsToCheck = quantity !== null ? quantity * qtyMultiplier : null;
           if (location === "shop" && unitsToCheck !== null && unitsToCheck > availableShop) {
@@ -431,10 +659,10 @@ export default function SalesEntry() {
     );
   };
 
-  const updateItemDiscount = (productId: string, discount: number | undefined) => {
+  const updateItemDiscount = (rowId: string, discount: number | undefined) => {
     setSelectedProducts(
       selectedProducts.map((item) => {
-        if (item.productId === productId) {
+        if (item.rowId === rowId) {
           return recalcItemTotals(item as any, { discount: discount ?? undefined });
         }
         return item;
@@ -442,10 +670,10 @@ export default function SalesEntry() {
     );
   };
 
-  const updateItemDiscountType = (productId: string, discountType: "percent" | "value") => {
+  const updateItemDiscountType = (rowId: string, discountType: "percent" | "value") => {
     setSelectedProducts(
       selectedProducts.map((item) => {
-        if (item.productId === productId) {
+        if (item.rowId === rowId) {
           return recalcItemTotals(item as any, { discountType });
         }
         return item;
@@ -453,9 +681,13 @@ export default function SalesEntry() {
     );
   };
 
-  const removeItem = (productId: string) => {
+  const removeItem = (rowId: string) => {
+    if (isEdit && saleStatus === "pending" && originalRowIds.has(rowId)) {
+      showError("Old products cannot be deleted. You can only add new products.");
+      return;
+    }
     setSelectedProducts(
-      selectedProducts.filter((item) => item.productId !== productId)
+      selectedProducts.filter((item) => item.rowId !== rowId)
     );
   };
 
@@ -528,8 +760,8 @@ export default function SalesEntry() {
         return;
       }
 
-      const availableShop = item.product?.shopQuantity ?? 0;
-      const availableWarehouse = item.product?.warehouseQuantity ?? 0;
+      const availableShop = products.find(p => p.id === item.productId)?.shopQuantity ?? item.product?.shopQuantity ?? 0;
+      const availableWarehouse = products.find(p => p.id === item.productId)?.warehouseQuantity ?? item.product?.warehouseQuantity ?? 0;
       const shopUnits = priceType === "dozen" ? shopEntered * 12 : shopEntered;
       const warehouseUnits = priceType === "dozen" ? warehouseEntered * 12 : warehouseEntered;
       if (shopUnits > availableShop) {
@@ -541,7 +773,6 @@ export default function SalesEntry() {
         return;
       }
     }
-    console.log("selectedProducts", selectedProducts)
     const { subtotal, total } = calculateTotals();
     const totalPaid = payments.reduce((sum, payment) => sum + (payment.amount ?? 0), 0);
 
@@ -658,10 +889,27 @@ export default function SalesEntry() {
         saleData.paymentType = validPayments[0]?.type || "cash";
       }
 
-      const createdSale = await addSale(saleData);
-
-      // Redirect to bill print page using the bill number from the backend
-      navigate(`/sales/bill/${createdSale.billNumber}`);
+      if (isEdit && id) {
+        // For edit mode, send only changed fields (backend calculates subtotal and total)
+        const updateData: any = {
+          items: saleItems,
+          discount: globalDiscount || 0,
+          discountType: globalDiscountType,
+          tax: globalTax || 0,
+          taxType: globalTaxType,
+          payments: validPayments.length > 0 ? validPayments : [],
+          customerName: data.customerName.trim(),
+          customerPhone: data.customerPhone || undefined,
+          customerCity: data.customerCity || undefined,
+        };
+        const updatedSale = await updateSale(id, updateData);
+        showSuccess("Sale updated successfully!");
+        navigate("/sales");
+      } else {
+        const createdSale = await addSale(saleData);
+        // Redirect to bill print page using the bill number from the backend
+        navigate(`/sales/bill/${createdSale.billNumber}`);
+      }
     } catch (err: any) {
       const validationErrors = extractValidationErrors(err);
       if (validationErrors) {
@@ -781,9 +1029,14 @@ export default function SalesEntry() {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200 dark:bg-gray-800 dark:divide-gray-700">
-                    {selectedProducts.map((item) => (
+                    {selectedProducts.map((item) => {
+                      const isOldProduct = originalRowIds.has(item.rowId);
+                      const isPendingSale = saleStatus === "pending";
+                      const disableOldProductFields = isEdit && isPendingSale && isOldProduct;
+                      
+                      return (
                       <tr
-                        key={item.productId}
+                        key={item.rowId}
                         className="hover:bg-gray-50 dark:hover:bg-gray-700/50"
                       >
                         <td className="p-2 overflow-hidden">
@@ -799,11 +1052,12 @@ export default function SalesEntry() {
                         <td className="p-2">
                           <Select
                             value={((item as any).priceType || "single") as any}
-                            onChange={(value) => updateItemPriceType(item.productId, value as any)}
+                            onChange={(value) => updateItemPriceType(item.rowId, value as any)}
                             options={[
                               { value: "single", label: "Per Qty" },
                               { value: "dozen", label: "Dozen" },
                             ]}
+                            disabled={disableOldProductFields}
                           />
                         </td>
                         <td className="p-2">
@@ -824,21 +1078,23 @@ export default function SalesEntry() {
                               }
                               onInput={restrictDecimalInput}
                               onChange={(e) => {
+                                if (disableOldProductFields) return;
                                 // Handle empty string as null to allow clearing
                                 if (e.target.value === "" || e.target.value === null) {
-                                  updateItemPrice(item.productId, undefined);
+                                  updateItemPrice(item.rowId, undefined);
                                   return;
                                 }
                                 // Parse the value but don't round during typing - preserve what user types
                                 const numValue = parseFloat(e.target.value);
                                 if (isNaN(numValue)) {
-                                  updateItemPrice(item.productId, undefined);
+                                  updateItemPrice(item.rowId, undefined);
                                   return;
                                 }
                                 // Pass the raw value, rounding will happen in updateItemPrice
-                                updateItemPrice(item.productId, numValue);
+                                updateItemPrice(item.rowId, numValue);
                               }}
                               className="w-full text-[11px] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                              disabled={disableOldProductFields}
                             />
                             <div className="text-[9px] text-gray-500 dark:text-gray-400">
                               Unit: Rs. {(((item as any).priceSingle ?? (item.customPrice ?? item.unitPrice)) || 0).toFixed(2)}
@@ -855,9 +1111,10 @@ export default function SalesEntry() {
                                 : (item.product.shopQuantity || 0)
                               ).toString()}
                               value={item.shopQuantity !== null && item.shopQuantity !== undefined ? item.shopQuantity : ""}
-                              onChange={(e) => updateItemLocationQuantity(item.productId, "shop", e.target.value)}
+                              onChange={(e) => updateItemLocationQuantity(item.rowId, "shop", e.target.value)}
                               className="w-full text-[11px] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                               placeholder={((item as any).priceType || "single") === "dozen" ? "Dozen" : "Units"}
+                              disabled={disableOldProductFields}
                             />
                             {((item as any).priceType || "single") === "dozen" && (
                               <div className="text-[9px] text-gray-500 dark:text-gray-400">
@@ -876,9 +1133,10 @@ export default function SalesEntry() {
                                 : (item.product.warehouseQuantity || 0)
                               ).toString()}
                               value={item.warehouseQuantity !== null && item.warehouseQuantity !== undefined ? item.warehouseQuantity : ""}
-                              onChange={(e) => updateItemLocationQuantity(item.productId, "warehouse", e.target.value)}
+                              onChange={(e) => updateItemLocationQuantity(item.rowId, "warehouse", e.target.value)}
                               className="w-full text-[11px] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                               placeholder={((item as any).priceType || "single") === "dozen" ? "Dozen" : "Units"}
+                              disabled={disableOldProductFields}
                             />
                             {((item as any).priceType || "single") === "dozen" && (
                               <div className="text-[9px] text-gray-500 dark:text-gray-400">
@@ -891,12 +1149,13 @@ export default function SalesEntry() {
                           <TaxDiscountInput
                             value={item.discount}
                             type={item.discountType || "percent"}
-                            onValueChange={(value) => updateItemDiscount(item.productId, value ?? undefined)}
-                            onTypeChange={(type) => updateItemDiscountType(item.productId, type)}
+                            onValueChange={(value) => updateItemDiscount(item.rowId, value ?? undefined)}
+                            onTypeChange={(type) => updateItemDiscountType(item.rowId, type)}
                             placeholder="0"
                             min={0}
                             step={0.01}
                             className="w-full"
+                            disabled={disableOldProductFields}
                           />
                         </td>
                         <td className="p-2">
@@ -905,16 +1164,32 @@ export default function SalesEntry() {
                           </div>
                         </td>
                         <td className="p-2 text-center">
-                          <button
-                            onClick={() => removeItem(item.productId)}
-                            className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 transition-colors"
-                            title="Remove item"
-                          >
-                            <TrashBinIcon className="w-5 h-5 inline-block" />
-                          </button>
+                          {disableOldProductFields ? (
+                            <div className="relative group">
+                              <button
+                                disabled
+                                className="text-gray-400 cursor-not-allowed opacity-50"
+                                title="Cannot delete old products from pending sale"
+                              >
+                                <TrashBinIcon className="w-5 h-5" />
+                              </button>
+                              <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 text-xs text-white bg-gray-800 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
+                                Cannot delete old products from pending sale
+                              </div>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => removeItem(item.rowId)}
+                              className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 transition-colors"
+                              title="Remove item"
+                            >
+                              <TrashBinIcon className="w-5 h-5 inline-block" />
+                            </button>
+                          )}
                         </td>
                       </tr>
-                    ))}
+                    );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -1012,12 +1287,14 @@ export default function SalesEntry() {
                 <div key={index} className="p-3 border border-gray-200 rounded-lg dark:border-gray-700">
                   <div className="flex items-center justify-between mb-2">
                     <Label className="text-sm">Payment {index + 1}</Label>
-                    <button
-                      onClick={() => removePayment(index)}
-                      className="p-1 text-red-600 hover:bg-red-50 rounded dark:hover:bg-red-900/20"
-                    >
-                      <TrashBinIcon className="w-4 h-4" />
-                    </button>
+                    {!isEdit && (
+                      <button
+                        onClick={() => removePayment(index)}
+                        className="p-1 text-red-600 hover:bg-red-50 rounded dark:hover:bg-red-900/20"
+                      >
+                        <TrashBinIcon className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <div>
@@ -1031,6 +1308,7 @@ export default function SalesEntry() {
                           { value: "cash", label: "Cash" },
                           { value: "bank_transfer", label: "Bank Transfer" },
                         ]}
+                        disabled={isEdit}
                       />
                     </div>
                     <div>
@@ -1055,6 +1333,7 @@ export default function SalesEntry() {
                             : undefined) ||
                           backendErrors[`payments.${index}.amount`]
                         }
+                        disabled={isEdit}
                       />
                     </div>
                     {payment.type === "bank_transfer" && (
@@ -1073,6 +1352,7 @@ export default function SalesEntry() {
                                 label: `${acc.accountName} - ${acc.bankName}${acc.isDefault ? " (Default)" : ""}`,
                               })),
                           ]}
+                          disabled={isEdit}
                         />
                         {((showErrors && payment.type === "bank_transfer" && !payment.bankAccountId) ||
                           backendErrors[`payments.${index}.bankAccountId`]) && (
@@ -1091,15 +1371,17 @@ export default function SalesEntry() {
                   Total paid amount cannot exceed total amount.
                 </div>
               )}
-              <Button
-                onClick={addPayment}
-                variant="outline"
-                size="sm"
-                className="w-full"
-              >
-                <PlusIcon className="w-4 h-4 mr-2" />
-                Add Payment
-              </Button>
+              {!isEdit && (
+                <Button
+                  onClick={addPayment}
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                >
+                  <PlusIcon className="w-4 h-4 mr-2" />
+                  Add Payment
+                </Button>
+              )}
               {remainingBalance > 0 && (
                 <div className="p-2 bg-yellow-50 border border-yellow-200 rounded-lg dark:bg-yellow-900/20 dark:border-yellow-800">
                   <p className="text-xs font-medium text-yellow-800 dark:text-yellow-200">
@@ -1143,6 +1425,7 @@ export default function SalesEntry() {
                     placeholder="0"
                     min={0}
                     step={0.01}
+                    disabled={isEdit}
                   />
                 </div>
               </div>
@@ -1157,6 +1440,7 @@ export default function SalesEntry() {
                     placeholder="0"
                     min={0}
                     step={0.01}
+                    disabled={isEdit}
                   />
                 </div>
               </div>
@@ -1189,7 +1473,7 @@ export default function SalesEntry() {
                 loading={isSubmitting}
                 disabled={selectedProducts.length === 0 || isSubmitting}
               >
-                Generate Bill
+                {isEdit ? "Update Sale" : "Generate Bill"}
               </Button>
             </div>
             )}

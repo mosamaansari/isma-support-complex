@@ -63,6 +63,7 @@ export default function App() {
             {/* Sales & Billing */}
             <Route path="/sales" element={<SalesList />} />
             <Route path="/sales/entry" element={<SalesEntry />} />
+            <Route path="/sales/edit/:id" element={<SalesEntry />} />
             <Route path="/sales/bill/:billNumber" element={<BillPrint />} />
             <Route path="/sales/payment/:billNumber/:paymentIndex" element={<SalesPaymentPrint />} />
             <Route path="/sales/payments/:billNumber" element={<SalesPaymentsCombinedPrint />} />

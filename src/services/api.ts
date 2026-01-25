@@ -249,7 +249,8 @@ class ApiClient {
 
   async getSale(id: string) {
     const response = await this.client.get(`/sales/${id}`);
-    return normalizeSale(response.data);
+    const sale = response.data?.data || response.data?.response?.data || response.data;
+    return normalizeSale(sale);
   }
 
   async getSaleByBillNumber(billNumber: string) {
@@ -261,6 +262,13 @@ class ApiClient {
 
   async createSale(data: any) {
     const response = await this.client.post("/sales", data);
+    // Response is already transformed by interceptor
+    const sale = response.data?.data || response.data;
+    return normalizeSale(sale);
+  }
+
+  async updateSale(id: string, data: any) {
+    const response = await this.client.put(`/sales/${id}`, data);
     // Response is already transformed by interceptor
     const sale = response.data?.data || response.data;
     return normalizeSale(sale);
