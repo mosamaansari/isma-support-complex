@@ -64,7 +64,6 @@ export default function SalesEntry() {
   const [isPaymentDetailsOpen, setIsPaymentDetailsOpen] = useState(true);
   const [isBillSummaryOpen, setIsBillSummaryOpen] = useState(true);
   const [saleStatus, setSaleStatus] = useState<"completed" | "pending" | "cancelled" | null>(null);
-  const [originalProductIds, setOriginalProductIds] = useState<Set<string>>(new Set());
   const [originalRowIds, setOriginalRowIds] = useState<Set<string>>(new Set());
   const [loadingSale, setLoadingSale] = useState(false);
   const [originalPaymentsLength, setOriginalPaymentsLength] = useState(0);
@@ -142,8 +141,6 @@ export default function SalesEntry() {
           setOriginalPaymentsLength((sale.payments || []).length);
 
           // Store original row IDs for pending sales (to prevent editing/deleting)
-          const originalIds = new Set(sale.items.map((item: any) => item.productId));
-          setOriginalProductIds(originalIds);
           const originalRowIdsSet = new Set<string>();
 
           // Load products for items
@@ -902,7 +899,7 @@ export default function SalesEntry() {
           customerPhone: data.customerPhone || undefined,
           customerCity: data.customerCity || undefined,
         };
-        const updatedSale = await updateSale(id, updateData);
+        await updateSale(id, updateData);
         showSuccess("Sale updated successfully!");
         navigate("/sales");
       } else {

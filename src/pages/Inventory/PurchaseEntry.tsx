@@ -61,7 +61,6 @@ export default function PurchaseEntry() {
   const [isPaymentMethodsOpen, setIsPaymentMethodsOpen] = useState(true);
   const [isSummaryOpen, setIsSummaryOpen] = useState(true);
   const [purchaseStatus, setPurchaseStatus] = useState<"completed" | "pending" | "cancelled" | null>(null);
-  const [originalProductIds, setOriginalProductIds] = useState<Set<string>>(new Set());
   const [originalRowIds, setOriginalRowIds] = useState<Set<string>>(new Set());
 
   const {
@@ -125,9 +124,7 @@ export default function PurchaseEntry() {
           setTax(purchase.tax ? Number(purchase.tax) : null);
           setPayments((purchase.payments || []) as PurchasePayment[]);
 
-          // Store original product IDs for pending purchases (to prevent editing/deleting)
-          const originalIds = new Set(purchase.items.map((item: any) => item.productId));
-          setOriginalProductIds(originalIds);
+          // Store original row IDs for pending purchases (to prevent editing/deleting)
           const originalRowIdsSet = new Set<string>();
 
           // Load products for items

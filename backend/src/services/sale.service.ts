@@ -928,7 +928,7 @@ class SaleService {
   ) {
     const sale = await prisma.sale.findUnique({
       where: { id },
-      include: { items: true },
+      include: { items: true, customer: true },
     });
 
     if (!sale) {
