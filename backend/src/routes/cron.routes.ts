@@ -10,8 +10,9 @@ const router = Router();
  * to trigger the daily opening balance creation
  * 
  * Security: Should be protected with a secret token in production
+ * Supports both GET and POST methods (Vercel Cron uses GET by default)
  */
-router.post("/trigger", async (req, res) => {
+const triggerHandler = async (req: any, res: any) => {
   try {
     // Optional: Add authentication token check for production
     const authToken = req.headers["x-cron-secret"] || req.query.token;
@@ -49,7 +50,11 @@ router.post("/trigger", async (req, res) => {
       error: error.message,
     });
   }
-});
+};
+
+// Register the handler for both GET and POST methods
+router.get("/trigger", triggerHandler);
+router.post("/trigger", triggerHandler);
 
 /**
  * Health check endpoint for cron service
@@ -59,8 +64,9 @@ router.get("/status", (req, res) => {
     success: true,
     message: "Cron service is running",
     timestamp: new Date().toISOString(),
-    timezone: "Asia/Karachi",
-    schedule: "0 0 * * * (Daily at 12:00 AM)",
+    timezone: "Asia/Karachi (PKT UTC+5)",
+    schedule: "0 19 * * * (Daily at 12:00 AM Pakistan Time - Midnight)",
+    vercelCron: "Configured in vercel.json",
   });
 });
 
