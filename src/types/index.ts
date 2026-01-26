@@ -87,12 +87,19 @@ export interface Sale {
 }
 
 // Expense Types
-export type ExpenseCategory = string;
+export interface ExpenseCategory {
+  id: string;
+  name: string;
+  description?: string;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface Expense {
   id: string;
   amount: number;
-  category: ExpenseCategory;
+  category?: string;
+  expenseCategoryId?: string;
   description: string | null;
   paymentType?: PaymentType;
   bankAccountId?: string;

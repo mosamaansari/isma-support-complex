@@ -38,6 +38,7 @@ class ExpenseService {
         include: {
           card: true,
           bankAccount: true,
+          expenseCategoryRef: true,
         },
         orderBy: { createdAt: "desc" },
         skip,
@@ -111,6 +112,7 @@ class ExpenseService {
       include: {
         card: true,
         bankAccount: true,
+        expenseCategoryRef: true,
       },
     });
 
@@ -136,6 +138,17 @@ class ExpenseService {
   ) {
     // Validate that date is today (if provided)
     validateTodayDate(data.date, 'expense date');
+
+    // Look up expense category by name to get the ID
+    let expenseCategoryId: string | null = null;
+    if (data.category) {
+      const expenseCategory = await prisma.expenseCategory.findUnique({
+        where: { name: data.category.trim() },
+      });
+      if (expenseCategory) {
+        expenseCategoryId = expenseCategory.id;
+      }
+    }
 
     // Get user - check both AdminUser and User tables
     let user: any = await prisma.user.findUnique({
@@ -208,6 +221,7 @@ class ExpenseService {
     const expenseData: any = {
       amount: data.amount,
       category: data.category,
+      expenseCategoryId: expenseCategoryId,
       paymentType: (data.paymentType || "cash") as any,
       cardId: data.cardId || null,
       bankAccountId: data.bankAccountId || null,
@@ -228,6 +242,7 @@ class ExpenseService {
       include: {
         card: true,
         bankAccount: true,
+        expenseCategoryRef: true,
       },
     });
 
@@ -335,7 +350,24 @@ class ExpenseService {
 
     const updateData: any = {};
     if (data.amount !== undefined) updateData.amount = data.amount;
-    if (data.category !== undefined) updateData.category = data.category;
+    
+    // If category is being updated, look up the expense category ID
+    if (data.category !== undefined) {
+      updateData.category = data.category;
+      if (data.category) {
+        const expenseCategory = await prisma.expenseCategory.findUnique({
+          where: { name: data.category.trim() },
+        });
+        if (expenseCategory) {
+          updateData.expenseCategoryId = expenseCategory.id;
+        } else {
+          updateData.expenseCategoryId = null;
+        }
+      } else {
+        updateData.expenseCategoryId = null;
+      }
+    }
+    
     if (data.description !== undefined) updateData.description = data.description;
     if (data.paymentType !== undefined) updateData.paymentType = data.paymentType as any;
     if (data.cardId !== undefined) updateData.cardId = data.cardId || null;
@@ -349,6 +381,7 @@ class ExpenseService {
       include: {
         card: true,
         bankAccount: true,
+        expenseCategoryRef: true,
       },
     });
 

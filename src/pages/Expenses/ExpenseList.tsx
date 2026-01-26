@@ -3,7 +3,6 @@ import { Link } from "react-router";
 import PageMeta from "../../components/common/PageMeta";
 import { useData } from "../../context/DataContext";
 import { useAlert } from "../../context/AlertContext";
-import { ExpenseCategory } from "../../types";
 import Button from "../../components/ui/button/Button";
 import Input from "../../components/form/input/InputField";
 import DatePicker from "../../components/form/DatePicker";
@@ -15,10 +14,10 @@ import { formatDateToString } from "../../utils/dateHelpers";
 import { formatPriceWithCurrencyComplete } from "../../utils/priceHelpers";
 
 export default function ExpenseList() {
-  const { expenses, expensesPagination, deleteExpense, currentUser, loading, error, refreshExpenses, categories, refreshCategories } = useData();
+  const { expenses, expensesPagination, deleteExpense, currentUser, loading, error, refreshExpenses, expenseCategories, refreshExpenseCategories } = useData();
   const { showSuccess, showError } = useAlert();
   const [searchTerm, setSearchTerm] = useState("");
-  const [filterCategory, setFilterCategory] = useState<ExpenseCategory | "all">("all");
+  const [filterCategory, setFilterCategory] = useState<string | "all">("all");
   const [filterDate, setFilterDate] = useState("");
   // Remove expenseSummary state as we now use backend data directly
   const expensesLoadedRef = useRef(false);
@@ -35,9 +34,9 @@ export default function ExpenseList() {
         });
       }
     }
-    // Load categories if empty
-    if (categories.length === 0) {
-      refreshCategories().catch(console.error);
+    // Load expense categories if empty
+    if (expenseCategories.length === 0) {
+      refreshExpenseCategories().catch(console.error);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -190,12 +189,12 @@ export default function ExpenseList() {
               <select
                 value={filterCategory}
                 onChange={(e) =>
-                  setFilterCategory(e.target.value as ExpenseCategory | "all")
+                  setFilterCategory(e.target.value)
                 }
                 className="px-4 py-2 border border-gray-300 rounded-lg dark:bg-gray-800 dark:border-gray-700 dark:text-white"
               >
                 <option value="all">All Categories</option>
-                {categories.map((cat) => (
+                {expenseCategories.map((cat) => (
                   <option key={cat.id} value={cat.name}>
                     {cat.name}
                   </option>

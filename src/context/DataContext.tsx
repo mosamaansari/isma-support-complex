@@ -5,6 +5,7 @@ import {
   Sale,
   SalePayment,
   Expense,
+  ExpenseCategory,
   Purchase,
   PurchasePayment,
   Customer,
@@ -92,6 +93,13 @@ interface DataContextType {
   deleteCategory: (id: string) => Promise<void>;
   refreshCategories: () => Promise<void>;
 
+  // Expense Categories
+  expenseCategories: ExpenseCategory[];
+  addExpenseCategory: (category: Omit<ExpenseCategory, "id" | "createdAt" | "updatedAt">) => Promise<void>;
+  updateExpenseCategory: (id: string, category: Partial<ExpenseCategory>) => Promise<void>;
+  deleteExpenseCategory: (id: string) => Promise<void>;
+  refreshExpenseCategories: () => Promise<void>;
+
   // Brands
   brands: Brand[];
   addBrand: (brand: Omit<Brand, "id" | "createdAt" | "updatedAt">) => Promise<void>;
@@ -146,6 +154,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [expenseCategories, setExpenseCategories] = useState<ExpenseCategory[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [settings, setSettings] = useState<ShopSettings>(defaultSettings);
   const [bankAccounts, setBankAccounts] = useState<any[]>([]);
@@ -960,6 +969,57 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
+  // Expense Category functions
+  const refreshExpenseCategories = async () => {
+    try {
+      setError(null);
+      const data = await api.getExpenseCategories();
+      setExpenseCategories(data);
+    } catch (err: any) {
+      setError(extractErrorMessage(err) || "Failed to load expense categories");
+      throw err;
+    }
+  };
+
+  const addExpenseCategory = async (categoryData: Omit<ExpenseCategory, "id" | "createdAt" | "updatedAt">) => {
+    try {
+      setError(null);
+      const newCategory = await api.createExpenseCategory(categoryData);
+      setExpenseCategories([...expenseCategories, newCategory]);
+    } catch (err: any) {
+      setError(extractErrorMessage(err) || "Failed to create expense category");
+      throw err;
+    }
+  };
+
+  const updateExpenseCategory = async (id: string, categoryData: Partial<ExpenseCategory>) => {
+    try {
+      setError(null);
+      if (!categoryData.name) {
+        throw new Error("Expense category name is required");
+      }
+      const updatedCategory = await api.updateExpenseCategory(id, {
+        name: categoryData.name,
+        description: categoryData.description,
+      });
+      setExpenseCategories(expenseCategories.map((c) => (c.id === id ? updatedCategory : c)));
+    } catch (err: any) {
+      setError(extractErrorMessage(err) || "Failed to update expense category");
+      throw err;
+    }
+  };
+
+  const deleteExpenseCategory = async (id: string) => {
+    try {
+      setError(null);
+      await api.deleteExpenseCategory(id);
+      setExpenseCategories(expenseCategories.filter((c) => c.id !== id));
+    } catch (err: any) {
+      setError(extractErrorMessage(err) || "Failed to delete expense category");
+      throw err;
+    }
+  };
+
   // Brand functions
   const refreshBrands = async () => {
     try {
@@ -1239,6 +1299,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     updateCategory,
     deleteCategory,
     refreshCategories,
+    expenseCategories,
+    addExpenseCategory,
+    updateExpenseCategory,
+    deleteExpenseCategory,
+    refreshExpenseCategories,
     brands,
     addBrand,
     updateBrand,

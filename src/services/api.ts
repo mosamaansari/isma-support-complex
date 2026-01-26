@@ -625,6 +625,35 @@ class ApiClient {
     await this.client.delete(`/categories/${id}`);
   }
 
+  // Expense Categories endpoints
+  async getExpenseCategories() {
+    const response = await this.client.get("/expense-categories");
+    // Response is already transformed by interceptor
+    return response.data?.data || response.data;
+  }
+
+  async getExpenseCategory(id: string) {
+    const response = await this.client.get(`/expense-categories/${id}`);
+    // Response is already transformed by interceptor
+    return response.data?.data || response.data;
+  }
+
+  async createExpenseCategory(data: { name: string; description?: string }) {
+    const response = await this.client.post("/expense-categories", data);
+    // Response is already transformed by interceptor
+    return response.data?.data || response.data;
+  }
+
+  async updateExpenseCategory(id: string, data: { name: string; description?: string }) {
+    const response = await this.client.put(`/expense-categories/${id}`, data);
+    // Response is already transformed by interceptor
+    return response.data?.data || response.data;
+  }
+
+  async deleteExpenseCategory(id: string) {
+    await this.client.delete(`/expense-categories/${id}`);
+  }
+
   // Brand endpoints
   async getBrands() {
     const response = await this.client.get("/brands");

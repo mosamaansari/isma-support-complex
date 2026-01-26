@@ -6,12 +6,12 @@ import * as yup from "yup";
 import PageMeta from "../../components/common/PageMeta";
 import { useData } from "../../context/DataContext";
 import { useAlert } from "../../context/AlertContext";
-import { ExpenseCategory, PaymentType } from "../../types";
+import { PaymentType } from "../../types";
 import Input from "../../components/form/input/InputField";
 import DatePicker from "../../components/form/DatePicker";
 import Label from "../../components/form/Label";
 import Select from "../../components/form/Select";
-import CategorySelect from "../../components/form/CategorySelect";
+import ExpenseCategorySelect from "../../components/form/ExpenseCategorySelect";
 import Button from "../../components/ui/button/Button";
 import { ChevronLeftIcon } from "../../icons";
 import { getTodayDate } from "../../utils/dateHelpers";
@@ -59,7 +59,7 @@ const expenseFormSchema = yup.object().shape({
 export default function ExpenseForm() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { expenses, addExpense, updateExpense, currentUser, cards, refreshCards, bankAccounts, refreshBankAccounts, refreshExpenses, categories, refreshCategories } = useData();
+  const { expenses, addExpense, updateExpense, currentUser, cards, refreshCards, bankAccounts, refreshBankAccounts, refreshExpenses, expenseCategories, refreshExpenseCategories } = useData();
   const { showSuccess, showError } = useAlert();
   const isEdit = !!id;
   const [backendErrors, setBackendErrors] = useState<Record<string, string>>({});
@@ -77,7 +77,7 @@ export default function ExpenseForm() {
     resolver: yupResolver(expenseFormSchema),
     defaultValues: {
       amount: undefined,
-      category: "" as ExpenseCategory,
+      category: "",
       description: "",
       paymentType: "cash" as PaymentType,
       cardId: "",
@@ -88,7 +88,7 @@ export default function ExpenseForm() {
 
   const formData = {
     amount: watch("amount"),
-    category: watch("category") as ExpenseCategory,
+    category: watch("category"),
     description: watch("description"),
     paymentType: watch("paymentType") as PaymentType,
     cardId: watch("cardId"),
@@ -110,9 +110,9 @@ export default function ExpenseForm() {
     } else if (bankAccounts.length > 0) {
       bankAccountsLoadedRef.current = true;
     }
-    // Load categories if empty
-    if (categories.length === 0) {
-      refreshCategories().catch(console.error);
+    // Load expense categories if empty
+    if (expenseCategories.length === 0) {
+      refreshExpenseCategories().catch(console.error);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -265,7 +265,7 @@ export default function ExpenseForm() {
             <Label>
               Category <span className="text-error-500">*</span>
             </Label>
-            <CategorySelect
+            <ExpenseCategorySelect
               value={formData.category || ""}
               onChange={(value) => {
                 setValue("category", value);
