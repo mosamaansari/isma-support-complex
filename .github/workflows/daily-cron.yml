@@ -3,7 +3,7 @@ name: Daily Cron Job - Opening Balance
 on:
   # Schedule: Runs daily at 12:00 AM Pakistan Time (7:00 PM UTC)
   schedule:
-    - cron: '10 20 * * *'  # 7:00 PM UTC = 12:00 AM PKT (Midnight)
+    - cron: '12 1 * * *'  # 7:00 PM UTC = 12:00 AM PKT (Midnight)
   
   # Allow manual trigger from GitHub Actions tab
   workflow_dispatch:
