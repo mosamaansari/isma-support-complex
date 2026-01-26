@@ -30,6 +30,7 @@ import searchRoutes from "./routes/search.routes";
 import dashboardRoutes from "./routes/dashboard.routes";
 import backupRoutes from "./routes/backup.routes";
 import suppliersRoutes from "./routes/suppliers.routes";
+import expenseCategoriesRoutes from "./routes/expenseCategories.routes";
 import cronRoutes from "./routes/cron.routes";
 import cronService from "./services/cron.service";
 
@@ -114,6 +115,7 @@ app.get("/", (req: Request, res: Response) => {
       dailyConfirmation: "/api/daily-confirmation",
       balanceTransactions: "/api/balance-transactions",
       dailyClosingBalance: "/api/daily-closing-balance",
+      expenseCategories: "/api/expense-categories",
     },
   });
 });
@@ -140,6 +142,7 @@ app.use("/api/opening-balances", openingBalanceRoutes);
 app.use("/api/daily-confirmation", dailyConfirmationRoutes);
 app.use("/api/balance-transactions", balanceTransactionRoutes);
 app.use("/api/daily-closing-balance", dailyClosingBalanceRoutes);
+app.use("/api/expense-categories", expenseCategoriesRoutes);
 app.use("/api/cron", cronRoutes);
 
 // 404 handler
