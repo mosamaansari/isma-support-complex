@@ -18,7 +18,7 @@ jobs:
           echo "🕐 Triggering daily cron job at $(date)"
           
           response=$(curl -s -w "\n%{http_code}" -X GET \
-            "${{ secrets.API_URL }}/api/cron/trigger")
+            "${{ secrets.API_URL }}/api/cron")
           
           http_code=$(echo "$response" | tail -n1)
           body=$(echo "$response" | head -n-1)
