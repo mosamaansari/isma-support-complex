@@ -18,7 +18,8 @@ router.get("/", authenticate, async (req, res) => {
 // Get single expense category
 router.get("/:id", authenticate, async (req, res) => {
   try {
-    const category = await expenseCategoryService.getExpenseCategory(req.params.id);
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const category = await expenseCategoryService.getExpenseCategory(id);
     res.json(category);
   } catch (error: any) {
     res.status(404).json({ error: error.message });
@@ -64,7 +65,8 @@ router.put("/:id", authenticate, async (req, res) => {
       return res.status(400).json({ error: errors });
     }
 
-    const category = await expenseCategoryService.updateExpenseCategory(req.params.id, value);
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const category = await expenseCategoryService.updateExpenseCategory(id, value);
     res.json(category);
   } catch (error: any) {
     res.status(400).json({ error: error.message });
@@ -74,7 +76,8 @@ router.put("/:id", authenticate, async (req, res) => {
 // Delete expense category
 router.delete("/:id", authenticate, async (req, res) => {
   try {
-    const result = await expenseCategoryService.deleteExpenseCategory(req.params.id);
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const result = await expenseCategoryService.deleteExpenseCategory(id);
     res.json(result);
   } catch (error: any) {
     res.status(400).json({ error: error.message });

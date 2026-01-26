@@ -83,7 +83,7 @@ export default function ExpenseList() {
     const matchesSearch =
       !searchTerm ||
       (expense.description && expense.description.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      expense.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (expense.category && expense.category.toLowerCase().includes(searchTerm.toLowerCase())) ||
       expense.userName.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = filterCategory === "all" || expense.category === filterCategory;
     // Compare date part only (YYYY-MM-DD)
