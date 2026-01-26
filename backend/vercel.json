@@ -24,9 +24,9 @@
   "outputDirectory": ".",
   "crons": [
     {
-      "path": "/api/cron/trigger",
+      "path": "/api/cron",
 
-      "schedule": "40 0 * * *"
+      "schedule": "50 0 * * *"
 
     }
   ]
