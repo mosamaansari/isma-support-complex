@@ -53,8 +53,8 @@ const triggerHandler = async (req: any, res: any) => {
 };
 
 // Register the handler for both GET and POST methods
-router.get("/trigger", triggerHandler);
-router.post("/trigger", triggerHandler);
+router.get("/", triggerHandler);
+router.post("/", triggerHandler);
 
 /**
  * Health check endpoint for cron service
