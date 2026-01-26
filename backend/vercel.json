@@ -24,7 +24,7 @@
   "outputDirectory": ".",
   "crons": [
     {
-      "path": "/api/opening-balances/trigger-cron",
+      "path": "/api/cron/trigger",
       "schedule": "0 19 * * *"
     }
   ]

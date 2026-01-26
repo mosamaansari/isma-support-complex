@@ -10,18 +10,25 @@ import { formatLocalYMD, parseLocalYMD, getTodayInPakistan } from "../utils/date
  * 1. Calculate and store previous day's closing balance
  * 2. Create today's opening balance from previous day's closing balance
  * 
- * Runs daily at 12:00 AM (midnight)
+ * NOTE: For Vercel deployment, this node-cron service will NOT run automatically.
+ * Instead, Vercel Cron (configured in vercel.json) will call /api/cron/trigger endpoint.
+ * This node-cron is only for local development.
+ * 
+ * Production: Vercel Cron calls /api/cron/trigger daily at 12:00 PM PKT (7:00 AM UTC)
+ * Local Dev: node-cron runs at 12:00 AM PKT (midnight)
  */
 class CronService {
   private cronJob: cron.ScheduledTask | null = null;
 
   /**
-   * Start the cron job
-   * Runs daily at 12:00 AM (midnight) to handle previous day's closing and current day's opening
+   * Start the cron job (for local development only)
+   * Runs daily at 12:00 AM (midnight) Pakistan time
+   * On Vercel, use /api/cron/trigger endpoint instead
    */
   start() {
-    // Run every day at 12:00 AM (midnight) Pakistan time
+    // Run every day at 12:00 AM (midnight) Pakistan time - LOCAL DEV ONLY
     // Cron pattern: "0 0 * * *" = minute=0, hour=0 (midnight), every day, every month, every day of week
+    // Note: On Vercel, this won't run. Vercel Cron will call /api/cron/trigger endpoint instead
     this.cronJob = cron.schedule(
       "0 0 * * *", 
       async () => {

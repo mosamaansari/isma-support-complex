@@ -13,24 +13,26 @@ The `vercel.json` file is configured with:
 "crons": [
   {
     "path": "/api/cron/trigger",
-    "schedule": "0 0 * * *"
+    "schedule": "0 19 * * *"
   }
 ]
 ```
 
-This will automatically call the cron endpoint **daily at 12:00 AM UTC**.
+This will automatically call the cron endpoint **daily at 7:00 PM UTC = 12:00 AM Pakistan Time (Midnight)**.
 
-**Note:** Vercel Cron uses UTC timezone by default. If you need it to run at 12:00 AM Pakistan time (PKT = UTC+5), adjust the schedule to:
-```json
-"schedule": "0 19 * * *"  // 7:00 PM UTC = 12:00 AM PKT
-```
+**Note:** Vercel Cron uses UTC timezone by default. Pakistan is UTC+5, so:
+- `"schedule": "0 19 * * *"` → 7:00 PM UTC = **12:00 AM PKT (Midnight)** ✅ Current Setting
+- `"schedule": "0 7 * * *"` → 7:00 AM UTC = **12:00 PM PKT (Noon)**
+- `"schedule": "0 0 * * *"` → 12:00 AM UTC = **5:00 AM PKT**
 
 ### 2. Manual API Trigger (For Testing or External Services)
 
 #### Endpoint:
 ```
-POST https://your-domain.vercel.app/api/cron/trigger
+GET/POST https://your-domain.vercel.app/api/cron/trigger
 ```
+
+Both GET and POST methods are supported (Vercel Cron uses GET).
 
 #### Security (Optional):
 Set `CRON_SECRET_TOKEN` in Vercel environment variables to protect the endpoint:
@@ -42,16 +44,20 @@ CRON_SECRET_TOKEN=your-secret-token-here
 
 Then call with header or query parameter:
 ```bash
-# With header
+# With header (POST)
 curl -X POST https://your-domain.vercel.app/api/cron/trigger \
   -H "x-cron-secret: your-secret-token-here"
 
-# Or with query parameter
-curl -X POST "https://your-domain.vercel.app/api/cron/trigger?token=your-secret-token-here"
+# Or with query parameter (GET - Vercel Cron uses this)
+curl "https://your-domain.vercel.app/api/cron/trigger?token=your-secret-token-here"
 ```
 
 #### Without Authentication (if CRON_SECRET_TOKEN is not set):
 ```bash
+# GET method
+curl https://your-domain.vercel.app/api/cron/trigger
+
+# Or POST method
 curl -X POST https://your-domain.vercel.app/api/cron/trigger
 ```
 
@@ -107,11 +113,17 @@ jobs:
 
 ### Test Immediately:
 ```bash
-# Local
+# Local (GET)
+curl http://localhost:5000/api/cron/trigger
+
+# Local (POST)
 curl -X POST http://localhost:5000/api/cron/trigger
 
-# Production
-curl -X POST https://your-domain.vercel.app/api/cron/trigger
+# Production (GET - same as Vercel Cron)
+curl https://isma-support-complex-sigma.vercel.app/api/cron/trigger
+
+# Production (POST)
+curl -X POST https://isma-support-complex-sigma.vercel.app/api/cron/trigger
 ```
 
 ### Check Logs:
