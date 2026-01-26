@@ -115,6 +115,7 @@ app.get("/", (req, res) => {
       dailyConfirmation: "/api/daily-confirmation",
       balanceTransactions: "/api/balance-transactions",
       dailyClosingBalance: "/api/daily-closing-balance",
+      expenseCategories: "/api/expense-categories",
     },
   });
 });

@@ -29,6 +29,7 @@ const openingBalanceRoutes = getRoute(require("./dist/routes/openingBalance.rout
 const dailyConfirmationRoutes = getRoute(require("./dist/routes/dailyConfirmation.routes"));
 const balanceTransactionRoutes = getRoute(require("./dist/routes/balanceTransaction.routes"));
 const dailyClosingBalanceRoutes = getRoute(require("./dist/routes/dailyClosingBalance.routes"));
+const expenseCategoriesRoutes = getRoute(require("./dist/routes/expenseCategories.routes"));
 
 const app = express();
 
@@ -122,6 +123,7 @@ app.get("/", (req, res) => {
       dailyConfirmation: "/api/daily-confirmation",
       balanceTransactions: "/api/balance-transactions",
       dailyClosingBalance: "/api/daily-closing-balance",
+      expenseCategories: "/api/expense-categories",
     },
   });
 });
@@ -148,6 +150,7 @@ app.use("/api/opening-balances", openingBalanceRoutes);
 app.use("/api/daily-confirmation", dailyConfirmationRoutes);
 app.use("/api/balance-transactions", balanceTransactionRoutes);
 app.use("/api/daily-closing-balance", dailyClosingBalanceRoutes);
+app.use("/api/expense-categories", expenseCategoriesRoutes);
 
 // 404 handler
 app.use((req, res) => {
