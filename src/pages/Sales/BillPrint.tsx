@@ -215,7 +215,8 @@ export default function BillPrint() {
               text-transform: uppercase;
             }
             .shop-details {
-              font-size: 10px;
+              font-size: 14px;
+              font-weight: 900;
               line-height: 1.4;
               color: #000000;
             }
@@ -227,7 +228,7 @@ export default function BillPrint() {
             }
             .section-title {
               text-align: center;
-              font-weight: bold;
+              font-weight: 700;
               font-size: 12px;
               margin: 4px 0;
               text-transform: uppercase;
@@ -235,7 +236,8 @@ export default function BillPrint() {
             }
             .customer-info {
               margin: 4px 0;
-              font-size: 11px;
+              font-size: 12px;
+              font-weight: 700;
               line-height: 1.5;
               color: #000000;
             }
@@ -259,6 +261,8 @@ export default function BillPrint() {
               padding: 3px 2px;
               border-bottom: 1px dashed #666;
               color: #000000;
+              font-size: 12px;
+              font-weight: 700;
             }
             .text-right {
               text-align: right;
@@ -274,7 +278,8 @@ export default function BillPrint() {
             }
             .totals {
               margin: 4px 0;
-              font-size: 11px;
+               font-size: 12px;
+              font-weight: 700;
               color: #000000;
             }
             .totals-row {
@@ -284,8 +289,8 @@ export default function BillPrint() {
               color: #000000;
             }
             .total-row {
-              font-weight: bold;
               font-size: 12px;
+              font-weight: 700;
               border-top: 1px dashed #000000;
               border-bottom: 1px dashed #000000;
               padding: 4px 0;
@@ -294,7 +299,8 @@ export default function BillPrint() {
             }
             .bank-info {
               margin: 4px 0;
-              font-size: 10px;
+              font-size: 12px;
+              font-weight: 700;
               line-height: 1.4;
               color: #000000;
             }
@@ -977,6 +983,7 @@ export default function BillPrint() {
             margin: 0;
             font-size: 12px;
             color: #000000;
+            font-weight: 700;
             background: #fff;
           }
           .print-receipt .shop-header {
@@ -992,7 +999,8 @@ export default function BillPrint() {
             text-transform: uppercase;
           }
           .print-receipt .shop-details {
-            font-size: 10px;
+              font-size: 14px;
+              font-weight: 900;
             line-height: 1.4;
             color: #000000;
           }
@@ -1004,7 +1012,7 @@ export default function BillPrint() {
           }
           .print-receipt .section-title {
             text-align: center;
-            font-weight: bold;
+            font-weight: 700;
             font-size: 12px;
             margin: 4px 0;
             text-transform: uppercase;
@@ -1012,7 +1020,8 @@ export default function BillPrint() {
           }
           .print-receipt .customer-info {
             margin: 4px 0;
-            font-size: 11px;
+            font-size: 12px;
+            font-weight: 700;
             line-height: 1.5;
             color: #000000;
           }
@@ -1036,6 +1045,8 @@ export default function BillPrint() {
             padding: 3px 2px;
             border-bottom: 1px dashed #666;
             color: #000000;
+             font-size: 12px;
+              font-weight: 700;
           }
           .print-receipt .text-right {
             text-align: right;
@@ -1051,7 +1062,8 @@ export default function BillPrint() {
           }
           .print-receipt .totals {
             margin: 4px 0;
-            font-size: 11px;
+             font-size: 12px;
+              font-weight: 700;
             color: #000000;
           }
           .print-receipt .totals-row {
@@ -1061,7 +1073,7 @@ export default function BillPrint() {
             color: #000000;
           }
           .print-receipt .total-row {
-            font-weight: bold;
+            font-weight: 700;
             font-size: 12px;
             border-top: 1px dashed #000000;
             border-bottom: 1px dashed #000000;
@@ -1071,7 +1083,8 @@ export default function BillPrint() {
           }
           .print-receipt .bank-info {
             margin: 4px 0;
-            font-size: 10px;
+           font-size: 12px;
+              font-weight: 700;
             line-height: 1.4;
             color: #000000;
           }
