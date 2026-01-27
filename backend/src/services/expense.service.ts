@@ -450,22 +450,6 @@ class ExpenseService {
           }
         );
         logger.info(`Refunded bank balance: +${expense.amount} for deleted expense ${expense.id}, bank: ${expense.bankAccountId}`);
-      } else if (expense.paymentType === "card" && expense.cardId) {
-        // Refund to card balance (income transaction)
-        await balanceManagementService.updateCardBalance(
-          expense.cardId,
-          refundDateForBalance,
-          Number(expense.amount),
-          "income",
-          {
-            description: `Expense Refund - ${expense.category}${expense.description ? ` - ${expense.description}` : ""} (Deleted)`,
-            source: "expense_refund",
-            sourceId: expense.id,
-            userId: expense.userId,
-            userName: expense.userName,
-          }
-        );
-        logger.info(`Refunded card balance: +${expense.amount} for deleted expense ${expense.id}, card: ${expense.cardId}`);
       }
     } catch (error: any) {
       logger.error("Error refunding balance for deleted expense:", error);
