@@ -397,9 +397,87 @@ class ExpenseService {
       throw new Error("Expense not found");
     }
 
+    // Check if expense is from today only
+    const expenseDate = new Date(expense.date);
+    const today = new Date();
+    
+    // Normalize both dates to compare only year-month-day (ignore time)
+    const expenseDateStr = `${expenseDate.getFullYear()}-${String(expenseDate.getMonth() + 1).padStart(2, '0')}-${String(expenseDate.getDate()).padStart(2, '0')}`;
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    
+    if (expenseDateStr !== todayStr) {
+      throw new Error("Only today's expenses can be deleted");
+    }
+
+    // Refund the expense amount back to balance
+    try {
+      const balanceManagementService = (await import("./balanceManagement.service")).default;
+      const { parseLocalYMDForDB, formatLocalYMD, getTodayInPakistan } = await import("../utils/date");
+      
+      // Use today's date for refund transaction (same as sale/purchase cancellation)
+      // This ensures the refund appears in today's balance transactions and reports
+      const refundDateForBalance = parseLocalYMDForDB(formatLocalYMD(getTodayInPakistan()));
+
+      // Refund based on payment type
+      if (expense.paymentType === "cash") {
+        // Refund to cash balance (income transaction)
+        await balanceManagementService.updateCashBalance(
+          refundDateForBalance,
+          Number(expense.amount),
+          "income",
+          {
+            description: `Expense Refund - ${expense.category}${expense.description ? ` - ${expense.description}` : ""} (Deleted)`,
+            source: "expense_refund",
+            sourceId: expense.id,
+            userId: expense.userId,
+            userName: expense.userName,
+          }
+        );
+        logger.info(`Refunded cash: +${expense.amount} for deleted expense ${expense.id}`);
+      } else if (expense.paymentType === "bank_transfer" && expense.bankAccountId) {
+        // Refund to bank account (income transaction)
+        await balanceManagementService.updateBankBalance(
+          expense.bankAccountId,
+          refundDateForBalance,
+          Number(expense.amount),
+          "income",
+          {
+            description: `Expense Refund - ${expense.category}${expense.description ? ` - ${expense.description}` : ""} (Deleted)`,
+            source: "expense_refund",
+            sourceId: expense.id,
+            userId: expense.userId,
+            userName: expense.userName,
+          }
+        );
+        logger.info(`Refunded bank balance: +${expense.amount} for deleted expense ${expense.id}, bank: ${expense.bankAccountId}`);
+      } else if (expense.paymentType === "card" && expense.cardId) {
+        // Refund to card balance (income transaction)
+        await balanceManagementService.updateCardBalance(
+          expense.cardId,
+          refundDateForBalance,
+          Number(expense.amount),
+          "income",
+          {
+            description: `Expense Refund - ${expense.category}${expense.description ? ` - ${expense.description}` : ""} (Deleted)`,
+            source: "expense_refund",
+            sourceId: expense.id,
+            userId: expense.userId,
+            userName: expense.userName,
+          }
+        );
+        logger.info(`Refunded card balance: +${expense.amount} for deleted expense ${expense.id}, card: ${expense.cardId}`);
+      }
+    } catch (error: any) {
+      logger.error("Error refunding balance for deleted expense:", error);
+      throw new Error(`Failed to refund expense: ${error.message}`);
+    }
+
+    // Delete the expense after successful refund
     await prisma.expense.delete({
       where: { id },
     });
+
+    logger.info(`Expense deleted and refunded successfully: ${expense.id}`);
   }
 
   async canUserModify(expenseId: string, userId: string, userRole: string) {

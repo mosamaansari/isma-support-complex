@@ -105,12 +105,15 @@ export default function ExpenseList() {
       await deleteExpense(expenseToDelete);
       setDeleteModalOpen(false);
       setExpenseToDelete(null);
-      showSuccess("Expense deleted successfully!");
+      showSuccess("Expense deleted and refunded successfully!");
       // Refresh the expenses list (summary will be included)
       await refreshExpenses(expensesPagination?.page || 1, expensesPagination?.pageSize || 10);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error deleting expense:", err);
-      showError("Failed to delete expense. Please try again.");
+      const errorMessage = err.response?.data?.error || err.response?.data?.message || err.message || "Failed to delete expense. Please try again.";
+      showError(errorMessage);
+      setDeleteModalOpen(false);
+      setExpenseToDelete(null);
     }
   };
 

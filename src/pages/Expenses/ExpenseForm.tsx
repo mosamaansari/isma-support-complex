@@ -256,6 +256,7 @@ export default function ExpenseForm() {
               onBlur={register("amount").onBlur}
               placeholder="0.00"
               required
+              disabled={isEdit}
               error={!!errors.amount || !!backendErrors.amount}
               hint={errors.amount?.message || backendErrors.amount}
             />
@@ -305,6 +306,7 @@ export default function ExpenseForm() {
                 { value: "cash", label: "Cash" },
                 { value: "bank_transfer", label: "Bank Transfer" },
               ]}
+              disabled={isEdit}
             />
             {(errors.paymentType || backendErrors.paymentType) && (
               <p className="mt-1.5 text-xs text-error-500">{errors.paymentType?.message || backendErrors.paymentType}</p>
@@ -329,6 +331,7 @@ export default function ExpenseForm() {
                       label: `${acc.accountName} - ${acc.bankName}${acc.isDefault ? " (Default)" : ""}`,
                     })),
                 ]}
+                disabled={isEdit}
               />
               {(errors.bankAccountId || backendErrors.bankAccountId) && (
                 <p className="mt-1.5 text-xs text-error-500">{errors.bankAccountId?.message || backendErrors.bankAccountId}</p>
