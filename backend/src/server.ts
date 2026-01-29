@@ -8,6 +8,7 @@ import logger from "./utils/logger";
 import redis from "./config/redis";
 import prisma from "./config/database";
 
+
 // Import routes
 import authRoutes from "./routes/auth.routes";
 import productsRoutes from "./routes/products.routes";
