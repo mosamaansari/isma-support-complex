@@ -12,6 +12,7 @@ import redis from "./src/config/redis";
 import prisma from "./src/config/database";
 
 
+
 // Import routes
 import authRoutes from "./src/routes/auth.routes";
 import productsRoutes from "./src/routes/products.routes";
