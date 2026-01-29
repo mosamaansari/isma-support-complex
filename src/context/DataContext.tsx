@@ -545,6 +545,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         discountType: saleData.discountType || "percent",
         tax: saleData.tax ?? 0,
         taxType: saleData.taxType || "percent",
+        deliveryCharges: saleData.deliveryCharges ?? 0,
         date: saleData.date,
       };
 
@@ -604,6 +605,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (saleData.discountType !== undefined) apiData.discountType = saleData.discountType;
       if (saleData.tax !== undefined) apiData.tax = saleData.tax;
       if (saleData.taxType !== undefined) apiData.taxType = saleData.taxType;
+      if (saleData.deliveryCharges !== undefined) apiData.deliveryCharges = saleData.deliveryCharges;
       if (saleData.subtotal !== undefined) apiData.subtotal = saleData.subtotal;
       if (saleData.total !== undefined) apiData.total = saleData.total;
       

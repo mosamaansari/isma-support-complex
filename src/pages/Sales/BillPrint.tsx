@@ -33,6 +33,15 @@ const parseDateString = (dateStr: string | Date | undefined): string => {
   return formatBackendDate(dateStr);
 };
 
+// Printing helper: show whole numbers only (no decimals) on printed bills
+const formatPrintAmount = (value: number | string | null | undefined): string => {
+  const num = Number(value);
+  if (!Number.isFinite(num)) {
+    return "0";
+  }
+  return Math.round(num).toString();
+};
+
 export default function BillPrint() {
   const { billNumber } = useParams<{ billNumber: string }>();
   const { getSale, settings, refreshSales, salesPagination, bankAccounts, refreshBankAccounts } = useData();
@@ -173,6 +182,7 @@ export default function BillPrint() {
     const pdfTaxAmount = pdfTaxType === "value" 
       ? sale.tax 
       : ((sale.subtotal - pdfDiscountAmount) * sale.tax) / 100;
+    const pdfDeliveryCharges = Number((sale as any).deliveryCharges || 0);
 
     printWindow.document.write(`
       <!DOCTYPE html>
@@ -360,8 +370,8 @@ export default function BillPrint() {
                     <tr>
                       <td>${item.productName}</td>
                       <td class="text-center">${item.quantity}</td>
-                      <td class="text-right">${unitPrice.toFixed(2)}</td>
-                      <td class="text-right">${itemTotal.toFixed(2)}</td>
+                      <td class="text-right">${formatPrintAmount(unitPrice)}</td>
+                      <td class="text-right">${formatPrintAmount(itemTotal)}</td>
                     </tr>
                   `;
                 }).join("")}
@@ -373,40 +383,44 @@ export default function BillPrint() {
             <div class="totals">
               <div class="totals-row">
                 <span>Subtotal:</span>
-                <span>${sale.subtotal.toFixed(2)}</span>
+                <span>${formatPrintAmount(sale.subtotal)}</span>
               </div>
               ${sale.discount > 0 ? `
                 <div class="totals-row">
                   <span>Discount${((sale as any).discountType === "value" ? " (Rs)" : ` (${sale.discount}%)`)}:</span>
-                  <span>-${pdfDiscountAmount.toFixed(2)}</span>
+                  <span>-${formatPrintAmount(pdfDiscountAmount)}</span>
                 </div>
               ` : ""}
               ${sale.tax > 0 ? `
                 <div class="totals-row">
                   <span>Tax${((sale as any).taxType === "value" ? " (Rs)" : ` (${sale.tax}%)`)}:</span>
-                  <span>+${pdfTaxAmount.toFixed(2)}</span>
+                  <span>+${formatPrintAmount(pdfTaxAmount)}</span>
                 </div>
               ` : ""}
+              <div class="totals-row">
+                <span>Delivery Charges:</span>
+                <span>+${formatPrintAmount(pdfDeliveryCharges)}</span>
+              </div>
               <div class="totals-row total-row">
                 <span>Total:</span>
-                <span>${sale.total.toFixed(2)}</span>
+                <span>${formatPrintAmount(sale.total)}</span>
               </div>
               ${totalPaid > 0 ? `
                 <div class="totals-row">
                   <span>Paid:</span>
-                  <span>${totalPaid.toFixed(2)}</span>
+                  <span>${formatPrintAmount(totalPaid)}</span>
                 </div>
               ` : ""}
               ${remainingBalance > 0 ? `
                 <div class="totals-row">
                   <span>Remaining:</span>
-                  <span>${remainingBalance.toFixed(2)}</span>
+                  <span>${formatPrintAmount(remainingBalance)}</span>
                 </div>
               ` : ""}
               ${change > 0 ? `
                 <div class="totals-row">
                   <span>Change:</span>
-                  <span>${change.toFixed(2)}</span>
+                  <span>${formatPrintAmount(change)}</span>
                 </div>
               ` : ""}
               <div class="totals-row" style="margin-top: 4px; padding-top: 4px; border-top: 1px dashed #000;">
@@ -476,6 +490,7 @@ export default function BillPrint() {
   const actualTaxAmount = taxType === "value" 
     ? sale.tax 
     : ((sale.subtotal - actualDiscountAmount) * sale.tax) / 100;
+  const deliveryChargesAmount = Number((sale as any).deliveryCharges || 0);
 
   const paymentRows = (sale.payments || []).map((p, idx) => {
     const bank = p.bankAccountId ? bankAccounts.find((b) => b.id === p.bankAccountId) : null;
@@ -700,6 +715,14 @@ export default function BillPrint() {
               </span>
             </div>
           )}
+          <div className="flex justify-end mb-2">
+            <span className="w-40 text-gray-600 dark:text-gray-400">
+              Delivery Charges:
+            </span>
+            <span className="w-32 text-gray-800 dark:text-white">
+              + Rs. {deliveryChargesAmount.toFixed(2)}
+            </span>
+          </div>
           <div className="flex justify-end pt-2 border-t-2 border-gray-300 dark:border-gray-600">
             <span className="w-40 text-lg font-bold text-gray-800 dark:text-white">
               Total:
@@ -825,8 +848,8 @@ export default function BillPrint() {
                 <tr key={index}>
                   <td>{item.productName}</td>
                   <td className="text-center">{item.quantity}</td>
-                  <td className="text-right">{unitPrice.toFixed(2)}</td>
-                  <td className="text-right">{itemTotal.toFixed(2)}</td>
+                  <td className="text-right">{formatPrintAmount(unitPrice)}</td>
+                  <td className="text-right">{formatPrintAmount(itemTotal)}</td>
                 </tr>
               );
             })}
@@ -838,40 +861,44 @@ export default function BillPrint() {
         <div className="totals">
           <div className="totals-row">
             <span>Subtotal:</span>
-            <span>{sale.subtotal.toFixed(2)}</span>
+            <span>{formatPrintAmount(sale.subtotal)}</span>
           </div>
           {sale.discount > 0 && (
             <div className="totals-row">
               <span>Discount{((sale as any).discountType === "value" ? " (Rs)" : ` (${sale.discount}%)`)}:</span>
-              <span>-${actualDiscountAmount.toFixed(2)}</span>
+              <span>-{formatPrintAmount(actualDiscountAmount)}</span>
             </div>
           )}
           {sale.tax > 0 && (
             <div className="totals-row">
               <span>Tax{((sale as any).taxType === "value" ? " (Rs)" : ` (${sale.tax}%)`)}:</span>
-              <span>+{actualTaxAmount.toFixed(2)}</span>
+              <span>+{formatPrintAmount(actualTaxAmount)}</span>
             </div>
           )}
+          <div className="totals-row">
+            <span>Delivery Charges:</span>
+            <span>+{formatPrintAmount(deliveryChargesAmount)}</span>
+          </div>
           <div className="totals-row total-row">
             <span>Total:</span>
-            <span>{sale.total.toFixed(2)}</span>
+            <span>{formatPrintAmount(sale.total)}</span>
           </div>
           {totalPaid > 0 && (
             <div className="totals-row">
               <span>Paid:</span>
-              <span>{totalPaid.toFixed(2)}</span>
+              <span>{formatPrintAmount(totalPaid)}</span>
             </div>
           )}
           {remainingBalance > 0 && (
             <div className="totals-row">
               <span>Remaining:</span>
-              <span>{remainingBalance.toFixed(2)}</span>
+              <span>{formatPrintAmount(remainingBalance)}</span>
             </div>
           )}
           {change > 0 && (
             <div className="totals-row">
               <span>Change:</span>
-              <span>{change.toFixed(2)}</span>
+              <span>{formatPrintAmount(change)}</span>
             </div>
           )}
           <div className="totals-row" style={{ marginTop: "4px", paddingTop: "4px", borderTop: "1px dashed #000" }}>
@@ -917,7 +944,7 @@ export default function BillPrint() {
                       <td style={{ padding: "2px 0" }}>{idx + 1}</td>
                       <td style={{ padding: "2px 0" }}>{(p.type || "").toUpperCase()}</td>
                       <td style={{ padding: "2px 0" }}>{bankLabel || "-"}</td>
-                      <td style={{ padding: "2px 0", textAlign: "right" }}>{Number(p.amount || 0).toFixed(2)}</td>
+                      <td style={{ padding: "2px 0", textAlign: "right" }}>{formatPrintAmount(p.amount)}</td>
                     </tr>
                   );
                 })
@@ -931,11 +958,11 @@ export default function BillPrint() {
           <div style={{ fontSize: "11px", marginTop: "2px" }}>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
               <span>Total Paid:</span>
-              <span>{totalPaid.toFixed(2)}</span>
+              <span>{formatPrintAmount(totalPaid)}</span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
               <span>Remaining:</span>
-              <span>{remainingBalance.toFixed(2)}</span>
+              <span>{formatPrintAmount(remainingBalance)}</span>
             </div>
           </div>
         </div>

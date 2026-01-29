@@ -50,6 +50,7 @@ export const normalizeSale = (sale: any) => {
     subtotal: decimalToNumber(sale.subtotal),
     discount: decimalToNumber(sale.discount || 0),
     tax: decimalToNumber(sale.tax || 0),
+    deliveryCharges: decimalToNumber(sale.deliveryCharges || 0),
     total: decimalToNumber(sale.total),
     remainingBalance: sale.remainingBalance !== undefined && sale.remainingBalance !== null 
       ? decimalToNumber(sale.remainingBalance) 

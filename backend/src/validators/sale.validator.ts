@@ -288,6 +288,15 @@ export const createSaleSchema = Joi.object({
       "number.base": "Tax must be a number",
       "number.min": "Tax cannot be negative",
     }),
+  deliveryCharges: Joi.number()
+    .optional()
+    .min(0)
+    .default(0)
+    .allow(null)
+    .messages({
+      "number.base": "Delivery charges must be a number",
+      "number.min": "Delivery charges cannot be negative",
+    }),
   taxType: Joi.string()
     .optional()
     .valid("percent", "value")

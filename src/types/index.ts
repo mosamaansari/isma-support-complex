@@ -70,6 +70,7 @@ export interface Sale {
   discountType?: "percent" | "value";
   tax: number;
   taxType?: "percent" | "value";
+  deliveryCharges?: number;
   total: number;
   paymentType: PaymentType;
   payments?: SalePayment[];

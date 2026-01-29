@@ -56,6 +56,7 @@ export default function SalesEntry() {
   const [globalDiscountType, setGlobalDiscountType] = useState<"percent" | "value">("percent");
   const [globalTax, setGlobalTax] = useState<number | null>(null);
   const [globalTaxType, setGlobalTaxType] = useState<"percent" | "value">("percent");
+  const [deliveryCharges, setDeliveryCharges] = useState<number | null>(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [backendErrors, setBackendErrors] = useState<Record<string, string>>({});
   const [showErrors, setShowErrors] = useState(false);
@@ -137,6 +138,11 @@ export default function SalesEntry() {
           setGlobalTax(sale.tax ? Number(sale.tax) : null);
           setGlobalDiscountType((sale.discountType as "percent" | "value") || "percent");
           setGlobalDiscount(sale.discount ? Number(sale.discount) : null);
+          setDeliveryCharges(
+            sale.deliveryCharges !== undefined && sale.deliveryCharges !== null
+              ? Number(sale.deliveryCharges)
+              : 0
+          );
           setPayments((sale.payments || []) as SalePayment[]);
           setOriginalPaymentsLength((sale.payments || []).length);
 
@@ -715,9 +721,11 @@ export default function SalesEntry() {
       }
     }
 
-    const total = Math.round(Math.max(0, subtotal - globalDiscountAmount + globalTaxAmount) * 100) / 100;
+    const deliveryAmount = Math.round(Math.max(0, deliveryCharges || 0) * 100) / 100;
 
-    return { subtotal, discountAmount: globalDiscountAmount, taxAmount: globalTaxAmount, total };
+    const total = Math.round(Math.max(0, subtotal - globalDiscountAmount + globalTaxAmount + deliveryAmount) * 100) / 100;
+
+    return { subtotal, discountAmount: globalDiscountAmount, taxAmount: globalTaxAmount, deliveryAmount, total };
   };
 
   const generateBillNumber = () => {
@@ -870,6 +878,7 @@ export default function SalesEntry() {
         discountType: globalDiscountType,
         tax: globalTax || 0,
         taxType: globalTaxType,
+        deliveryCharges: deliveryCharges || 0,
         total,
         payments: validPayments.length > 0 ? validPayments : [], // Always send payments array (even if empty)
         customerName: data.customerName.trim(),
@@ -894,6 +903,7 @@ export default function SalesEntry() {
           discountType: globalDiscountType,
           tax: globalTax || 0,
           taxType: globalTaxType,
+          deliveryCharges: deliveryCharges || 0,
           payments: validPayments.length > 0 ? validPayments : [],
           customerName: data.customerName.trim(),
           customerPhone: data.customerPhone || undefined,
@@ -1437,6 +1447,32 @@ export default function SalesEntry() {
                     placeholder="0"
                     min={0}
                     step={0.01}
+                    disabled={isEdit}
+                  />
+                </div>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <Label className="mb-0 whitespace-nowrap text-sm">Delivery Charges:</Label>
+                <div className="flex-1 max-w-[200px]">
+                  <Input
+                    type="number"
+                    min={0}
+                    step={0.01}
+                    placeholder="0"
+                    value={deliveryCharges ?? ""}
+                    onInput={restrictDecimalInput}
+                    onChange={(e) => {
+                      if (e.target.value === "") {
+                        setDeliveryCharges(null);
+                        return;
+                      }
+                      const parsed = parseFloat(e.target.value);
+                      if (isNaN(parsed) || parsed < 0) {
+                        setDeliveryCharges(0);
+                        return;
+                      }
+                      setDeliveryCharges(parsed);
+                    }}
                     disabled={isEdit}
                   />
                 </div>

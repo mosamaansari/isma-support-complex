@@ -371,6 +371,7 @@ class SaleService {
       discountType?: "percent" | "value";
       tax?: number;
       taxType?: "percent" | "value";
+      deliveryCharges?: number;
       date?: string;
     },
     userId: string,
@@ -574,7 +575,9 @@ class SaleService {
       }
     }
 
-    const total = limitDecimalPlaces(subtotal - discountAmount + taxAmount);
+    const deliveryCharges = limitDecimalPlaces(Number(data.deliveryCharges || 0));
+
+    const total = limitDecimalPlaces(subtotal - discountAmount + taxAmount + deliveryCharges);
 
     // Get or create customer (optional - use default if not provided)
     const customerName = data.customerName || "Walk-in Customer";
@@ -689,6 +692,7 @@ class SaleService {
         discountType: data.discountType || "percent",
         tax: data.tax || 0,
         taxType: data.taxType || "percent",
+        deliveryCharges: deliveryCharges,
         total,
         paymentType: payments[0]?.type || ("cash" as any),
         payments: payments as any,
@@ -916,6 +920,7 @@ class SaleService {
       discountType?: "percent" | "value";
       tax?: number;
       taxType?: "percent" | "value";
+      deliveryCharges?: number;
       total?: number;
       payments?: Array<{
         type: "cash" | "card" | "credit" | "bank_transfer";
@@ -1211,6 +1216,7 @@ class SaleService {
     const discountType = data.discountType || sale.discountType || "percent";
     const tax = data.tax !== undefined ? Number(data.tax || 0) : Number(sale.tax || 0);
     const taxType = data.taxType || sale.taxType || "percent";
+    const deliveryCharges = data.deliveryCharges !== undefined ? Number(data.deliveryCharges || 0) : Number((sale as any).deliveryCharges || 0);
 
     // Calculate discount amount
     let discountAmount = 0;
@@ -1233,7 +1239,7 @@ class SaleService {
       }
     }
 
-    const calculatedTotal = limitDecimalPlaces(subtotal - discountAmount + taxAmount);
+    const calculatedTotal = limitDecimalPlaces(subtotal - discountAmount + taxAmount + limitDecimalPlaces(deliveryCharges));
 
     // Update totals with calculated values
     updateData.subtotal = limitDecimalPlaces(subtotal);
@@ -1241,6 +1247,7 @@ class SaleService {
     updateData.discountType = discountType;
     updateData.tax = tax;
     updateData.taxType = taxType;
+    updateData.deliveryCharges = limitDecimalPlaces(deliveryCharges);
     updateData.total = calculatedTotal;
     
     // Track old payments to detect new ones
