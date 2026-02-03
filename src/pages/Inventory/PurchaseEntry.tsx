@@ -113,7 +113,7 @@ export default function PurchaseEntry() {
         .then((purchase: any) => {
           // Store purchase status
           setPurchaseStatus(purchase.status || "pending");
-          
+
           setValue("supplierName", purchase.supplierName);
           setValue("supplierPhone", purchase.supplierPhone || "");
           // Use the purchase's actual date, not today's date
@@ -192,7 +192,7 @@ export default function PurchaseEntry() {
       const unlockedRow = selectedProducts.find(
         (item) => item.productId === product.id && !originalRowIds.has(item.rowId)
       );
-      
+
       if (unlockedRow) {
         // Update the unlocked row's quantity
         setSelectedProducts(
@@ -210,7 +210,7 @@ export default function PurchaseEntry() {
       } else {
         // No unlocked row exists, create a new one
         const rowId = `${product.id}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        
+
         setSelectedProducts([
           ...selectedProducts,
           {
@@ -251,7 +251,7 @@ export default function PurchaseEntry() {
       } else {
         // New product: Add as new row
         const rowId = product.id;
-        
+
         setSelectedProducts([
           ...selectedProducts,
           {
@@ -476,7 +476,7 @@ export default function PurchaseEntry() {
         currentUser.role === "admin" ||
         hasPermission(
           currentUser.role,
-          AVAILABLE_PERMISSIONS.PURCHASE_CREATE,
+          AVAILABLE_PERMISSIONS.PURCHASES_CREATE,
           currentUser.permissions
         );
 
@@ -620,7 +620,7 @@ export default function PurchaseEntry() {
         currentUser.role === "admin" ||
         hasPermission(
           currentUser.role,
-          AVAILABLE_PERMISSIONS.PURCHASE_CREATE,
+          AVAILABLE_PERMISSIONS.PURCHASES_CREATE,
           currentUser.permissions
         );
 
@@ -637,7 +637,7 @@ export default function PurchaseEntry() {
       currentUser.role === "admin" ||
       hasPermission(
         currentUser.role,
-        AVAILABLE_PERMISSIONS.PURCHASE_CREATE,
+        AVAILABLE_PERMISSIONS.PURCHASES_CREATE,
         currentUser.permissions
       );
 
@@ -688,84 +688,84 @@ export default function PurchaseEntry() {
               <h2 className="mb-4 text-lg sm:text-xl font-semibold text-gray-800 dark:text-white">
                 Product Search
               </h2>
-                <Input
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Search products by name or brand..."
-                />
-                {filteredProducts.length > 0 && (
-                  <div className="mt-2 border border-gray-200 rounded-lg dark:border-gray-700 max-h-60 overflow-y-auto">
-                    {filteredProducts.map((product) => (
-                      <div
-                        key={product.id}
-                        onClick={() => addProductToPurchase(product)}
-                        className="p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-100 dark:border-gray-700 last:border-b-0"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="font-medium text-gray-800 dark:text-white">
-                              {product.name}
-                            </p>
-                            <p className="text-sm text-gray-500 dark:text-gray-400">
-                              {product.brand || "N/A"} - Stock: {(product.shopQuantity || 0) + (product.warehouseQuantity || 0)}
-                            </p>
-                          </div>
-                          <p className="font-semibold text-brand-600 dark:text-brand-400">
-                            Rs. {product.salePrice ? product.salePrice.toFixed(2) : "N/A"}
+              <Input
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search products by name or brand..."
+              />
+              {filteredProducts.length > 0 && (
+                <div className="mt-2 border border-gray-200 rounded-lg dark:border-gray-700 max-h-60 overflow-y-auto">
+                  {filteredProducts.map((product) => (
+                    <div
+                      key={product.id}
+                      onClick={() => addProductToPurchase(product)}
+                      className="p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-100 dark:border-gray-700 last:border-b-0"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-medium text-gray-800 dark:text-white">
+                            {product.name}
+                          </p>
+                          <p className="text-sm text-gray-500 dark:text-gray-400">
+                            {product.brand || "N/A"} - Stock: {(product.shopQuantity || 0) + (product.warehouseQuantity || 0)}
                           </p>
                         </div>
+                        <p className="font-semibold text-brand-600 dark:text-brand-400">
+                          Rs. {product.salePrice ? product.salePrice.toFixed(2) : "N/A"}
+                        </p>
                       </div>
-                    ))}
-                  </div>
-                )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="p-4 md:p-6 bg-white rounded-lg shadow-sm dark:bg-gray-800">
               <h2 className="mb-4 text-lg sm:text-xl font-semibold text-gray-800 dark:text-white">
                 Selected Products
               </h2>
-                {selectedProducts.length === 0 ? (
-                  <p className="text-gray-500 dark:text-gray-400">
-                    No products selected. Search and add products above.
-                  </p>
-                ) : (
-                  <div className="table-container overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
-                    <table className="w-full min-w-[980px] table-fixed divide-y divide-gray-200 dark:divide-gray-700">
-                      <thead className="bg-gray-50 dark:bg-gray-800">
-                        <tr>
-                          <th className="p-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[180px]">
-                            Product
-                          </th>
-                          <th className="p-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[140px]">
-                            Price Type
-                          </th>
-                          <th className="p-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[140px]">
-                            Price
-                          </th>
-                          <th className="p-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[120px]">
-                            Unit (Rs)
-                          </th>
-                          <th className="p-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[120px]">
-                            Shop Qty
-                          </th>
-                          <th className="p-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[140px]">
-                            Warehouse Qty
-                          </th>
-                          <th className="p-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[140px]">
-                            Total
-                          </th>
-                          <th className="p-2 text-center text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[80px]">
-                            Action
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-gray-200 dark:bg-gray-800 dark:divide-gray-700">
-                        {selectedProducts.map((item) => {
-                          const isOldProduct = originalRowIds.has(item.rowId);
-                          const isPendingPurchase = purchaseStatus === "pending";
-                          const disableOldProductFields = isEdit && isPendingPurchase && isOldProduct;
-                          
-                          return (
+              {selectedProducts.length === 0 ? (
+                <p className="text-gray-500 dark:text-gray-400">
+                  No products selected. Search and add products above.
+                </p>
+              ) : (
+                <div className="table-container overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+                  <table className="w-full min-w-[980px] table-fixed divide-y divide-gray-200 dark:divide-gray-700">
+                    <thead className="bg-gray-50 dark:bg-gray-800">
+                      <tr>
+                        <th className="p-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[180px]">
+                          Product
+                        </th>
+                        <th className="p-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[140px]">
+                          Price Type
+                        </th>
+                        <th className="p-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[140px]">
+                          Price
+                        </th>
+                        <th className="p-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[120px]">
+                          Unit (Rs)
+                        </th>
+                        <th className="p-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[120px]">
+                          Shop Qty
+                        </th>
+                        <th className="p-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[140px]">
+                          Warehouse Qty
+                        </th>
+                        <th className="p-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[140px]">
+                          Total
+                        </th>
+                        <th className="p-2 text-center text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[80px]">
+                          Action
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200 dark:bg-gray-800 dark:divide-gray-700">
+                      {selectedProducts.map((item) => {
+                        const isOldProduct = originalRowIds.has(item.rowId);
+                        const isPendingPurchase = purchaseStatus === "pending";
+                        const disableOldProductFields = isEdit && isPendingPurchase && isOldProduct;
+
+                        return (
                           <tr
                             key={item.rowId}
                             className="hover:bg-gray-50 dark:hover:bg-gray-700/50"
@@ -869,7 +869,7 @@ export default function PurchaseEntry() {
                             </td>
                             <td className="p-2">
                               <div className="text-[11px] font-semibold text-gray-900 dark:text-white break-all">
-                              Rs. {(item.total || 0).toFixed(2)}
+                                Rs. {(item.total || 0).toFixed(2)}
                               </div>
                             </td>
                             <td className="p-2 text-center">
@@ -897,11 +897,11 @@ export default function PurchaseEntry() {
                             </td>
                           </tr>
                         );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
@@ -977,148 +977,148 @@ export default function PurchaseEntry() {
                   )}
                 </button>
                 {isPaymentMethodsOpen && (
-                <div className="space-y-3">
-                  {payments.map((payment, index) => (
-                    <div key={index} className="p-2 border border-gray-200 rounded-lg dark:border-gray-700">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
-                          Payment {index + 1}
-                        </span>
-                        {!(isEdit && purchaseStatus === "pending") && (
-                          <button
-                            onClick={() => removePayment(index)}
-                            className="text-red-600 hover:text-red-700"
-                          >
-                            <TrashBinIcon className="w-4 h-4" />
-                          </button>
-                        )}
-                        {isEdit && purchaseStatus === "pending" && (
-                          <span className="text-xs text-gray-500 dark:text-gray-400"></span>
-                        )}
-                      </div>
-                      <div className="space-y-2">
-                        <div>
-                          <Label className="text-xs">Payment Type <span className="text-error-500">*</span></Label>
-                          <Select
-                            value={payment.type}
-                            onChange={(value) => {
-                              if (isEdit && purchaseStatus === "pending") {
-                                showError("Payments cannot be edited for pending purchases.");
-                                return;
-                              }
-                              updatePayment(index, "type", value);
-                            }}
-                            disabled={isEdit && purchaseStatus === "pending"}
-                            options={[
-                              { value: "cash", label: "Cash" },
-                              { value: "bank_transfer", label: "Bank Transfer" },
-                            ]}
-                          />
+                  <div className="space-y-3">
+                    {payments.map((payment, index) => (
+                      <div key={index} className="p-2 border border-gray-200 rounded-lg dark:border-gray-700">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                            Payment {index + 1}
+                          </span>
+                          {!(isEdit && purchaseStatus === "pending") && (
+                            <button
+                              onClick={() => removePayment(index)}
+                              className="text-red-600 hover:text-red-700"
+                            >
+                              <TrashBinIcon className="w-4 h-4" />
+                            </button>
+                          )}
+                          {isEdit && purchaseStatus === "pending" && (
+                            <span className="text-xs text-gray-500 dark:text-gray-400"></span>
+                          )}
                         </div>
-                        {payment.type === "bank_transfer" && (
-                          <div className="mt-2">
-                            <Label className="text-xs">
-                              Select Bank Account <span className="text-error-500">*</span>
-                            </Label>
-                            {bankAccounts.filter((acc) => acc.isActive).length === 0 ? (
-                              <div className="p-2 text-sm text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 rounded">
-                                No active bank accounts available. Please add a bank account in Settings.
-                              </div>
-                            ) : (
-                              <>
-                                <Select
-                                  value={payment.bankAccountId || ""}
-                                  onChange={(value) => {
-                                    if (isEdit && purchaseStatus === "pending") {
-                                      showError("Payments cannot be edited for pending purchases.");
-                                      return;
-                                    }
-                                    updatePayment(index, "bankAccountId", value);
-                                  }}
-                                  disabled={isEdit && purchaseStatus === "pending"}
-                                  options={[
-                                    { value: "", label: "Select a bank account" },
-                                    ...bankAccounts
-                                      .filter((acc) => acc.isActive)
-                                      .map((acc) => ({
-                                        value: acc.id,
-                                        label: `${acc.accountName} - ${acc.bankName}${acc.isDefault ? " (Default)" : ""}`,
-                                      })),
-                                  ]}
-                                />
-                                {!payment.bankAccountId && (
-                                  <p className="mt-1 text-xs text-error-500">
-                                    Please select a bank account for this payment
-                                  </p>
-                                )}
-                                {payment.bankAccountId && (
-                                  <p className="mt-1 text-xs text-green-600 dark:text-green-400">
-                                    Bank account selected: {bankAccounts.find(acc => acc.id === payment.bankAccountId)?.accountName}
-                                  </p>
-                                )}
-                              </>
-                            )}
+                        <div className="space-y-2">
+                          <div>
+                            <Label className="text-xs">Payment Type <span className="text-error-500">*</span></Label>
+                            <Select
+                              value={payment.type}
+                              onChange={(value) => {
+                                if (isEdit && purchaseStatus === "pending") {
+                                  showError("Payments cannot be edited for pending purchases.");
+                                  return;
+                                }
+                                updatePayment(index, "type", value);
+                              }}
+                              disabled={isEdit && purchaseStatus === "pending"}
+                              options={[
+                                { value: "cash", label: "Cash" },
+                                { value: "bank_transfer", label: "Bank Transfer" },
+                              ]}
+                            />
                           </div>
-                        )}
-                        <div>
-                          <Label className="text-xs">Amount (Optional)</Label>
-                          <Input
-                            type="number"
-                            step={0.01}
-                            min="0"
-                            max={String(total - totalPaid + (payment.amount || 0))}
-                            value={(payment.amount !== null && payment.amount !== undefined && payment.amount !== 0) ? String(payment.amount) : ""}
-                            onChange={(e) => {
-                              if (isEdit && purchaseStatus === "pending") {
-                                showError("Payments cannot be edited for pending purchases.");
-                                return;
-                              }
-                              const value = e.target.value === "" ? undefined : parseFloat(e.target.value);
-                              updatePayment(index, "amount", isNaN(value as any) || value === null ? undefined : value);
-                            }}
-                            disabled={isEdit && purchaseStatus === "pending"}
-                            placeholder="Enter amount (optional)"
-                          />
+                          {payment.type === "bank_transfer" && (
+                            <div className="mt-2">
+                              <Label className="text-xs">
+                                Select Bank Account <span className="text-error-500">*</span>
+                              </Label>
+                              {bankAccounts.filter((acc) => acc.isActive).length === 0 ? (
+                                <div className="p-2 text-sm text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 rounded">
+                                  No active bank accounts available. Please add a bank account in Settings.
+                                </div>
+                              ) : (
+                                <>
+                                  <Select
+                                    value={payment.bankAccountId || ""}
+                                    onChange={(value) => {
+                                      if (isEdit && purchaseStatus === "pending") {
+                                        showError("Payments cannot be edited for pending purchases.");
+                                        return;
+                                      }
+                                      updatePayment(index, "bankAccountId", value);
+                                    }}
+                                    disabled={isEdit && purchaseStatus === "pending"}
+                                    options={[
+
+                                      ...bankAccounts
+                                        .filter((acc) => acc.isActive)
+                                        .map((acc) => ({
+                                          value: acc.id,
+                                          label: `${acc.accountName} - ${acc.bankName}${acc.isDefault ? " (Default)" : ""}`,
+                                        })),
+                                    ]}
+                                  />
+                                  {!payment.bankAccountId && (
+                                    <p className="mt-1 text-xs text-error-500">
+                                      Please select a bank account for this payment
+                                    </p>
+                                  )}
+                                  {payment.bankAccountId && (
+                                    <p className="mt-1 text-xs text-green-600 dark:text-green-400">
+                                      Bank account selected: {bankAccounts.find(acc => acc.id === payment.bankAccountId)?.accountName}
+                                    </p>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          )}
+                          <div>
+                            <Label className="text-xs">Amount (Optional)</Label>
+                            <Input
+                              type="number"
+                              step={0.01}
+                              min="0"
+                              max={String(total - totalPaid + (payment.amount || 0))}
+                              value={(payment.amount !== null && payment.amount !== undefined && payment.amount !== 0) ? String(payment.amount) : ""}
+                              onChange={(e) => {
+                                if (isEdit && purchaseStatus === "pending") {
+                                  showError("Payments cannot be edited for pending purchases.");
+                                  return;
+                                }
+                                const value = e.target.value === "" ? undefined : parseFloat(e.target.value);
+                                updatePayment(index, "amount", isNaN(value as any) || value === null ? undefined : value);
+                              }}
+                              disabled={isEdit && purchaseStatus === "pending"}
+                              placeholder="Enter amount (optional)"
+                            />
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
-                  {payments.length === 0 && (
-                    <div className="text-center py-4">
-                      <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
-                        No payments added. Payments are optional.
+                    ))}
+                    {payments.length === 0 && (
+                      <div className="text-center py-4">
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+                          No payments added. Payments are optional.
+                        </p>
+                      </div>
+                    )}
+                    {!(isEdit && purchaseStatus === "pending") && (
+                      <Button
+                        onClick={addPayment}
+                        variant="outline"
+                        size="sm"
+                        className="w-full"
+                      >
+                        <PlusIcon className="w-4 h-4 mr-2" />
+                        Add Payment
+                      </Button>
+                    )}
+                    {isEdit && purchaseStatus === "pending" && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
+                        Payments cannot be added or modified for pending purchases
                       </p>
-                    </div>
-                  )}
-                  {!(isEdit && purchaseStatus === "pending") && (
-                    <Button
-                      onClick={addPayment}
-                      variant="outline"
-                      size="sm"
-                      className="w-full"
-                    >
-                      <PlusIcon className="w-4 h-4 mr-2" />
-                      Add Payment
-                    </Button>
-                  )}
-                  {isEdit && purchaseStatus === "pending" && (
-                    <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
-                      Payments cannot be added or modified for pending purchases
-                    </p>
-                  )}
-                  {totalPaid > total && (
-                    <div className="p-2 text-sm text-error-500 bg-error-50 border border-error-200 rounded dark:bg-error-900/20 dark:border-error-700">
-                      Total paid amount cannot exceed total amount.
-                    </div>
-                  )}
-                  {remainingBalance > 0 && totalPaid > 0 && (
-                    <div className="p-2 bg-yellow-50 border border-yellow-200 rounded-lg dark:bg-yellow-900/20 dark:border-yellow-800">
-                      <p className="text-xs font-medium text-yellow-800 dark:text-yellow-200">
-                        Remaining Balance: Rs. {remainingBalance.toFixed(2)}
-                      </p>
-                    </div>
-                  )}
-                </div>
+                    )}
+                    {totalPaid > total && (
+                      <div className="p-2 text-sm text-error-500 bg-error-50 border border-error-200 rounded dark:bg-error-900/20 dark:border-error-700">
+                        Total paid amount cannot exceed total amount.
+                      </div>
+                    )}
+                    {remainingBalance > 0 && totalPaid > 0 && (
+                      <div className="p-2 bg-yellow-50 border border-yellow-200 rounded-lg dark:bg-yellow-900/20 dark:border-yellow-800">
+                        <p className="text-xs font-medium text-yellow-800 dark:text-yellow-200">
+                          Remaining Balance: Rs. {remainingBalance.toFixed(2)}
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
 
@@ -1136,56 +1136,56 @@ export default function PurchaseEntry() {
                   )}
                 </button>
                 {isSummaryOpen && (
-                <div className="space-y-3">
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-600 dark:text-gray-400">Subtotal:</span>
-                    <span className="text-sm text-gray-800 dark:text-white">Rs. {subtotal.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <Label className="mb-0 text-sm">Tax:</Label>
-                    <div className="flex items-center gap-2">
-                      <TaxDiscountInput
-                        value={tax}
-                        type={taxType}
-                        onValueChange={(value) => {
-                          if (isEdit && purchaseStatus === "pending") {
-                            showError("Tax cannot be edited for pending purchases.");
-                            return;
-                          }
-                          setTax(value || null);
-                          setValue("tax", value || null);
-                        }}
-                        onTypeChange={(type) => {
-                          if (isEdit && purchaseStatus === "pending") {
-                            showError("Tax cannot be edited for pending purchases.");
-                            return;
-                          }
-                          setTaxType(type);
-                        }}
-                        disabled={isEdit && purchaseStatus === "pending"}
-                        placeholder="0"
-                        className="w-32"
-                      />
+                  <div className="space-y-3">
+                    <div className="flex justify-between">
+                      <span className="text-sm text-gray-600 dark:text-gray-400">Subtotal:</span>
+                      <span className="text-sm text-gray-800 dark:text-white">Rs. {subtotal.toFixed(2)}</span>
                     </div>
+                    <div className="flex justify-between">
+                      <Label className="mb-0 text-sm">Tax:</Label>
+                      <div className="flex items-center gap-2">
+                        <TaxDiscountInput
+                          value={tax}
+                          type={taxType}
+                          onValueChange={(value) => {
+                            if (isEdit && purchaseStatus === "pending") {
+                              showError("Tax cannot be edited for pending purchases.");
+                              return;
+                            }
+                            setTax(value || null);
+                            setValue("tax", value || null);
+                          }}
+                          onTypeChange={(type) => {
+                            if (isEdit && purchaseStatus === "pending") {
+                              showError("Tax cannot be edited for pending purchases.");
+                              return;
+                            }
+                            setTaxType(type);
+                          }}
+                          disabled={isEdit && purchaseStatus === "pending"}
+                          placeholder="0"
+                          className="w-32"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex justify-between pt-3 border-t border-gray-200 dark:border-gray-700">
+                      <span className="text-base font-semibold text-gray-800 dark:text-white">
+                        Total:
+                      </span>
+                      <span className="text-base font-bold text-brand-600 dark:text-brand-400">
+                        Rs. {total.toFixed(2)}
+                      </span>
+                    </div>
+                    <Button
+                      onClick={handleFormSubmit(onSubmit)}
+                      className="w-full mt-4"
+                      size="sm"
+                      loading={isSubmitting}
+                      disabled={selectedProducts.length === 0 || !supplierName || isSubmitting}
+                    >
+                      {isEdit ? "Update Purchase" : "Save Purchase"}
+                    </Button>
                   </div>
-                  <div className="flex justify-between pt-3 border-t border-gray-200 dark:border-gray-700">
-                    <span className="text-base font-semibold text-gray-800 dark:text-white">
-                      Total:
-                    </span>
-                    <span className="text-base font-bold text-brand-600 dark:text-brand-400">
-                      Rs. {total.toFixed(2)}
-                    </span>
-                  </div>
-                  <Button
-                    onClick={handleFormSubmit(onSubmit)}
-                    className="w-full mt-4"
-                    size="sm"
-                    loading={isSubmitting}
-                    disabled={selectedProducts.length === 0 || !supplierName || isSubmitting}
-                  >
-                    {isEdit ? "Update Purchase" : "Save Purchase"}
-                  </Button>
-                </div>
                 )}
               </div>
             </div>
