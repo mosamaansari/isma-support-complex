@@ -18,12 +18,13 @@ import { SalePayment } from "../../types";
 import { extractErrorMessage } from "../../utils/errorHandler";
 import { getTodayDate, formatBackendDate, formatBackendDateShort } from "../../utils/dateHelpers";
 import { formatPriceWithCurrencyComplete } from "../../utils/priceHelpers";
+import { hasResourcePermission } from "../../utils/permissions";
 import { api } from "../../services/api";
 
 export default function SalesList() {
   const { sales, salesPagination, cancelSale, addPaymentToSale, currentUser, bankAccounts, refreshBankAccounts, refreshSales, loading } = useData();
   const { showSuccess, showError } = useAlert();
-  
+
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState<"all" | "completed" | "pending" | "cancelled">("all");
   const [initialLoadDone, setInitialLoadDone] = useState(false);
@@ -49,16 +50,23 @@ export default function SalesList() {
   // Handle search and filter changes with debouncing
   useEffect(() => {
     if (!initialLoadDone) return; // Don't run until initial load is done
-    
+
     const delayedSearch = setTimeout(() => {
-      console.log("SalesList - Applying filters:", { searchTerm, filterStatus });
-      refreshSales(1, 10, { search: searchTerm, status: filterStatus }); // Use fixed pageSize to avoid dependency on salesPagination
+      console.log("SalesList - Applying filters:", { searchTerm, filterStatus, currentPage: salesPagination?.page });
+
+      // We always want to go to page 1 when search or status filters change
+      // But we should avoid redundant calls if we are already on page 1 and nothing changed
+      // The refreshSales function in DataContext is now stable, so this effect won't re-run 
+      // unnecessarily when salesPagination updates.
+      refreshSales(1, salesPagination?.pageSize || 10, { search: searchTerm, status: filterStatus });
     }, 300); // 300ms debounce
 
     return () => clearTimeout(delayedSearch);
-  }, [searchTerm, filterStatus, initialLoadDone, refreshSales]);
+  }, [searchTerm, filterStatus, initialLoadDone, refreshSales]); // Removed salesPagination dependencies to prevent infinite loops or redundant resets
 
   const handlePageChange = (page: number) => {
+    if (page === salesPagination.page) return;
+    console.log("SalesList - Changing to page:", page);
     refreshSales(page, salesPagination?.pageSize || 10, { search: searchTerm, status: filterStatus });
   };
 
@@ -97,7 +105,7 @@ export default function SalesList() {
     totalRefunded: 0, // Count of refunded sales, not amount
     completedSales: 0,
   };
-  
+
   const { totalSales, totalPaid, totalRemaining, totalRefunded, completedSales } = summaryStats;
 
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
@@ -117,22 +125,22 @@ export default function SalesList() {
 
   const checkBankBalance = async (bankAccountId: string) => {
     if (!bankAccountId || !saleToCancel) return;
-    
+
     setCheckingBalance(true);
     try {
       const payments = (saleToCancel.payments || []) as SalePayment[];
-      const validPayments = payments.filter((p: SalePayment) => 
-        p?.amount !== undefined && 
-        p?.amount !== null && 
-        !isNaN(Number(p.amount)) && 
+      const validPayments = payments.filter((p: SalePayment) =>
+        p?.amount !== undefined &&
+        p?.amount !== null &&
+        !isNaN(Number(p.amount)) &&
         Number(p.amount) > 0
       );
       const totalPaid = validPayments.reduce((sum: number, p: SalePayment) => sum + (p?.amount || 0), 0);
-      
+
       const response = await api.getCurrentBankBalance(bankAccountId);
       const balance = response.balance || 0;
       setBankBalance(balance);
-      
+
       if (balance < totalPaid) {
         showError(`Insufficient bank balance. Available: Rs. ${balance.toFixed(2)}, Required: Rs. ${totalPaid.toFixed(2)}`);
         return false;
@@ -170,7 +178,7 @@ export default function SalesList() {
 
   const confirmCancelSale = async () => {
     if (!saleToCancel) return;
-    
+
     // If bank transfer, check balance first
     if (refundMethod === "bank_transfer") {
       if (!selectedBankAccountId) {
@@ -182,7 +190,7 @@ export default function SalesList() {
         return;
       }
     }
-    
+
     try {
       const refundData = {
         refundMethod,
@@ -235,7 +243,7 @@ export default function SalesList() {
     }
 
     const remainingBalance = selectedSale.remainingBalance || (selectedSale.total - (selectedSale.payments?.reduce((sum: number, p: SalePayment) => sum + (p.amount || 0), 0) || 0));
-    
+
     if (paymentData.amount > remainingBalance) {
       showError(`Payment amount cannot exceed remaining balance of Rs. ${remainingBalance.toFixed(2)}`);
       return;
@@ -301,9 +309,11 @@ export default function SalesList() {
           <h1 className="text-xl sm:text-2xl font-bold text-gray-800 dark:text-white">
             Sales List
           </h1>
-          <Link to="/sales/entry" className="w-full sm:w-auto">
-            <Button size="sm" className="w-full sm:w-auto">New Sale</Button>
-          </Link>
+          {hasResourcePermission(currentUser.role, 'sales:create', currentUser.permissions) && (
+            <Link to="/sales/entry" className="w-full sm:w-auto">
+              <Button size="sm" className="w-full sm:w-auto">New Sale</Button>
+            </Link>
+          )}
         </div>
 
         <div className="grid grid-cols-1 gap-3 sm:gap-4 mb-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
@@ -394,171 +404,169 @@ export default function SalesList() {
       )}
 
       {!loading && sales && sales.length > 0 && (
-      <div className="table-container bg-white rounded-lg shadow-sm dark:bg-gray-800">
-        <table className="responsive-table">
-          <thead>
-            <tr className="border-b border-gray-200 dark:border-gray-700">
-              <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
-                Bill Number
-              </th>
-              <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[120px]">
-                Date
-              </th>
-              <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[150px]">
-                Customer
-              </th>
-              <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[80px]">
-                Items
-              </th>
-              <th className="p-2 sm:p-3 md:p-4 text-right text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
-                Total
-              </th>
-              <th className="p-2 sm:p-3 md:p-4 text-right text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
-                Paid
-              </th>
-              <th className="p-2 sm:p-3 md:p-4 text-right text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[110px]">
-                Remaining
-              </th>
-              <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[90px]">
-                Status
-              </th>
-              <th className="p-2 sm:p-3 md:p-4 text-center text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[140px]">
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredSales.length === 0 ? (
-              <tr>
-                <td colSpan={9} className="p-4 sm:p-6 md:p-8 text-center text-gray-500 text-sm sm:text-base">
-                  No sales found
-                </td>
+        <div className="table-container bg-white rounded-lg shadow-sm dark:bg-gray-800">
+          <table className="responsive-table">
+            <thead>
+              <tr className="border-b border-gray-200 dark:border-gray-700">
+                <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
+                  Bill Number
+                </th>
+                <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[120px]">
+                  Date
+                </th>
+                <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[150px]">
+                  Customer
+                </th>
+                <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[80px]">
+                  Items
+                </th>
+                <th className="p-2 sm:p-3 md:p-4 text-right text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
+                  Total
+                </th>
+                <th className="p-2 sm:p-3 md:p-4 text-right text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
+                  Paid
+                </th>
+                <th className="p-2 sm:p-3 md:p-4 text-right text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[110px]">
+                  Remaining
+                </th>
+                <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[90px]">
+                  Status
+                </th>
+                <th className="p-2 sm:p-3 md:p-4 text-center text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[140px]">
+                  Actions
+                </th>
               </tr>
-            ) : (
-              filteredSales.map((sale) => {
-                if (!sale || !sale.billNumber) return null;
-                
-                // Filter out payments with invalid amounts (0, null, undefined, NaN) before calculating totalPaid
-                const validPayments = (sale.payments || []).filter((p: SalePayment) => 
-                  p?.amount !== undefined && 
-                  p?.amount !== null && 
-                  !isNaN(Number(p.amount)) && 
-                  Number(p.amount) > 0
-                );
-                const totalPaid = validPayments.reduce((sum: number, p: SalePayment) => sum + (p?.amount || 0), 0);
-                const remainingBalance = Math.max(0, (sale.total || 0) - totalPaid);
-                
-                return (
-                  <tr
-                    key={sale.id}
-                    className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50"
-                  >
-                    <td className="p-2 sm:p-3 md:p-4 font-medium text-gray-800 dark:text-white whitespace-nowrap text-xs sm:text-sm">
-                      {sale.billNumber}
-                    </td>
-                    <td className="p-2 sm:p-3 md:p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap text-xs sm:text-sm">
-                      <span className="hidden sm:inline">
-                        {formatBackendDate(sale.createdAt)}
-                      </span>
-                      <span className="sm:hidden">
-                        {formatBackendDateShort(sale.date || sale.createdAt)}
-                      </span>
-                    </td>
-                    <td className="p-2 sm:p-3 md:p-4 text-gray-700 dark:text-gray-300 max-w-[150px] sm:max-w-[200px]">
-                      <div className="line-clamp-2 sm:line-clamp-3">
-                        <div className="font-medium text-xs sm:text-sm">{sale.customerName || "Walk-in"}</div>
-                        {sale.customerPhone && sale.customerPhone !== "0000000000" && sale.customerPhone.trim() !== "" && (
-                          <div className="text-xs text-gray-500 mt-1">{sale.customerPhone}</div>
-                        )}
-                      </div>
-                    </td>
-                    <td className="p-2 sm:p-3 md:p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap text-xs sm:text-sm">
-                      {(sale.items || []).length} item(s)
-                    </td>
-                    <td className="p-2 sm:p-3 md:p-4 text-right font-semibold text-gray-800 dark:text-white whitespace-nowrap price-responsive">
-                      Rs. {(sale.total || 0).toFixed(2)}
-                    </td>
-                    <td className="p-2 sm:p-3 md:p-4 text-right text-gray-700 dark:text-gray-300 whitespace-nowrap price-responsive">
-                      Rs. {totalPaid.toFixed(2)}
-                    </td>
-                    <td className="p-2 sm:p-3 md:p-4 text-right font-semibold text-gray-800 dark:text-white whitespace-nowrap price-responsive">
-                      {remainingBalance > 0 ? (
-                        <span className="text-orange-600 dark:text-orange-400">
-                          Rs. {remainingBalance.toFixed(2)}
+            </thead>
+            <tbody>
+              {filteredSales.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="p-4 sm:p-6 md:p-8 text-center text-gray-500 text-sm sm:text-base">
+                    No sales found
+                  </td>
+                </tr>
+              ) : (
+                filteredSales.map((sale) => {
+                  if (!sale || !sale.billNumber) return null;
+
+                  // Filter out payments with invalid amounts (0, null, undefined, NaN) before calculating totalPaid
+                  const validPayments = (sale.payments || []).filter((p: SalePayment) =>
+                    p?.amount !== undefined &&
+                    p?.amount !== null &&
+                    !isNaN(Number(p.amount)) &&
+                    Number(p.amount) > 0
+                  );
+                  const totalPaid = validPayments.reduce((sum: number, p: SalePayment) => sum + (p?.amount || 0), 0);
+                  const remainingBalance = Math.max(0, (sale.total || 0) - totalPaid);
+
+                  return (
+                    <tr
+                      key={sale.id}
+                      className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                    >
+                      <td className="p-2 sm:p-3 md:p-4 font-medium text-gray-800 dark:text-white whitespace-nowrap text-xs sm:text-sm">
+                        {sale.billNumber}
+                      </td>
+                      <td className="p-2 sm:p-3 md:p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap text-xs sm:text-sm">
+                        <span className="hidden sm:inline">
+                          {formatBackendDate(sale.createdAt)}
                         </span>
-                      ) : (
-                        <span className="text-green-600 dark:text-green-400">Rs. 0.00</span>
-                      )}
-                    </td>
-                    <td className="p-2 sm:p-3 md:p-4 whitespace-nowrap">
-                      <span
-                        className={`px-1.5 sm:px-2 py-0.5 sm:py-1 text-xs font-medium rounded ${
-                          sale.status === "completed"
+                        <span className="sm:hidden">
+                          {formatBackendDateShort(sale.date || sale.createdAt)}
+                        </span>
+                      </td>
+                      <td className="p-2 sm:p-3 md:p-4 text-gray-700 dark:text-gray-300 max-w-[150px] sm:max-w-[200px]">
+                        <div className="line-clamp-2 sm:line-clamp-3">
+                          <div className="font-medium text-xs sm:text-sm">{sale.customerName || "Walk-in"}</div>
+                          {sale.customerPhone && sale.customerPhone !== "0000000000" && sale.customerPhone.trim() !== "" && (
+                            <div className="text-xs text-gray-500 mt-1">{sale.customerPhone}</div>
+                          )}
+                        </div>
+                      </td>
+                      <td className="p-2 sm:p-3 md:p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap text-xs sm:text-sm">
+                        {(sale.items || []).length} item(s)
+                      </td>
+                      <td className="p-2 sm:p-3 md:p-4 text-right font-semibold text-gray-800 dark:text-white whitespace-nowrap price-responsive">
+                        Rs. {(sale.total || 0).toFixed(2)}
+                      </td>
+                      <td className="p-2 sm:p-3 md:p-4 text-right text-gray-700 dark:text-gray-300 whitespace-nowrap price-responsive">
+                        Rs. {totalPaid.toFixed(2)}
+                      </td>
+                      <td className="p-2 sm:p-3 md:p-4 text-right font-semibold text-gray-800 dark:text-white whitespace-nowrap price-responsive">
+                        {remainingBalance > 0 ? (
+                          <span className="text-orange-600 dark:text-orange-400">
+                            Rs. {remainingBalance.toFixed(2)}
+                          </span>
+                        ) : (
+                          <span className="text-green-600 dark:text-green-400">Rs. 0.00</span>
+                        )}
+                      </td>
+                      <td className="p-2 sm:p-3 md:p-4 whitespace-nowrap">
+                        <span
+                          className={`px-1.5 sm:px-2 py-0.5 sm:py-1 text-xs font-medium rounded ${sale.status === "completed"
                             ? "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400"
                             : sale.status === "pending"
-                            ? "bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400"
-                            : "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400"
-                        }`}
-                      >
-                        {sale.status || "completed"}
-                      </span>
-                    </td>
-                    <td className="p-2 sm:p-3 md:p-4">
-                      <div className="flex items-center justify-center gap-1 sm:gap-2 flex-nowrap whitespace-nowrap">
-                        {/* View Bill Button */}
-                        <Link to={`/sales/bill/${sale.billNumber}`}>
-                        <button 
-                            className="p-1.5 sm:p-2 text-gray-600 hover:bg-gray-50 rounded dark:hover:bg-gray-900/20 border border-gray-300 dark:border-gray-600 flex-shrink-0"
-                            title="View Bill"
-                          >
-                            <FaEye className="w-3 h-3 sm:w-4 sm:h-4 text-blue-500" />
-                          </button>
-                        </Link>
-                        {/* View Payments Button */}
-                        {sale.payments && sale.payments.length > 0 && (
-                          <button
-                            onClick={() => handleViewPayments(sale)}
-                            className="p-1.5 sm:p-2 text-indigo-500 hover:bg-indigo-50 rounded dark:hover:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 flex-shrink-0"
-                            title="View Payments"
-                          >
-                            <FaListAlt className="w-3 h-3 sm:w-4 sm:h-4" />
-                          </button>
-                        )}
-
-                        {/* Add Payment Button */}
-                        {sale.status === "pending" && remainingBalance > 0 && (
-                          <button
-                            onClick={() => handleAddPayment(sale)}
-                            className="p-1.5 sm:p-2 text-green-500 hover:bg-green-50 rounded dark:hover:bg-green-900/20 border border-green-200 dark:border-green-800 flex-shrink-0"
-                            title="Add Payment"
-                          >
-                            <FaCreditCard className="w-3 h-3 sm:w-4 sm:h-4" />
-                          </button>
-                        )}
-                        {/* Edit Sale Button */}
-                        {sale.status === "pending" ? (
-                          <Link to={`/sales/edit/${sale.id}`}>
+                              ? "bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400"
+                              : "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400"
+                            }`}
+                        >
+                          {sale.status || "completed"}
+                        </span>
+                      </td>
+                      <td className="p-2 sm:p-3 md:p-4">
+                        <div className="flex items-center justify-center gap-1 sm:gap-2 flex-nowrap whitespace-nowrap">
+                          {/* View Bill Button */}
+                          <Link to={`/sales/bill/${sale.billNumber}`}>
                             <button
-                              className="p-1.5 sm:p-2 text-blue-600 hover:bg-blue-50 rounded dark:hover:bg-blue-900/20 flex-shrink-0"
-                              title="Edit Sale"
+                              className="p-1.5 sm:p-2 text-gray-600 hover:bg-gray-50 rounded dark:hover:bg-gray-900/20 border border-gray-300 dark:border-gray-600 flex-shrink-0"
+                              title="View Bill"
                             >
-                              <PencilIcon className="w-3 h-3 sm:w-4 sm:h-4" />
+                              <FaEye className="w-3 h-3 sm:w-4 sm:h-4 text-blue-500" />
                             </button>
                           </Link>
-                        ) : (
-                          <button
-                            disabled
-                            className="p-1.5 sm:p-2 text-gray-400 cursor-not-allowed rounded dark:bg-gray-900/20 flex-shrink-0 opacity-50"
-                            title={sale.status === "completed" ? "Completed sales cannot be edited" : "Cancelled sales cannot be edited"}
-                          >
-                            <PencilIcon className="w-3 h-3 sm:w-4 sm:h-4" />
-                          </button>
-                        )}
-                        {/* Cancel Sale Button */}
-                        {sale.status !== "cancelled" &&
-                          (currentUser?.role === "admin" ||
-                            currentUser?.role === "superadmin" ||
-                            currentUser?.id === sale.userId) && (
+                          {/* View Payments Button */}
+                          {sale.payments && sale.payments.length > 0 && (
+                            <button
+                              onClick={() => handleViewPayments(sale)}
+                              className="p-1.5 sm:p-2 text-indigo-500 hover:bg-indigo-50 rounded dark:hover:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 flex-shrink-0"
+                              title="View Payments"
+                            >
+                              <FaListAlt className="w-3 h-3 sm:w-4 sm:h-4" />
+                            </button>
+                          )}
+
+                          {/* Add Payment Button */}
+                          {hasResourcePermission(currentUser.role, 'sales:add_payment', currentUser.permissions) && sale.status === "pending" && remainingBalance > 0 && (
+                            <button
+                              onClick={() => handleAddPayment(sale)}
+                              className="p-1.5 sm:p-2 text-green-500 hover:bg-green-50 rounded dark:hover:bg-green-900/20 border border-green-200 dark:border-green-800 flex-shrink-0"
+                              title="Add Payment"
+                            >
+                              <FaCreditCard className="w-3 h-3 sm:w-4 sm:h-4" />
+                            </button>
+                          )}
+                          {/* Edit Sale Button */}
+                          {hasResourcePermission(currentUser.role, 'sales:update', currentUser.permissions) && (
+                            sale.status === "pending" ? (
+                              <Link to={`/sales/edit/${sale.id}`}>
+                                <button
+                                  className="p-1.5 sm:p-2 text-blue-600 hover:bg-blue-50 rounded dark:hover:bg-blue-900/20 flex-shrink-0"
+                                  title="Edit Sale"
+                                >
+                                  <PencilIcon className="w-3 h-3 sm:w-4 sm:h-4" />
+                                </button>
+                              </Link>
+                            ) : (
+                              <button
+                                disabled
+                                className="p-1.5 sm:p-2 text-gray-400 cursor-not-allowed rounded dark:bg-gray-900/20 flex-shrink-0 opacity-50"
+                                title={sale.status === "completed" ? "Completed sales cannot be edited" : "Cancelled sales cannot be edited"}
+                              >
+                                <PencilIcon className="w-3 h-3 sm:w-4 sm:h-4" />
+                              </button>
+                            )
+                          )}
+                          {/* Cancel Sale Button */}
+                          {hasResourcePermission(currentUser.role, 'sales:cancel', currentUser.permissions) && sale.status !== "cancelled" && (
                             <button
                               onClick={() => handleCancelSaleClick(sale)}
                               className="p-1.5 sm:p-2 text-orange-600 hover:bg-orange-50 rounded dark:hover:bg-orange-900/20 border border-orange-200 dark:border-orange-800 flex-shrink-0"
@@ -567,15 +575,15 @@ export default function SalesList() {
                               <FaUndo className="w-3 h-3 sm:w-4 sm:h-4" />
                             </button>
                           )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              }).filter(Boolean)
-            )}
-          </tbody>
-        </table>
-      </div>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                }).filter(Boolean)
+              )}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {/* Add Payment Modal */}
@@ -592,10 +600,10 @@ export default function SalesList() {
                 Remaining: <span className="font-semibold text-orange-600 dark:text-orange-400">
                   Rs. {(() => {
                     // Filter out payments with invalid amounts (0, null, undefined, NaN)
-                    const validPaymentsForRemaining = (selectedSale.payments || []).filter((p: SalePayment) => 
-                      p?.amount !== undefined && 
-                      p?.amount !== null && 
-                      !isNaN(Number(p.amount)) && 
+                    const validPaymentsForRemaining = (selectedSale.payments || []).filter((p: SalePayment) =>
+                      p?.amount !== undefined &&
+                      p?.amount !== null &&
+                      !isNaN(Number(p.amount)) &&
                       Number(p.amount) > 0
                     );
                     const totalPaidForRemaining = validPaymentsForRemaining.reduce((sum: number, p: SalePayment) => sum + (p.amount || 0), 0);
@@ -660,9 +668,9 @@ export default function SalesList() {
             <Button variant="outline" size="sm" onClick={closePaymentModal} className="flex-1">
               Cancel
             </Button>
-            <Button 
-              size="sm" 
-              onClick={handleSubmitPayment} 
+            <Button
+              size="sm"
+              onClick={handleSubmitPayment}
               className="flex-1"
               loading={isSubmittingPayment}
               disabled={isSubmittingPayment || !paymentData.amount || paymentData.amount <= 0 || (paymentData.type === "bank_transfer" && !paymentData.bankAccountId)}
@@ -696,13 +704,13 @@ export default function SalesList() {
                 </div>
                 <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
                   <p className="text-xs text-gray-600 dark:text-gray-400">
-                    Total Payments: <span className="font-semibold">{(selectedSale.payments || []).length}</span> | 
+                    Total Payments: <span className="font-semibold">{(selectedSale.payments || []).length}</span> |
                     Total Paid: <span className="font-semibold">Rs. {(() => {
                       // Filter out payments with invalid amounts (0, null, undefined, NaN)
-                      const validPayments = (selectedSale.payments || []).filter((p: SalePayment) => 
-                        p?.amount !== undefined && 
-                        p?.amount !== null && 
-                        !isNaN(Number(p.amount)) && 
+                      const validPayments = (selectedSale.payments || []).filter((p: SalePayment) =>
+                        p?.amount !== undefined &&
+                        p?.amount !== null &&
+                        !isNaN(Number(p.amount)) &&
                         Number(p.amount) > 0
                       );
                       return validPayments.reduce((sum: number, p: SalePayment) => sum + (p?.amount || 0), 0).toFixed(2);
@@ -738,91 +746,91 @@ export default function SalesList() {
                           return dateA - dateB;
                         })
                         .map((payment: SalePayment & { date?: string }, index: number) => {
-                        return (
-                          <tr key={index} className="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                            <td className="p-3 text-gray-700 dark:text-gray-300 font-medium">{index + 1}</td>
-                            <td className="p-3 text-gray-700 dark:text-gray-300">
-                              <span className="font-medium">
-                                {(() => {
-                                  // Show date/time exactly as it comes from backend without UTC conversion
-                                  const dateToShow = payment.date || selectedSale.date || selectedSale.createdAt;
-                                  
-                                  if (!dateToShow) return "";
-                                  
-                                  // Parse date string directly to extract components without UTC conversion
-                                  // Handle both ISO format (2026-01-24T04:36:52.331Z) and other formats
-                                  let year: string, month: string, day: string, hours: string, minutes: string, seconds: string;
-                                  
-                                  if (typeof dateToShow === 'string') {
-                                    // Extract date and time from ISO string directly
-                                    // Format: "2026-01-24T04:36:52.331Z" or "2026-01-24T04:36:52.331"
-                                    const dateTimeMatch = dateToShow.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/);
-                                    if (dateTimeMatch) {
-                                      year = dateTimeMatch[1];
-                                      month = dateTimeMatch[2];
-                                      day = dateTimeMatch[3];
-                                      hours = dateTimeMatch[4];
-                                      minutes = dateTimeMatch[5];
-                                      seconds = dateTimeMatch[6];
-                                      
+                          return (
+                            <tr key={index} className="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                              <td className="p-3 text-gray-700 dark:text-gray-300 font-medium">{index + 1}</td>
+                              <td className="p-3 text-gray-700 dark:text-gray-300">
+                                <span className="font-medium">
+                                  {(() => {
+                                    // Show date/time exactly as it comes from backend without UTC conversion
+                                    const dateToShow = payment.date || selectedSale.date || selectedSale.createdAt;
+
+                                    if (!dateToShow) return "";
+
+                                    // Parse date string directly to extract components without UTC conversion
+                                    // Handle both ISO format (2026-01-24T04:36:52.331Z) and other formats
+                                    let year: string, month: string, day: string, hours: string, minutes: string, seconds: string;
+
+                                    if (typeof dateToShow === 'string') {
+                                      // Extract date and time from ISO string directly
+                                      // Format: "2026-01-24T04:36:52.331Z" or "2026-01-24T04:36:52.331"
+                                      const dateTimeMatch = dateToShow.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/);
+                                      if (dateTimeMatch) {
+                                        year = dateTimeMatch[1];
+                                        month = dateTimeMatch[2];
+                                        day = dateTimeMatch[3];
+                                        hours = dateTimeMatch[4];
+                                        minutes = dateTimeMatch[5];
+                                        seconds = dateTimeMatch[6];
+
+                                        // Format time in 12-hour format
+                                        const hoursNum = parseInt(hours, 10);
+                                        const isPM = hoursNum >= 12;
+                                        const displayHours = hoursNum === 0 ? 12 : hoursNum > 12 ? hoursNum - 12 : hoursNum;
+                                        const hoursStr = String(displayHours).padStart(2, "0");
+                                        const ampm = isPM ? "PM" : "AM";
+
+                                        // Show date and time: MM/DD/YYYY HH:MM:SS AM/PM
+                                        return `${month}/${day}/${year} ${hoursStr}:${minutes}:${seconds} ${ampm}`;
+                                      } else {
+                                        // Fallback: use formatBackendDate for date-only
+                                        return formatBackendDate(dateToShow);
+                                      }
+                                    } else if (dateToShow instanceof Date) {
+                                      // If it's already a Date object, extract local components
+                                      year = String(dateToShow.getFullYear());
+                                      month = String(dateToShow.getMonth() + 1).padStart(2, "0");
+                                      day = String(dateToShow.getDate()).padStart(2, "0");
+                                      hours = String(dateToShow.getHours()).padStart(2, "0");
+                                      minutes = String(dateToShow.getMinutes()).padStart(2, "0");
+                                      seconds = String(dateToShow.getSeconds()).padStart(2, "0");
+
                                       // Format time in 12-hour format
                                       const hoursNum = parseInt(hours, 10);
                                       const isPM = hoursNum >= 12;
                                       const displayHours = hoursNum === 0 ? 12 : hoursNum > 12 ? hoursNum - 12 : hoursNum;
                                       const hoursStr = String(displayHours).padStart(2, "0");
                                       const ampm = isPM ? "PM" : "AM";
-                                      
-                                      // Show date and time: MM/DD/YYYY HH:MM:SS AM/PM
+
                                       return `${month}/${day}/${year} ${hoursStr}:${minutes}:${seconds} ${ampm}`;
                                     } else {
-                                      // Fallback: use formatBackendDate for date-only
                                       return formatBackendDate(dateToShow);
                                     }
-                                  } else if (dateToShow instanceof Date) {
-                                    // If it's already a Date object, extract local components
-                                    year = String(dateToShow.getFullYear());
-                                    month = String(dateToShow.getMonth() + 1).padStart(2, "0");
-                                    day = String(dateToShow.getDate()).padStart(2, "0");
-                                    hours = String(dateToShow.getHours()).padStart(2, "0");
-                                    minutes = String(dateToShow.getMinutes()).padStart(2, "0");
-                                    seconds = String(dateToShow.getSeconds()).padStart(2, "0");
-                                    
-                                    // Format time in 12-hour format
-                                    const hoursNum = parseInt(hours, 10);
-                                    const isPM = hoursNum >= 12;
-                                    const displayHours = hoursNum === 0 ? 12 : hoursNum > 12 ? hoursNum - 12 : hoursNum;
-                                    const hoursStr = String(displayHours).padStart(2, "0");
-                                    const ampm = isPM ? "PM" : "AM";
-                                    
-                                    return `${month}/${day}/${year} ${hoursStr}:${minutes}:${seconds} ${ampm}`;
-                                  } else {
-                                    return formatBackendDate(dateToShow);
-                                  }
-                                })()}
-                              </span>
-                            </td>
-                            <td className="p-3">
-                              <span className="px-2 py-1 text-xs font-medium rounded bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400 uppercase">
-                                {payment.type.replace('_', ' ')}
-                              </span>
-                            </td>
-                            <td className="p-3 text-right font-semibold text-gray-800 dark:text-white">
-                              Rs. {(payment.amount || 0).toFixed(2)}
-                            </td>
-                            <td className="p-3">
-                              <div className="flex items-center justify-center gap-2">
-                                <button
-                                  onClick={() => handlePrintPayment(selectedSale.billNumber, index)}
-                                  className="p-1.5 text-blue-600 hover:bg-blue-50 rounded dark:hover:bg-blue-900/20 border border-blue-200 dark:border-blue-800"
-                                  title="Print Payment Receipt"
-                                >
-                                  <DownloadIcon className="w-4 h-4" />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })
+                                  })()}
+                                </span>
+                              </td>
+                              <td className="p-3">
+                                <span className="px-2 py-1 text-xs font-medium rounded bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400 uppercase">
+                                  {payment.type.replace('_', ' ')}
+                                </span>
+                              </td>
+                              <td className="p-3 text-right font-semibold text-gray-800 dark:text-white">
+                                Rs. {(payment.amount || 0).toFixed(2)}
+                              </td>
+                              <td className="p-3">
+                                <div className="flex items-center justify-center gap-2">
+                                  <button
+                                    onClick={() => handlePrintPayment(selectedSale.billNumber, index)}
+                                    className="p-1.5 text-blue-600 hover:bg-blue-50 rounded dark:hover:bg-blue-900/20 border border-blue-200 dark:border-blue-800"
+                                    title="Print Payment Receipt"
+                                  >
+                                    <DownloadIcon className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
                     )}
                   </tbody>
                   <tfoot className="bg-gray-50 dark:bg-gray-800">
@@ -833,10 +841,10 @@ export default function SalesList() {
                       <td className="p-3 text-right font-bold text-lg text-gray-800 dark:text-white">
                         Rs. {(() => {
                           // Filter out payments with invalid amounts (0, null, undefined, NaN)
-                          const validPaymentsForTotal = (selectedSale.payments || []).filter((p: SalePayment) => 
-                            p?.amount !== undefined && 
-                            p?.amount !== null && 
-                            !isNaN(Number(p.amount)) && 
+                          const validPaymentsForTotal = (selectedSale.payments || []).filter((p: SalePayment) =>
+                            p?.amount !== undefined &&
+                            p?.amount !== null &&
+                            !isNaN(Number(p.amount)) &&
                             Number(p.amount) > 0
                           );
                           return validPaymentsForTotal.reduce((sum: number, p: SalePayment) => sum + (p?.amount || 0), 0).toFixed(2);
@@ -925,14 +933,14 @@ export default function SalesList() {
               </p>
             </div>
           </div>
-          
+
           {saleToCancel && (() => {
             const payments = (saleToCancel.payments || []) as SalePayment[];
             // Filter out payments with invalid amounts (0, null, undefined, NaN)
-            const validPaymentsForCancel = payments.filter((p: SalePayment) => 
-              p?.amount !== undefined && 
-              p?.amount !== null && 
-              !isNaN(Number(p.amount)) && 
+            const validPaymentsForCancel = payments.filter((p: SalePayment) =>
+              p?.amount !== undefined &&
+              p?.amount !== null &&
+              !isNaN(Number(p.amount)) &&
               Number(p.amount) > 0
             );
             const totalPaid = validPaymentsForCancel.reduce((sum: number, p: SalePayment) => sum + (p?.amount || 0), 0);
@@ -940,13 +948,13 @@ export default function SalesList() {
             const today = new Date();
             const daysDifference = Math.floor((today.getTime() - saleCreatedAt.getTime()) / (1000 * 60 * 60 * 24));
             const canReturn = daysDifference <= 7;
-            
+
             return (
               <>
                 <p className="mb-4 text-gray-700 dark:text-gray-300">
                   Are you sure you want to cancel this sale? This will restore product stock. This action cannot be undone.
                 </p>
-                
+
                 {!canReturn && (
                   <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded">
                     <p className="text-sm text-red-600 dark:text-red-400">
@@ -954,7 +962,7 @@ export default function SalesList() {
                     </p>
                   </div>
                 )}
-                
+
                 {totalPaid > 0 && canReturn && (
                   <div className="mb-6 space-y-4">
                     <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded">
@@ -962,7 +970,7 @@ export default function SalesList() {
                         Refund Amount: Rs. {totalPaid.toFixed(2)}
                       </p>
                     </div>
-                    
+
                     <div className="space-y-3">
                       <div>
                         <Label>Refund Method *</Label>
@@ -985,7 +993,7 @@ export default function SalesList() {
                               value={selectedBankAccountId}
                               onChange={(value) => handleBankAccountChange(value)}
                               options={[
-                               
+
                                 ...((bankAccounts || []).map((bank) => ({
                                   value: bank.id,
                                   label: `${bank.bankName} - ${bank.accountNumber}`,
@@ -1021,7 +1029,7 @@ export default function SalesList() {
                     </div>
                   </div>
                 )}
-                
+
                 <div className="flex gap-3 justify-end">
                   <Button
                     variant="outline"

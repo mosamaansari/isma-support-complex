@@ -8,10 +8,12 @@ import Input from "../../components/form/input/InputField";
 import DatePicker from "../../components/form/DatePicker";
 import Pagination from "../../components/ui/Pagination";
 import PageSizeSelector from "../../components/ui/PageSizeSelector";
-import { PencilIcon, TrashBinIcon } from "../../icons";
+import { PencilIcon, TrashBinIcon, PlusIcon } from "../../icons";
 import { Modal } from "../../components/ui/modal";
+import { FaMoneyBillWave, FaUniversity, FaCalculator, FaListOl } from "react-icons/fa";
 import { formatDateToString } from "../../utils/dateHelpers";
 import { formatPriceWithCurrencyComplete } from "../../utils/priceHelpers";
+import { hasResourcePermission } from "../../utils/permissions";
 
 export default function ExpenseList() {
   const { expenses, expensesPagination, deleteExpense, currentUser, loading, error, refreshExpenses, expenseCategories, refreshExpenseCategories } = useData();
@@ -126,7 +128,7 @@ export default function ExpenseList() {
     cardExpenses: 0,
     categoryTotals: {},
   };
-  
+
   const { totalExpenses, totalCount, cashExpenses, bankExpenses } = summaryStats;
 
   return (
@@ -140,9 +142,14 @@ export default function ExpenseList() {
           <h1 className="text-xl sm:text-2xl font-bold text-gray-800 dark:text-white">
             Expenses Management
           </h1>
-          <Link to="/expenses/add" className="w-full sm:w-auto">
-            <Button size="sm" className="w-full sm:w-auto">Add Expense</Button>
-          </Link>
+          {currentUser && hasResourcePermission(currentUser.role, 'expenses:create', currentUser.permissions) && (
+            <Link to="/expenses/add" className="w-full sm:w-auto">
+              <Button size="sm" className="w-full sm:w-auto">
+                <PlusIcon className="w-4 h-4 mr-2" />
+                Add Expense
+              </Button>
+            </Link>
+          )}
         </div>
 
         {/* Loading overlay - only show when loading and no data */}
@@ -155,31 +162,59 @@ export default function ExpenseList() {
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-1 gap-3 sm:gap-4 mb-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-              <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-                <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Total Expenses</p>
-                <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-800 dark:text-white price-responsive">
-                  {formatPriceWithCurrencyComplete(totalExpenses)}
-                </p>
+            <div className="grid grid-cols-1 gap-3 sm:gap-4 mb-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800 border-l-4 border-gray-500">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Total Expenses</p>
+                    <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-800 dark:text-white price-responsive">
+                      {formatPriceWithCurrencyComplete(totalExpenses)}
+                    </p>
+                  </div>
+                  <div className="p-2 sm:p-3 bg-gray-100 rounded-lg dark:bg-gray-700">
+                    <FaCalculator className="w-5 h-5 sm:w-6 sm:h-6 text-gray-600 dark:text-gray-400" />
+                  </div>
+                </div>
               </div>
-              <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-                <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Cash Expenses</p>
-                <p className="text-lg sm:text-xl lg:text-2xl font-bold text-green-600 dark:text-green-400 price-responsive">
-                  {formatPriceWithCurrencyComplete(cashExpenses)}
-                </p>
+              <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800 border-l-4 border-green-500">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Cash Expenses</p>
+                    <p className="text-lg sm:text-xl lg:text-2xl font-bold text-green-600 dark:text-green-400 price-responsive">
+                      {formatPriceWithCurrencyComplete(cashExpenses)}
+                    </p>
+                  </div>
+                  <div className="p-2 sm:p-3 bg-green-50 rounded-lg dark:bg-green-900/20">
+                    <FaMoneyBillWave className="w-5 h-5 sm:w-6 sm:h-6 text-green-600 dark:text-green-400" />
+                  </div>
+                </div>
               </div>
-              <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-                <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Bank Expenses</p>
-                <p className="text-lg sm:text-xl lg:text-2xl font-bold text-blue-600 dark:text-blue-400 price-responsive">
-                  {formatPriceWithCurrencyComplete(bankExpenses)}
-                </p>
+              <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800 border-l-4 border-blue-500">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Bank Expenses</p>
+                    <p className="text-lg sm:text-xl lg:text-2xl font-bold text-blue-600 dark:text-blue-400 price-responsive">
+                      {formatPriceWithCurrencyComplete(bankExpenses)}
+                    </p>
+                  </div>
+                  <div className="p-2 sm:p-3 bg-blue-50 rounded-lg dark:bg-blue-900/20">
+                    <FaUniversity className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 dark:text-blue-400" />
+                  </div>
+                </div>
               </div>
 
-              <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-                <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Total Count</p>
-                <p className="text-lg sm:text-xl lg:text-2xl font-bold text-purple-600 dark:text-purple-400">
-                  {totalCount}
-                </p>
+              <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800 border-l-4 border-purple-500">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Total Count</p>
+                    <p className="text-lg sm:text-xl lg:text-2xl font-bold text-purple-600 dark:text-purple-400">
+                      {totalCount}
+                    </p>
+                  </div>
+                  <div className="p-2 sm:p-3 bg-purple-50 rounded-lg dark:bg-purple-900/20">
+                    <FaListOl className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600 dark:text-purple-400" />
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -278,20 +313,25 @@ export default function ExpenseList() {
                       </td>
                       <td className="p-2 sm:p-3 md:p-4 whitespace-nowrap">
                         <div className="flex items-center justify-center gap-1 sm:gap-2 flex-nowrap">
-                          <Link to={`/expenses/edit/${expense.id}`}>
-                            <button className="p-1.5 sm:p-2 text-blue-600 hover:bg-blue-50 rounded dark:hover:bg-blue-900/20 flex-shrink-0">
-                              <PencilIcon className="w-3 h-3 sm:w-4 sm:h-4" />
-                            </button>
-                          </Link>
-                          {(currentUser?.role === "admin" ||
-                            currentUser?.id === expense.userId) && (
+                          {currentUser && hasResourcePermission(currentUser.role, 'expenses:update', currentUser.permissions) && (
+                            <Link to={`/expenses/edit/${expense.id}`}>
                               <button
-                                onClick={() => handleDeleteClick(expense.id)}
-                                className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded dark:hover:bg-red-900/20 flex-shrink-0"
+                                className="p-1.5 sm:p-2 text-blue-600 hover:bg-blue-50 rounded dark:hover:bg-blue-900/20 flex-shrink-0"
+                                title="Edit Expense"
                               >
-                                <TrashBinIcon className="w-3 h-3 sm:w-4 sm:h-4" />
+                                <PencilIcon className="w-3 h-3 sm:w-4 sm:h-4" />
                               </button>
-                            )}
+                            </Link>
+                          )}
+                          {currentUser && hasResourcePermission(currentUser.role, 'expenses:delete', currentUser.permissions) && (
+                            <button
+                              onClick={() => handleDeleteClick(expense.id)}
+                              className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded dark:hover:bg-red-900/20 flex-shrink-0"
+                              title="Delete Expense"
+                            >
+                              <TrashBinIcon className="w-3 h-3 sm:w-4 sm:h-4" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>

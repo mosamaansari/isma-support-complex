@@ -26,14 +26,6 @@ class RoleController {
 
   async createRole(req: AuthRequest, res: Response) {
     try {
-      // Only admin and superadmin can create roles
-      if (req.user?.role !== "admin" && req.user?.role !== "superadmin") {
-        return res.status(403).json({
-          message: "Only admin and superadmin can create roles",
-          response: null,
-          error: "Only admin and superadmin can create roles",
-        });
-      }
 
       const role = await roleService.createRole(req.body);
       logger.info(`Role created: ${role.name} by ${req.user?.username}`);
@@ -48,7 +40,7 @@ class RoleController {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
       logger.error("Create role error:", error);
-      
+
       // Handle validation errors from service
       if (
         error instanceof Error &&
@@ -67,14 +59,14 @@ class RoleController {
         } else {
           fieldErrors.name = [errorMessage];
         }
-        
+
         return res.status(400).json({
           message: "Validation failed",
           response: null,
           error: fieldErrors,
         });
       }
-      
+
       return res.status(500).json({
         message: errorMessage,
         response: null,
@@ -85,14 +77,7 @@ class RoleController {
 
   async updateRole(req: AuthRequest, res: Response) {
     try {
-      // Only admin and superadmin can update roles
-      if (req.user?.role !== "admin" && req.user?.role !== "superadmin") {
-        return res.status(403).json({
-          message: "Only admin and superadmin can update roles",
-          response: null,
-          error: "Only admin and superadmin can update roles",
-        });
-      }
+
 
       const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
       const role = await roleService.updateRole(id, req.body);
@@ -125,14 +110,7 @@ class RoleController {
 
   async deleteRole(req: AuthRequest, res: Response) {
     try {
-      // Only admin and superadmin can delete roles
-      if (req.user?.role !== "admin" && req.user?.role !== "superadmin") {
-        return res.status(403).json({
-          message: "Only admin and superadmin can delete roles",
-          response: null,
-          error: "Only admin and superadmin can delete roles",
-        });
-      }
+
 
       const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
       await roleService.deleteRole(id);

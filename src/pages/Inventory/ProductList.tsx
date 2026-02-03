@@ -11,6 +11,7 @@ import { Modal } from "../../components/ui/modal";
 import { PencilIcon, TrashBinIcon, AlertIcon } from "../../icons";
 import { formatPriceWithCurrency } from "../../utils/priceHelpers";
 import { extractErrorMessage } from "../../utils/errorHandler";
+import { hasResourcePermission } from "../../utils/permissions";
 
 export default function ProductList() {
   const {
@@ -150,9 +151,11 @@ export default function ProductList() {
               </div>
             )}
           </div>
-          <Link to="/inventory/product/add" className="w-full sm:w-auto">
-            <Button size="sm" className="w-full sm:w-auto">Add Product</Button>
-          </Link>
+          {currentUser && hasResourcePermission(currentUser.role, 'products:create', currentUser.permissions) && (
+            <Link to="/inventory/product/add" className="w-full sm:w-auto">
+              <Button size="sm" className="w-full sm:w-auto">Add Product</Button>
+            </Link>
+          )}
         </div>
 
         <div className="grid grid-cols-1 gap-3 sm:gap-4 mb-6 sm:grid-cols-2 md:grid-cols-3">
@@ -307,22 +310,22 @@ export default function ProductList() {
                     </td>
                     <td className="p-2 sm:p-3 md:p-4 whitespace-nowrap">
                       <div className="flex items-center justify-center gap-1 sm:gap-2 flex-nowrap">
-                        <Link to={`/inventory/product/edit/${product.id}`}>
-                          <button className="p-1.5 sm:p-2 text-blue-600 hover:bg-blue-50 rounded dark:hover:bg-blue-900/20 flex-shrink-0">
-                            <PencilIcon className="w-3 h-3 sm:w-4 sm:h-4" />
-                          </button>
-                        </Link>
-                        {(currentUser?.role === "admin" ||
-                          currentUser?.role === "warehouse_manager" ||
-                          currentUser?.role === "superadmin") && (
-                            <button
-                              onClick={() => handleDeleteClick(product.id)}
-                              disabled={isDeleting === product.id}
-                              className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded dark:hover:bg-red-900/20 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
-                            >
-                              <TrashBinIcon className="w-3 h-3 sm:w-4 sm:h-4" />
+                        {currentUser && hasResourcePermission(currentUser.role, 'products:update', currentUser.permissions) && (
+                          <Link to={`/inventory/product/edit/${product.id}`}>
+                            <button className="p-1.5 sm:p-2 text-blue-600 hover:bg-blue-50 rounded dark:hover:bg-blue-900/20 flex-shrink-0">
+                              <PencilIcon className="w-3 h-3 sm:w-4 sm:h-4" />
                             </button>
-                          )}
+                          </Link>
+                        )}
+                        {currentUser && hasResourcePermission(currentUser.role, 'products:delete', currentUser.permissions) && (
+                          <button
+                            onClick={() => handleDeleteClick(product.id)}
+                            disabled={isDeleting === product.id}
+                            className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded dark:hover:bg-red-900/20 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+                          >
+                            <TrashBinIcon className="w-3 h-3 sm:w-4 sm:h-4" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

@@ -395,7 +395,7 @@ class UserService {
 
   async canUserModify(targetUserId: string, currentUserId: string, currentUserRole: string) {
     if (targetUserId === currentUserId) {
-      return false; // Cannot delete own account
+      return false; // Cannot delete/modify own account via administrative endpoints
     }
 
     const targetUser = await prisma.user.findUnique({
@@ -406,12 +406,11 @@ class UserService {
       throw new Error("User not found");
     }
 
-    // Admin and superadmin can modify regular users
-    if (currentUserRole === "admin" || currentUserRole === "superadmin") {
-      return true;
-    }
-
-    return false;
+    // Since the requirePermission middleware has already verified the user has 
+    // USERS_UPDATE or USERS_DELETE permission, we can allow the modification
+    // as long as they are not modifying themselves (which is handled by /profile).
+    // Superadmin and admin roles also have full access.
+    return true;
   }
 }
 

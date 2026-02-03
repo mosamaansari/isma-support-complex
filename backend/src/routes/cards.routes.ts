@@ -10,15 +10,16 @@ import Joi from "joi";
 const router = Router();
 
 // Get all cards
-router.get("/", authenticate, cardController.getCards.bind(cardController));
+router.get("/", authenticate, requirePermission(PERMISSIONS.CARDS_VIEW), cardController.getCards.bind(cardController));
 
 // Get default card
-router.get("/default", authenticate, cardController.getDefaultCard.bind(cardController));
+router.get("/default", authenticate, requirePermission(PERMISSIONS.CARDS_VIEW), cardController.getDefaultCard.bind(cardController));
 
 // Get single card
 router.get(
   "/:id",
   authenticate,
+  requirePermission(PERMISSIONS.CARDS_VIEW),
   paramsValidator(
     Joi.object({
       id: Joi.string().required().trim().min(1).messages({
@@ -73,5 +74,3 @@ router.delete(
 );
 
 export default router;
-
-

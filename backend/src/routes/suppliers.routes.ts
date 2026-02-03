@@ -1,7 +1,9 @@
 import express, { Router } from "express";
 import supplierController from "../controllers/supplier.controller";
 import { authenticate } from "../middleware/auth";
+import { requirePermission } from "../middleware/permissions";
 import { queryValidator } from "../middleware/joiValidator";
+import { PERMISSIONS } from "../utils/permissions";
 import Joi from "joi";
 
 const router = Router();
@@ -10,6 +12,7 @@ const router = Router();
 router.get(
   "/",
   authenticate,
+  requirePermission(PERMISSIONS.PURCHASES_VIEW),
   queryValidator(
     Joi.object({
       search: Joi.string()
@@ -24,14 +27,3 @@ router.get(
 );
 
 export default router;
-
-
-
-
-
-
-
-
-
-
-

@@ -331,3 +331,51 @@ export interface ShopSettings {
   gstNumber?: string;
 }
 
+
+// Dashboard Types
+export interface DashboardStats {
+  metrics: {
+    todaySales: number;
+    todaySalesNonCancelled: number;
+    todayPurchasesNonCancelled: number;
+    totalSales: number;
+    totalExpenses: number;
+    totalPurchases: number;
+    lowStockCount: number;
+    pendingSalesCount: number;
+    pendingSalesAmount: number;
+    pendingPurchasesCount: number;
+    pendingPurchasesAmount: number;
+    netProfit: number;
+    totalProducts: number;
+  };
+  monthlySales?: {
+    categories?: string[];
+    sales?: number[];
+    data?: number[]; // fallback for sales
+    expenses?: number[];
+    purchases?: number[];
+    quarterly?: {
+      categories?: string[];
+      sales?: number[];
+      data?: number[]; // fallback for sales
+      expenses?: number[];
+      purchases?: number[];
+    };
+    annual?: {
+      categories?: string[];
+      sales?: number[];
+      data?: number[]; // fallback for sales
+      expenses?: number[];
+      purchases?: number[];
+    };
+  };
+  recentSales?: Array<{
+    id: string;
+    billNumber: string;
+    customerName: string;
+    date: string;
+    total: number;
+    status: string;
+  }>;
+}

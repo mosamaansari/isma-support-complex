@@ -2,11 +2,13 @@ import express from "express";
 import expenseCategoryService from "../services/expenseCategory.service";
 import { createExpenseCategorySchema, updateExpenseCategorySchema } from "../validators/expenseCategory.validator";
 import { authenticate } from "../middleware/auth";
+import { requirePermission } from "../middleware/permissions";
+import { PERMISSIONS } from "../utils/permissions";
 
 const router = express.Router();
 
 // Get all expense categories
-router.get("/", authenticate, async (req, res) => {
+router.get("/", authenticate, requirePermission(PERMISSIONS.EXPENSES_VIEW), async (req, res) => {
   try {
     const categories = await expenseCategoryService.getExpenseCategories();
     res.json(categories);
@@ -16,7 +18,7 @@ router.get("/", authenticate, async (req, res) => {
 });
 
 // Get single expense category
-router.get("/:id", authenticate, async (req, res) => {
+router.get("/:id", authenticate, requirePermission(PERMISSIONS.EXPENSES_VIEW), async (req, res) => {
   try {
     const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const category = await expenseCategoryService.getExpenseCategory(id);
@@ -27,7 +29,7 @@ router.get("/:id", authenticate, async (req, res) => {
 });
 
 // Create expense category
-router.post("/", authenticate, async (req, res) => {
+router.post("/", authenticate, requirePermission(PERMISSIONS.EXPENSES_CREATE), async (req, res) => {
   try {
     const { error, value } = createExpenseCategorySchema.validate(req.body, { abortEarly: false });
     if (error) {
@@ -50,7 +52,7 @@ router.post("/", authenticate, async (req, res) => {
 });
 
 // Update expense category
-router.put("/:id", authenticate, async (req, res) => {
+router.put("/:id", authenticate, requirePermission(PERMISSIONS.EXPENSES_UPDATE), async (req, res) => {
   try {
     const { error, value } = updateExpenseCategorySchema.validate(req.body, { abortEarly: false });
     if (error) {
@@ -74,7 +76,7 @@ router.put("/:id", authenticate, async (req, res) => {
 });
 
 // Delete expense category
-router.delete("/:id", authenticate, async (req, res) => {
+router.delete("/:id", authenticate, requirePermission(PERMISSIONS.EXPENSES_DELETE), async (req, res) => {
   try {
     const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const result = await expenseCategoryService.deleteExpenseCategory(id);
@@ -85,4 +87,3 @@ router.delete("/:id", authenticate, async (req, res) => {
 });
 
 export default router;
-

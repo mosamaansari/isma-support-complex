@@ -14,6 +14,8 @@ import CategorySelect from "../../components/form/CategorySelect";
 import BrandSelect from "../../components/form/BrandSelect";
 import { ChevronLeftIcon, TrashBinIcon } from "../../icons";
 import { restrictDecimalInput } from "../../utils/numberHelpers";
+import { hasResourcePermission } from "../../utils/permissions";
+
 
 const productFormSchema = yup.object().shape({
   name: yup
@@ -70,8 +72,9 @@ const productFormSchema = yup.object().shape({
 export default function ProductForm() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { addProduct, updateProduct, getProduct } = useData();
+  const { addProduct, updateProduct, getProduct, currentUser } = useData();
   const { showSuccess, showError } = useAlert();
+
   const isEdit = !!id;
 
   const [imagePreview, setImagePreview] = useState<string>("");
@@ -199,7 +202,18 @@ export default function ProductForm() {
     }
   };
 
+  if (!currentUser || !hasResourcePermission(currentUser.role, isEdit ? 'products:update' : 'products:create', currentUser.permissions)) {
+    return (
+      <div className="p-8 text-center">
+        <p className="text-red-600 dark:text-red-400">
+          Access denied. Insufficient permissions to {isEdit ? 'edit' : 'add'} products.
+        </p>
+      </div>
+    );
+  }
+
   return (
+
     <>
       <PageMeta
         title={`${isEdit ? "Edit" : "Add"} Product | Isma Sports Complex`}
@@ -460,11 +474,10 @@ export default function ProductForm() {
             ) : (
               <div
                 {...getRootProps()}
-                className={`mt-2 border-2 border-dashed rounded-lg p-6 cursor-pointer transition-colors ${
-                  isDragActive
+                className={`mt-2 border-2 border-dashed rounded-lg p-6 cursor-pointer transition-colors ${isDragActive
                     ? "border-brand-500 bg-brand-50 dark:bg-brand-900/20"
                     : "border-gray-300 dark:border-gray-700 hover:border-brand-400"
-                }`}
+                  }`}
               >
                 <input {...getInputProps()} />
                 <div className="text-center">

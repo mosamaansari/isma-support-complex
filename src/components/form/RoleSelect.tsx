@@ -2,8 +2,9 @@ import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import * as yup from "yup";
-// import { useData } from "../../context/DataContext";
+import { useData } from "../../context/DataContext";
 import { useAlert } from "../../context/AlertContext";
+import { hasResourcePermission } from "../../utils/permissions";
 import Select from "./Select";
 import Button from "../ui/button/Button";
 import Input from "./input/InputField";
@@ -43,6 +44,7 @@ export default function RoleSelect({
   className = "",
   currentUserRole,
 }: RoleSelectProps) {
+  const { currentUser } = useData();
   const { showSuccess, showError } = useAlert();
   const [roles, setRoles] = useState<Array<{ name: string; label: string; description?: string; isCustom?: boolean }>>([]);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -104,19 +106,19 @@ export default function RoleSelect({
     setIsSubmitting(true);
     setFormErrors({});
     clearErrors();
-    
+
     try {
       console.log("Creating role with data:", data);
-      
+
       // Create role via API
       const response = await api.createRole({
         name: data.name.trim().toLowerCase(),
         label: data.label.trim(),
         description: data.description?.trim() || undefined,
       });
-      
+
       console.log("Role creation response:", response);
-      
+
       // Extract role from response - handle different response formats
       let newRole = null;
       if (response?.data) {
@@ -126,18 +128,18 @@ export default function RoleSelect({
       } else if (response) {
         newRole = response;
       }
-      
+
       if (!newRole || !newRole.name) {
         console.error("Invalid role response:", response);
         throw new Error("Invalid response from server. Role was not created.");
       }
-      
+
       // Reload roles to get updated list
       await loadRoles();
-      
+
       // Select the newly created role
       onChange(newRole.name as UserRole);
-      
+
       // Reset form
       reset({
         name: "",
@@ -151,7 +153,7 @@ export default function RoleSelect({
       console.error("Role creation error details:", err);
       const errorData = err.response?.data;
       const errorMsg = errorData?.error || errorData?.message || "Failed to create role";
-      
+
       // Handle backend validation errors (from Joi validator)
       if (errorData?.error && typeof errorData.error === "object" && !Array.isArray(errorData.error)) {
         const backendErrors: Record<string, string> = {};
@@ -206,11 +208,11 @@ export default function RoleSelect({
 
   // Filter roles based on current user's permissions
   const availableRoles = roles.filter((role) => {
-    if (currentUserRole === "superadmin") {
+    if (currentUserRole === "superadmin" || (currentUser && currentUser.role === "superadmin")) {
       return true; // SuperAdmin can see all roles
     }
-    // Admin can see all except superadmin
-    if (currentUserRole === "admin") {
+    // Admin or those with roles:view can see all except superadmin
+    if (currentUserRole === "admin" || (currentUser && (currentUser.role === "admin" || hasResourcePermission(currentUser.role, 'roles:view', currentUser.permissions)))) {
       return role.name !== "superadmin";
     }
     // Others can see cashier, warehouse_manager, and custom roles
@@ -222,8 +224,12 @@ export default function RoleSelect({
     label: role.label,
   }));
 
-  // Add "Add New Role" option only for superadmin and admin
-  if (currentUserRole === "superadmin" || currentUserRole === "admin") {
+  // Add "Add New Role" option if user has permission
+  const canCreateRole = currentUserRole === "superadmin" ||
+    currentUserRole === "admin" ||
+    (currentUser && hasResourcePermission(currentUser.role, 'roles:create', currentUser.permissions));
+
+  if (canCreateRole) {
     roleOptions.push({
       value: "__add_new__",
       label: "+ Add New Role",

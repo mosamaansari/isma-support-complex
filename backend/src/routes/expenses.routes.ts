@@ -17,6 +17,7 @@ const router = Router();
 router.get(
   "/",
   authenticate,
+  requirePermission(PERMISSIONS.EXPENSES_VIEW),
   queryValidator(getExpensesQuerySchema),
   expenseController.getExpenses.bind(expenseController)
 );
@@ -25,6 +26,7 @@ router.get(
 router.get(
   "/:id",
   authenticate,
+  requirePermission(PERMISSIONS.EXPENSES_VIEW),
   paramsValidator(
     Joi.object({
       id: Joi.string().required().trim().min(1).messages({
@@ -82,6 +84,7 @@ router.delete(
 router.get(
   "/statistics/all-time",
   authenticate,
+  requirePermission(PERMISSIONS.EXPENSES_VIEW),
   expenseController.getExpenseStatistics.bind(expenseController)
 );
 

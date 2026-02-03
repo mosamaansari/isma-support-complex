@@ -109,7 +109,8 @@ router.delete(
 // Manually trigger cron job to create opening balance (admin only)
 router.get(
   "/trigger-cron",
-
+  authenticate,
+  requirePermission(PERMISSIONS.OPENING_BALANCE_CREATE),
   openingBalanceController.triggerCronJob.bind(openingBalanceController)
 );
 
@@ -117,10 +118,9 @@ router.get(
 router.post(
   "/add",
   authenticate,
-  requirePermission(PERMISSIONS.OPENING_BALANCE_UPDATE),
+  requirePermission(PERMISSIONS.OPENING_BALANCE_CREATE),
   bodyValidator(addToOpeningBalanceSchema),
   openingBalanceController.addToOpeningBalance.bind(openingBalanceController)
 );
 
 export default router;
-

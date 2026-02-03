@@ -1,8 +1,9 @@
 import { useEffect, useState, useMemo } from "react";
 import Chart from "react-apexcharts";
 import { ApexOptions } from "apexcharts";
-import api from "../../services/api";
 import { formatPrice, formatPriceWithCurrency } from "../../utils/priceHelpers";
+import { DashboardStats } from "../../types";
+
 
 type TrendData = {
   categories: string[];
@@ -23,67 +24,63 @@ type TrendData = {
   };
 };
 
-export default function StatisticsChart() {
-  const [trendData, setTrendData] = useState<TrendData | null>(null);
-  const [loading, setLoading] = useState(true);
+interface StatisticsChartProps {
+  stats: DashboardStats | null;
+  loading: boolean;
+}
+
+export default function StatisticsChart({ stats, loading }: StatisticsChartProps) {
+
   const [view, setView] = useState<"monthly" | "quarterly" | "annual">("monthly");
+  const [trendData, setTrendData] = useState<TrendData | null>(null);
 
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        setLoading(true);
-        const stats = await api.getDashboardStats();
-        const ms = stats?.monthlySales;
+    if (!loading && stats) {
+      const ms = stats.monthlySales;
 
-        const monthlySales = ms?.sales ?? ms?.data ?? new Array(12).fill(0);
-        const monthlyExpenses = ms?.expenses ?? new Array(12).fill(0);
-        const monthlyPurchases = ms?.purchases ?? new Array(12).fill(0);
+      const monthlySales = ms?.sales ?? ms?.data ?? new Array(12).fill(0);
+      const monthlyExpenses = ms?.expenses ?? new Array(12).fill(0);
+      const monthlyPurchases = ms?.purchases ?? new Array(12).fill(0);
 
-        const quarterlySales = ms?.quarterly?.sales ?? ms?.quarterly?.data ?? new Array(4).fill(0);
-        const quarterlyExpenses = ms?.quarterly?.expenses ?? new Array(4).fill(0);
-        const quarterlyPurchases = ms?.quarterly?.purchases ?? new Array(4).fill(0);
+      const quarterlySales = ms?.quarterly?.sales ?? ms?.quarterly?.data ?? new Array(4).fill(0);
+      const quarterlyExpenses = ms?.quarterly?.expenses ?? new Array(4).fill(0);
+      const quarterlyPurchases = ms?.quarterly?.purchases ?? new Array(4).fill(0);
 
-        const annualSales = ms?.annual?.sales ?? ms?.annual?.data ?? [];
-        const annualExpenses = ms?.annual?.expenses ?? [];
-        const annualPurchases = ms?.annual?.purchases ?? [];
+      const annualSales = ms?.annual?.sales ?? ms?.annual?.data ?? [];
+      const annualExpenses = ms?.annual?.expenses ?? [];
+      const annualPurchases = ms?.annual?.purchases ?? [];
 
-        setTrendData({
-          categories: ms?.categories || ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
-          sales: monthlySales,
-          expenses: monthlyExpenses,
-          purchases: monthlyPurchases,
-          quarterly: ms?.quarterly
-            ? {
-                categories: ms.quarterly.categories || ["Q1", "Q2", "Q3", "Q4"],
-                sales: quarterlySales,
-                expenses: quarterlyExpenses,
-                purchases: quarterlyPurchases,
-              }
-            : undefined,
-          annual: ms?.annual
-            ? {
-                categories: ms.annual.categories || [],
-                sales: annualSales,
-                expenses: annualExpenses,
-                purchases: annualPurchases,
-              }
-            : undefined,
-        });
-      } catch (error: any) {
-        console.error("Error loading statistics:", error);
-        setTrendData({
-          categories: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
-          sales: new Array(12).fill(0),
-          expenses: new Array(12).fill(0),
-          purchases: new Array(12).fill(0),
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadData();
-  }, []);
+      setTrendData({
+        categories: ms?.categories || ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+        sales: monthlySales,
+        expenses: monthlyExpenses,
+        purchases: monthlyPurchases,
+        quarterly: ms?.quarterly
+          ? {
+            categories: ms.quarterly.categories || ["Q1", "Q2", "Q3", "Q4"],
+            sales: quarterlySales,
+            expenses: quarterlyExpenses,
+            purchases: quarterlyPurchases,
+          }
+          : undefined,
+        annual: ms?.annual
+          ? {
+            categories: ms.annual.categories || [],
+            sales: annualSales,
+            expenses: annualExpenses,
+            purchases: annualPurchases,
+          }
+          : undefined,
+      });
+    } else if (!loading && !stats) {
+      setTrendData({
+        categories: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+        sales: new Array(12).fill(0),
+        expenses: new Array(12).fill(0),
+        purchases: new Array(12).fill(0),
+      });
+    }
+  }, [stats, loading]);
 
   const defaultCategories = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const normalize = (arr: number[] | undefined, len: number) => {
@@ -96,29 +93,29 @@ export default function StatisticsChart() {
     view === "quarterly"
       ? trendData?.quarterly?.categories || ["Q1", "Q2", "Q3", "Q4"]
       : view === "annual"
-      ? trendData?.annual?.categories || []
-      : trendData?.categories || defaultCategories;
+        ? trendData?.annual?.categories || []
+        : trendData?.categories || defaultCategories;
 
   const activeSales =
     view === "quarterly"
       ? normalize(trendData?.quarterly?.sales, (trendData?.quarterly?.categories || ["Q1", "Q2", "Q3", "Q4"]).length)
       : view === "annual"
-      ? normalize(trendData?.annual?.sales, (trendData?.annual?.categories || []).length || 12)
-      : normalize(trendData?.sales, (trendData?.categories || defaultCategories).length);
+        ? normalize(trendData?.annual?.sales, (trendData?.annual?.categories || []).length || 12)
+        : normalize(trendData?.sales, (trendData?.categories || defaultCategories).length);
 
   const activeExpenses =
     view === "quarterly"
       ? normalize(trendData?.quarterly?.expenses, (trendData?.quarterly?.categories || ["Q1", "Q2", "Q3", "Q4"]).length)
       : view === "annual"
-      ? normalize(trendData?.annual?.expenses, (trendData?.annual?.categories || []).length || 12)
-      : normalize(trendData?.expenses, (trendData?.categories || defaultCategories).length);
+        ? normalize(trendData?.annual?.expenses, (trendData?.annual?.categories || []).length || 12)
+        : normalize(trendData?.expenses, (trendData?.categories || defaultCategories).length);
 
   const activePurchases =
     view === "quarterly"
       ? normalize(trendData?.quarterly?.purchases, (trendData?.quarterly?.categories || ["Q1", "Q2", "Q3", "Q4"]).length)
       : view === "annual"
-      ? normalize(trendData?.annual?.purchases, (trendData?.annual?.categories || []).length || 12)
-      : normalize(trendData?.purchases, (trendData?.categories || defaultCategories).length);
+        ? normalize(trendData?.annual?.purchases, (trendData?.annual?.categories || []).length || 12)
+        : normalize(trendData?.purchases, (trendData?.categories || defaultCategories).length);
 
   const options: ApexOptions = useMemo(() => ({
     legend: {
@@ -206,20 +203,23 @@ export default function StatisticsChart() {
 
   }), [activeCategories]);
 
-  const series = useMemo(() => [
-    {
-      name: "Sales",
-      data: activeSales,
-    },
-    {
-      name: "Expenses",
-      data: activeExpenses,
-    },
-    {
-      name: "Purchases",
-      data: activePurchases,
-    },
-  ], [activeSales, activeExpenses, activePurchases]);
+  const series = useMemo(() => {
+    return [
+      {
+        name: "Sales",
+        data: activeSales,
+      },
+      {
+        name: "Expenses",
+        data: activeExpenses,
+      },
+      {
+        name: "Purchases",
+        data: activePurchases,
+      },
+    ];
+  }, [activeSales, activeExpenses, activePurchases]);
+
 
   if (loading) {
     return (
@@ -260,31 +260,28 @@ export default function StatisticsChart() {
           <div className="flex items-center gap-0.5 rounded-lg bg-gray-100 p-0.5 dark:bg-gray-900 w-full sm:w-auto">
             <button
               onClick={() => setView("monthly")}
-              className={`px-2 sm:px-3 py-1.5 sm:py-2 font-medium w-full rounded-md text-xs sm:text-theme-sm ${
-                view === "monthly"
-                  ? "shadow-theme-xs text-gray-900 dark:text-white bg-white dark:bg-gray-800"
-                  : "text-gray-500 dark:text-gray-400"
-              }`}
+              className={`px-2 sm:px-3 py-1.5 sm:py-2 font-medium w-full rounded-md text-xs sm:text-theme-sm ${view === "monthly"
+                ? "shadow-theme-xs text-gray-900 dark:text-white bg-white dark:bg-gray-800"
+                : "text-gray-500 dark:text-gray-400"
+                }`}
             >
               Monthly
             </button>
             <button
               onClick={() => setView("quarterly")}
-              className={`px-2 sm:px-3 py-1.5 sm:py-2 font-medium w-full rounded-md text-xs sm:text-theme-sm ${
-                view === "quarterly"
-                  ? "shadow-theme-xs text-gray-900 dark:text-white bg-white dark:bg-gray-800"
-                  : "text-gray-500 dark:text-gray-400"
-              }`}
+              className={`px-2 sm:px-3 py-1.5 sm:py-2 font-medium w-full rounded-md text-xs sm:text-theme-sm ${view === "quarterly"
+                ? "shadow-theme-xs text-gray-900 dark:text-white bg-white dark:bg-gray-800"
+                : "text-gray-500 dark:text-gray-400"
+                }`}
             >
               Quarterly
             </button>
             <button
               onClick={() => setView("annual")}
-              className={`px-2 sm:px-3 py-1.5 sm:py-2 font-medium w-full rounded-md text-xs sm:text-theme-sm ${
-                view === "annual"
-                  ? "shadow-theme-xs text-gray-900 dark:text-white bg-white dark:bg-gray-800"
-                  : "text-gray-500 dark:text-gray-400"
-              }`}
+              className={`px-2 sm:px-3 py-1.5 sm:py-2 font-medium w-full rounded-md text-xs sm:text-theme-sm ${view === "annual"
+                ? "shadow-theme-xs text-gray-900 dark:text-white bg-white dark:bg-gray-800"
+                : "text-gray-500 dark:text-gray-400"
+                }`}
             >
               Annually
             </button>

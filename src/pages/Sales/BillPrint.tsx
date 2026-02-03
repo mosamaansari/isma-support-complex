@@ -8,6 +8,7 @@ import { ChevronLeftIcon, DownloadIcon, PencilIcon } from "../../icons";
 import api from "../../services/api";
 import { Sale } from "../../types";
 import { formatBackendDate } from "../../utils/dateHelpers";
+import { hasResourcePermission } from "../../utils/permissions";
 
 // Parse date string directly to extract components without UTC conversion
 const parseDateString = (dateStr: string | Date | undefined): string => {
@@ -28,7 +29,7 @@ const parseDateString = (dateStr: string | Date | undefined): string => {
       return `${month}/${day}/${year}`;
     }
   }
-  
+
   // Fallback: use formatBackendDate
   return formatBackendDate(dateStr);
 };
@@ -44,7 +45,7 @@ const formatPrintAmount = (value: number | string | null | undefined): string =>
 
 export default function BillPrint() {
   const { billNumber } = useParams<{ billNumber: string }>();
-  const { getSale, settings, refreshSales, salesPagination, bankAccounts, refreshBankAccounts } = useData();
+  const { getSale, settings, refreshSales, salesPagination, bankAccounts, refreshBankAccounts, currentUser } = useData();
   const { showError } = useAlert();
   const navigate = useNavigate();
   const [sale, setSale] = useState<Sale | null>(null);
@@ -61,7 +62,7 @@ export default function BillPrint() {
 
       setLoading(true);
       setError(null);
-      
+
       // First try to get from local state
       try {
         const localSale = getSale(billNumber);
@@ -159,10 +160,10 @@ export default function BillPrint() {
     }
 
     // Filter out payments with invalid amounts (0, null, undefined, NaN) before calculating totalPaid
-    const validPayments = (sale.payments || []).filter((p: any) => 
-      p?.amount !== undefined && 
-      p?.amount !== null && 
-      !isNaN(Number(p.amount)) && 
+    const validPayments = (sale.payments || []).filter((p: any) =>
+      p?.amount !== undefined &&
+      p?.amount !== null &&
+      !isNaN(Number(p.amount)) &&
       Number(p.amount) > 0
     );
     const totalPaid = validPayments.reduce((sum: number, p: any) => sum + (p?.amount || 0), 0);
@@ -175,12 +176,12 @@ export default function BillPrint() {
     const pdfDiscountType = (sale as any).discountType || "percent";
     const pdfTaxType = (sale as any).taxType || "percent";
 
-    const pdfDiscountAmount = pdfDiscountType === "value" 
-      ? sale.discount 
+    const pdfDiscountAmount = pdfDiscountType === "value"
+      ? sale.discount
       : (sale.subtotal * sale.discount) / 100;
-      
-    const pdfTaxAmount = pdfTaxType === "value" 
-      ? sale.tax 
+
+    const pdfTaxAmount = pdfTaxType === "value"
+      ? sale.tax
       : ((sale.subtotal - pdfDiscountAmount) * sale.tax) / 100;
     const pdfDeliveryCharges = Number((sale as any).deliveryCharges || 0);
 
@@ -364,9 +365,9 @@ export default function BillPrint() {
               </thead>
               <tbody>
                 ${sale.items.map((item: any) => {
-                  const itemTotal = Number(item.total);
-                  const unitPrice = (item as any).customPrice || item.unitPrice || (itemTotal / item.quantity);
-                  return `
+      const itemTotal = Number(item.total);
+      const unitPrice = (item as any).customPrice || item.unitPrice || (itemTotal / item.quantity);
+      return `
                     <tr>
                       <td>${item.productName}</td>
                       <td class="text-center">${item.quantity}</td>
@@ -374,7 +375,7 @@ export default function BillPrint() {
                       <td class="text-right">${formatPrintAmount(itemTotal)}</td>
                     </tr>
                   `;
-                }).join("")}
+    }).join("")}
               </tbody>
             </table>
             
@@ -468,27 +469,27 @@ export default function BillPrint() {
   }
 
   // Filter out payments with invalid amounts (0, null, undefined, NaN) before calculating totalPaid
-  const validPayments = (sale.payments || []).filter((p: any) => 
-    p?.amount !== undefined && 
-    p?.amount !== null && 
-    !isNaN(Number(p.amount)) && 
+  const validPayments = (sale.payments || []).filter((p: any) =>
+    p?.amount !== undefined &&
+    p?.amount !== null &&
+    !isNaN(Number(p.amount)) &&
     Number(p.amount) > 0
   );
   const totalPaid = validPayments.reduce((sum: number, p: any) => sum + (p?.amount || 0), 0);
   // Recalculate remaining balance based on actual totalPaid
   const remainingBalance = Math.max(0, sale.total - totalPaid);
   const change = totalPaid > sale.total ? totalPaid - sale.total : 0;
-  
+
   // Calculate display amounts for discount and tax
   const discountType = (sale as any).discountType || "percent";
   const taxType = (sale as any).taxType || "percent";
 
-  const actualDiscountAmount = discountType === "value" 
-    ? sale.discount 
+  const actualDiscountAmount = discountType === "value"
+    ? sale.discount
     : (sale.subtotal * sale.discount) / 100;
-    
-  const actualTaxAmount = taxType === "value" 
-    ? sale.tax 
+
+  const actualTaxAmount = taxType === "value"
+    ? sale.tax
     : ((sale.subtotal - actualDiscountAmount) * sale.tax) / 100;
   const deliveryChargesAmount = Number((sale as any).deliveryCharges || 0);
 
@@ -535,29 +536,31 @@ export default function BillPrint() {
           <DownloadIcon className="w-4 h-4 mr-2" />
           Print
         </Button>
-        {sale.status === "pending" ? (
-          <Button
-            onClick={() => navigate(`/sales/edit/${sale.id}`)}
-            size="sm"
-            className="mr-2"
-          >
-            <PencilIcon className="w-4 h-4 mr-2" />
-            Edit Sale
-          </Button>
-        ) : (
-          <div className="relative group inline-block">
-            <button
-              disabled
-              className="px-4 py-2 bg-gray-400 text-white rounded-lg cursor-not-allowed opacity-50 flex items-center gap-2 text-sm"
-              title={sale.status === "completed" ? "Completed payment edit nhi ho skti sale ki" : "Cancelled sales cannot be edited"}
+        {currentUser && hasResourcePermission(currentUser.role, 'sales:update', currentUser.permissions) && (
+          sale.status === "pending" ? (
+            <Button
+              onClick={() => navigate(`/sales/edit/${sale.id}`)}
+              size="sm"
+              className="mr-2"
             >
-              <PencilIcon className="w-4 h-4" />
+              <PencilIcon className="w-4 h-4 mr-2" />
               Edit Sale
-            </button>
-            <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 text-xs text-white bg-gray-800 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
-              {sale.status === "completed" ? "Completed payment edit nhi ho skti sale ki" : "Cancelled sales cannot be edited"}
+            </Button>
+          ) : (
+            <div className="relative group inline-block">
+              <button
+                disabled
+                className="px-4 py-2 bg-gray-400 text-white rounded-lg cursor-not-allowed opacity-50 flex items-center gap-2 text-sm"
+                title={sale.status === "completed" ? "Completed payment edit nhi ho skti sale ki" : "Cancelled sales cannot be edited"}
+              >
+                <PencilIcon className="w-4 h-4" />
+                Edit Sale
+              </button>
+              <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 text-xs text-white bg-gray-800 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
+                {sale.status === "completed" ? "Completed payment edit nhi ho skti sale ki" : "Cancelled sales cannot be edited"}
+              </div>
             </div>
-          </div>
+          )
         )}
       </div>
 
@@ -818,7 +821,7 @@ export default function BillPrint() {
         <div className="separator">********************************</div>
         <div className="section-title">CASH RECEIPT</div>
         <div className="separator">********************************</div>
-        
+
         <div className="customer-info">
           <div><strong>Customer:</strong> {sale.customerName || "Walk-in"}</div>
           {sale.customerPhone && (
@@ -828,9 +831,9 @@ export default function BillPrint() {
             <div><strong>City:</strong> {(sale as any).customerCity}</div>
           )}
         </div>
-        
+
         <div className="separator">********************************</div>
-        
+
         <table>
           <thead>
             <tr>
@@ -855,9 +858,9 @@ export default function BillPrint() {
             })}
           </tbody>
         </table>
-        
+
         <div className="separator">********************************</div>
-        
+
         <div className="totals">
           <div className="totals-row">
             <span>Subtotal:</span>
@@ -977,9 +980,9 @@ export default function BillPrint() {
             </div>
           </>
         )}
-        
+
         <div className="separator">********************************</div>
-        
+
         <div className="footer">
           <div className="thank-you">THANK YOU!</div>
           <div>Bill #: {sale.billNumber}</div>

@@ -14,6 +14,8 @@ import Button from "../../components/ui/button/Button";
 import Checkbox from "../../components/form/input/Checkbox";
 import { ChevronLeftIcon } from "../../icons";
 import { PERMISSION_GROUPS, getDefaultPermissionsForRole } from "../../utils/availablePermissions";
+import { hasResourcePermission } from "../../utils/permissions";
+
 
 type FormValues = {
   username?: string;
@@ -76,7 +78,7 @@ const editUserFormSchema = yup.object().shape({
     .test(
       "password-validation",
       "Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character",
-      function(value) {
+      function (value) {
         // Only validate if password is provided and not empty
         if (!value || value.trim().length === 0) {
           return true; // Empty password is allowed (means keep current)
@@ -184,23 +186,24 @@ export default function UserForm() {
         setPermissions(user.permissions || []);
       }
     } else {
-      // Set default permissions for new user based on role
-      const defaultPermissions = getDefaultPermissionsForRole(formData.role);
-      setPermissions(defaultPermissions);
+      // Do not set default permissions automatically - user must select them
+      setPermissions([]);
     }
   }, [isEdit, id, users, reset]);
 
-  // Update permissions when role changes
-  useEffect(() => {
-    if (!isEdit) {
-      const defaultPermissions = getDefaultPermissionsForRole(formData.role);
-      setPermissions(defaultPermissions);
-    }
-  }, [formData.role, isEdit]);
+  // Removed auto-update of permissions when role changes
+  // to prevent overwriting manual selections and ensuring explicit choice
 
   const onSubmit = async (data: any) => {
-    if (currentUser?.role !== "admin" && currentUser?.role !== "superadmin") {
-      showError("Only admin or superadmin can manage users");
+    const requiredPermission = isEdit ? 'users:update' : 'users:create';
+    if (!currentUser || !hasResourcePermission(currentUser.role, requiredPermission, currentUser.permissions)) {
+      showError(`Only users with ${isEdit ? 'update' : 'create'} permissions can manage users`);
+      return;
+    }
+
+    // Validate that at least one permission is selected
+    if (permissions.length === 0) {
+      showError("Please select at least one permission for this user.");
       return;
     }
 
@@ -281,11 +284,12 @@ export default function UserForm() {
     );
   }
 
-  if (currentUser?.role !== "admin" && currentUser?.role !== "superadmin") {
+  const requiredPermission = isEdit ? 'users:update' : 'users:create';
+  if (!currentUser || !hasResourcePermission(currentUser.role, requiredPermission, currentUser.permissions) || (isEdit && id === currentUser.id)) {
     return (
       <div className="p-8 text-center">
         <p className="text-red-600 dark:text-red-400">
-          Access denied. Admin or SuperAdmin privileges required.
+          Access denied. {isEdit && id === currentUser.id ? "Please use the Profile page to edit your own account." : `Insufficient permissions to ${isEdit ? 'edit' : 'add'} users.`}
         </p>
       </div>
     );
@@ -415,6 +419,13 @@ export default function UserForm() {
               value={formData.role}
               onChange={(value) => {
                 setValue("role", value);
+                // When role changes, set default permissions for that role
+                // ONLY for new users or if user explicitly wants to reset (optional logic)
+                // For now, let's auto-fill for new users as a starting point.
+                if (!isEdit) {
+                  const defaults = getDefaultPermissionsForRole(value);
+                  setPermissions(defaults);
+                }
               }}
               currentUserRole={currentUser?.role}
               required

@@ -17,14 +17,16 @@ const router = Router();
 router.get(
   "/",
   authenticate,
+  requirePermission(PERMISSIONS.SALES_VIEW),
   queryValidator(getSalesQuerySchema),
   saleController.getSales.bind(saleController)
 );
 
-// Get sale by bill number (must be before /:id route)
+// Get sale by bill number
 router.get(
   "/bill/:billNumber",
   authenticate,
+  requirePermission(PERMISSIONS.SALES_VIEW),
   paramsValidator(getSaleByBillNumberSchema),
   saleController.getSaleByBillNumber.bind(saleController)
 );
@@ -33,6 +35,7 @@ router.get(
 router.get(
   "/:id",
   authenticate,
+  requirePermission(PERMISSIONS.SALES_VIEW),
   paramsValidator(
     Joi.object({
       id: Joi.string().required().trim().min(1).messages({
@@ -57,7 +60,7 @@ router.post(
 router.put(
   "/:id",
   authenticate,
-  requirePermission(PERMISSIONS.SALES_CREATE),
+  requirePermission(PERMISSIONS.SALES_UPDATE),
   paramsValidator(
     Joi.object({
       id: Joi.string().required().trim().min(1).messages({
@@ -66,7 +69,7 @@ router.put(
       }),
     })
   ),
-  bodyValidator(createSaleSchema), // Reuse createSaleSchema for validation
+  bodyValidator(createSaleSchema),
   saleController.updateSale.bind(saleController)
 );
 

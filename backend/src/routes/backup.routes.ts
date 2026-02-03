@@ -1,4 +1,4 @@
-import { Router } from "express";
+import express, { Router } from "express";
 import backupController from "../controllers/backup.controller";
 import { authenticate } from "../middleware/auth";
 import { requirePermission } from "../middleware/permissions";
@@ -6,7 +6,7 @@ import { PERMISSIONS } from "../utils/permissions";
 
 const router = Router();
 
-// Export all data (Admin only)
+// Export full backup
 router.get(
   "/export-all-excel",
   authenticate,
@@ -31,4 +31,3 @@ router.post(
 );
 
 export default router;
-

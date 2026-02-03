@@ -10,6 +10,7 @@ import Pagination from "../../components/ui/Pagination";
 import PageSizeSelector from "../../components/ui/PageSizeSelector";
 import { Modal } from "../../components/ui/modal";
 import { PencilIcon, TrashBinIcon } from "../../icons";
+import { hasResourcePermission } from "../../utils/permissions";
 
 export default function UserList() {
   const { users, usersPagination, deleteUser, currentUser, loading, error, refreshUsers } = useData();
@@ -68,18 +69,18 @@ export default function UserList() {
 
   const confirmDelete = async () => {
     if (!userToDelete) return;
-    
+
     setIsDeleting(userToDelete);
-      try {
+    try {
       await deleteUser(userToDelete);
       await refreshUsers(usersPagination?.page || 1, usersPagination?.pageSize || 10);
       setDeleteModalOpen(false);
       setUserToDelete(null);
-      } catch (err) {
+    } catch (err) {
       showError("Failed to delete user. Please try again.");
-        console.error("Delete error:", err);
-      } finally {
-        setIsDeleting(null);
+      console.error("Delete error:", err);
+    } finally {
+      setIsDeleting(null);
     }
   };
 
@@ -131,11 +132,11 @@ export default function UserList() {
     }
   };
 
-  if (currentUser?.role !== "admin" && currentUser?.role !== "superadmin") {
+  if (!hasResourcePermission(currentUser.role, 'users:view', currentUser.permissions)) {
     return (
       <div className="p-8 text-center">
         <p className="text-red-600 dark:text-red-400">
-          Access denied. Admin or SuperAdmin privileges required.
+          Access denied. Insufficient permissions to view users.
         </p>
       </div>
     );
@@ -152,9 +153,11 @@ export default function UserList() {
           <h1 className="text-2xl font-bold text-gray-800 dark:text-white">
             User Management
           </h1>
-          <Link to="/users/add">
-            <Button size="sm">Add User</Button>
-          </Link>
+          {hasResourcePermission(currentUser.role, 'users:create', currentUser.permissions) && (
+            <Link to="/users/add">
+              <Button size="sm">Add User</Button>
+            </Link>
+          )}
         </div>
 
         <div className="mb-6">
@@ -234,24 +237,30 @@ export default function UserList() {
                   </td>
                   <td className="p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap">
                     <span className="text-xs">
-                      {user.permissions && user.permissions.length > 0
+                      {user.role === 'superadmin' ? (
+                        <span className="px-2 py-0.5 bg-brand-100 text-brand-800 rounded-full dark:bg-brand-900/20 dark:text-brand-400">
+                          All Permissions
+                        </span>
+                      ) : user.permissions && user.permissions.length > 0
                         ? `${user.permissions.length} permission(s)`
                         : "Default permissions"}
                     </span>
                   </td>
                   <td className="p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap">
                     <span className="text-xs">
-                    {new Date(user.createdAt).toLocaleDateString()}
+                      {new Date(user.createdAt).toLocaleDateString()}
                     </span>
                   </td>
                   <td className="p-4 whitespace-nowrap">
                     <div className="flex items-center justify-center gap-2 flex-nowrap">
-                      <Link to={`/users/edit/${user.id}`}>
-                        <button className="p-2 text-blue-600 hover:bg-blue-50 rounded dark:hover:bg-blue-900/20 flex-shrink-0">
-                          <PencilIcon className="w-4 h-4" />
-                        </button>
-                      </Link>
-                      {user.id !== currentUser?.id && (
+                      {user.id !== currentUser?.id && hasResourcePermission(currentUser.role, 'users:update', currentUser.permissions) && (
+                        <Link to={`/users/edit/${user.id}`}>
+                          <button className="p-2 text-blue-600 hover:bg-blue-50 rounded dark:hover:bg-blue-900/20 flex-shrink-0">
+                            <PencilIcon className="w-4 h-4" />
+                          </button>
+                        </Link>
+                      )}
+                      {user.id !== currentUser?.id && hasResourcePermission(currentUser.role, 'users:delete', currentUser.permissions) && (
                         <button
                           onClick={() => handleDeleteClick(user.id)}
                           disabled={isDeleting === user.id}

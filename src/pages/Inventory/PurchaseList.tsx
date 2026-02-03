@@ -17,6 +17,7 @@ import { Modal } from "../../components/ui/modal";
 import { extractErrorMessage, extractValidationErrors } from "../../utils/errorHandler";
 import { formatPriceWithCurrencyComplete } from "../../utils/priceHelpers";
 import { formatDateToLocalISO, getTodayDate, formatBackendDateUTC } from "../../utils/dateHelpers";
+import { hasResourcePermission } from "../../utils/permissions";
 import api from "../../services/api";
 
 export default function PurchaseList() {
@@ -91,7 +92,7 @@ export default function PurchaseList() {
     totalRefunded: 0, // Count of refunded purchases, not amount
     completedPurchases: 0,
   };
-  
+
   const { totalPurchases, totalPaid, totalRemaining, totalRefunded, completedPurchases } = summaryStats;
 
   const handleAddPayment = (purchase: Purchase) => {
@@ -122,27 +123,27 @@ export default function PurchaseList() {
 
   const checkBankBalance = async (bankAccountId: string) => {
     if (!bankAccountId || !purchaseToCancel) return false;
-    
+
     setCheckingBalance(true);
     try {
       const payments = (purchaseToCancel.payments || []) as PurchasePayment[];
-      const validPayments = payments.filter((p: PurchasePayment) => 
-        p?.amount !== undefined && 
-        p?.amount !== null && 
-        !isNaN(Number(p.amount)) && 
+      const validPayments = payments.filter((p: PurchasePayment) =>
+        p?.amount !== undefined &&
+        p?.amount !== null &&
+        !isNaN(Number(p.amount)) &&
         Number(p.amount) > 0
       );
       const totalPaid = validPayments.reduce((sum: number, p: PurchasePayment) => sum + (p?.amount || 0), 0);
-      
+
       const response = await api.getCurrentBankBalance(bankAccountId);
       const balance = response.balance || 0;
       setBankBalance(balance);
-      
+
       if (balance < totalPaid) {
         showError(`Insufficient bank balance. Available: Rs. ${balance.toFixed(2)}, Required: Rs. ${totalPaid.toFixed(2)}`);
         return false;
       }
-      
+
       return true;
     } catch (error: any) {
       showError("Failed to check bank balance. Please try again.");
@@ -159,7 +160,7 @@ export default function PurchaseList() {
     setSelectedCardId("");
     setBankBalance(null);
     setCardBalance(null);
-    
+
     if (method === "bank_transfer" && bankAccounts && bankAccounts.length > 0) {
       const firstBankId = bankAccounts[0].id;
       setSelectedBankAccountId(firstBankId);
@@ -187,27 +188,27 @@ export default function PurchaseList() {
 
   const checkCardBalance = async (cardId: string) => {
     if (!cardId || !purchaseToCancel) return false;
-    
+
     setCheckingBalance(true);
     try {
       const payments = (purchaseToCancel.payments || []) as PurchasePayment[];
-      const validPayments = payments.filter((p: PurchasePayment) => 
-        p?.amount !== undefined && 
-        p?.amount !== null && 
-        !isNaN(Number(p.amount)) && 
+      const validPayments = payments.filter((p: PurchasePayment) =>
+        p?.amount !== undefined &&
+        p?.amount !== null &&
+        !isNaN(Number(p.amount)) &&
         Number(p.amount) > 0
       );
       const totalPaid = validPayments.reduce((sum: number, p: PurchasePayment) => sum + (p?.amount || 0), 0);
-      
+
       const response = await api.getCurrentCardBalance(cardId);
       const balance = response.balance || 0;
       setCardBalance(balance);
-      
+
       if (balance < totalPaid) {
         showError(`Insufficient card balance. Available: Rs. ${balance.toFixed(2)}, Required: Rs. ${totalPaid.toFixed(2)}`);
         return false;
       }
-      
+
       return true;
     } catch (error: any) {
       showError("Failed to check card balance. Please try again.");
@@ -228,7 +229,7 @@ export default function PurchaseList() {
 
   const confirmCancelPurchase = async () => {
     if (!purchaseToCancel) return;
-    
+
     // Check balance based on refund method
     if (refundMethod === "bank_transfer") {
       if (!selectedBankAccountId) {
@@ -249,7 +250,7 @@ export default function PurchaseList() {
         return;
       }
     }
-    
+
     try {
       const refundData = {
         refundMethod,
@@ -344,9 +345,11 @@ export default function PurchaseList() {
           <h1 className="text-xl sm:text-2xl font-bold text-gray-800 dark:text-white">
             Purchases
           </h1>
-          <Link to="/inventory/purchase" className="w-full sm:w-auto">
-            <Button size="sm" className="w-full sm:w-auto">Add Purchase</Button>
-          </Link>
+          {currentUser && hasResourcePermission(currentUser.role, 'purchases:create', currentUser.permissions) && (
+            <Link to="/inventory/purchase" className="w-full sm:w-auto">
+              <Button size="sm" className="w-full sm:w-auto">Add Purchase</Button>
+            </Link>
+          )}
         </div>
 
         <div className="grid grid-cols-1 gap-3 sm:gap-4 mb-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
@@ -443,203 +446,202 @@ export default function PurchaseList() {
       )}
 
       {!loading && purchases && purchases.length > 0 && (
-      <div className="table-container bg-white rounded-lg shadow-sm dark:bg-gray-800">
-        <table className="responsive-table">
-          <thead>
-            <tr className="border-b border-gray-200 dark:border-gray-700">
-              <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
-                Date
-              </th>
-              <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[150px]">
-                Supplier
-              </th>
-              <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[80px]">
-                Items
-              </th>
-              <th className="p-2 sm:p-3 md:p-4 text-right text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
-                Subtotal
-              </th>
-              <th className="p-2 sm:p-3 md:p-4 text-right text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[90px]">
-                Tax
-              </th>
-              <th className="p-2 sm:p-3 md:p-4 text-right text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
-                Total
-              </th>
-              <th className="p-2 sm:p-3 md:p-4 text-right text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
-                Paid
-              </th>
-              <th className="p-2 sm:p-3 md:p-4 text-right text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[110px]">
-                Remaining
-              </th>
-              <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[90px]">
-                Status
-              </th>
-              <th className="p-2 sm:p-3 md:p-4 text-center text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[160px]">
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredPurchases.length === 0 ? (
-              <tr>
-                <td colSpan={10} className="p-4 sm:p-6 md:p-8 text-center text-gray-500 text-sm sm:text-base">
-                  No purchases found
-                </td>
+        <div className="table-container bg-white rounded-lg shadow-sm dark:bg-gray-800">
+          <table className="responsive-table">
+            <thead>
+              <tr className="border-b border-gray-200 dark:border-gray-700">
+                <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
+                  Date
+                </th>
+                <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[150px]">
+                  Supplier
+                </th>
+                <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[80px]">
+                  Items
+                </th>
+                <th className="p-2 sm:p-3 md:p-4 text-right text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
+                  Subtotal
+                </th>
+                <th className="p-2 sm:p-3 md:p-4 text-right text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[90px]">
+                  Tax
+                </th>
+                <th className="p-2 sm:p-3 md:p-4 text-right text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
+                  Total
+                </th>
+                <th className="p-2 sm:p-3 md:p-4 text-right text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
+                  Paid
+                </th>
+                <th className="p-2 sm:p-3 md:p-4 text-right text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[110px]">
+                  Remaining
+                </th>
+                <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[90px]">
+                  Status
+                </th>
+                <th className="p-2 sm:p-3 md:p-4 text-center text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[160px]">
+                  Actions
+                </th>
               </tr>
-            ) : (
-              filteredPurchases.map((purchase) => {
-                if (!purchase || !purchase.id) return null;
-                
-                const payments = (purchase.payments || []) as PurchasePayment[];
-                const totalPaid = payments.reduce((sum, p) => sum + (p?.amount || 0), 0);
-                return (
-                  <tr
-                    key={purchase.id}
-                    className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50"
-                  >
-                    <td className="p-2 sm:p-3 md:p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap text-xs sm:text-sm">
-                      <span className="hidden sm:inline">{formatBackendDateUTC(purchase.date || purchase.createdAt)}</span>
-                      <span className="sm:hidden">{formatBackendDateUTC(purchase.createdAt)}</span>
-                    </td>
-                    <td className="p-2 sm:p-3 md:p-4 max-w-[150px] sm:max-w-[200px]">
-                      <div className="line-clamp-2 sm:line-clamp-3">
-                        <div className="font-medium text-gray-800 dark:text-white text-xs sm:text-sm">
-                          {purchase.supplierName}
-                        </div>
-                        {purchase.supplierPhone && (
-                          <div className="text-xs text-gray-500 mt-1">{purchase.supplierPhone}</div>
-                        )}
-                      </div>
-                    </td>
-                    <td className="p-2 sm:p-3 md:p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap text-xs sm:text-sm">
-                      {(purchase.items || []).length} item(s)
-                    </td>
-                    <td className="p-2 sm:p-3 md:p-4 text-right text-gray-700 dark:text-gray-300 whitespace-nowrap price-responsive">
-                      Rs. {(purchase.subtotal || 0).toFixed(2)}
-                    </td>
-                    <td className="p-2 sm:p-3 md:p-4 text-right text-gray-700 dark:text-gray-300 whitespace-nowrap price-responsive">
-                      Rs. {(purchase.tax || 0).toFixed(2)}
-                    </td>
-                    <td className="p-2 sm:p-3 md:p-4 text-right font-semibold text-gray-800 dark:text-white whitespace-nowrap price-responsive">
-                      Rs. {(purchase.total || 0).toFixed(2)}
-                    </td>
-                    <td className="p-2 sm:p-3 md:p-4 text-right text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                      <div className="price-responsive">
-                        <div>Rs. {totalPaid.toFixed(2)}</div>
-                        {payments.length > 0 && (
-                          <div className="text-xs text-gray-500">
-                            {payments.length} payment{payments.length > 1 ? 's' : ''}
+            </thead>
+            <tbody>
+              {filteredPurchases.length === 0 ? (
+                <tr>
+                  <td colSpan={10} className="p-4 sm:p-6 md:p-8 text-center text-gray-500 text-sm sm:text-base">
+                    No purchases found
+                  </td>
+                </tr>
+              ) : (
+                filteredPurchases.map((purchase) => {
+                  if (!purchase || !purchase.id) return null;
+
+                  const payments = (purchase.payments || []) as PurchasePayment[];
+                  const totalPaid = payments.reduce((sum, p) => sum + (p?.amount || 0), 0);
+                  return (
+                    <tr
+                      key={purchase.id}
+                      className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                    >
+                      <td className="p-2 sm:p-3 md:p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap text-xs sm:text-sm">
+                        <span className="hidden sm:inline">{formatBackendDateUTC(purchase.date || purchase.createdAt)}</span>
+                        <span className="sm:hidden">{formatBackendDateUTC(purchase.createdAt)}</span>
+                      </td>
+                      <td className="p-2 sm:p-3 md:p-4 max-w-[150px] sm:max-w-[200px]">
+                        <div className="line-clamp-2 sm:line-clamp-3">
+                          <div className="font-medium text-gray-800 dark:text-white text-xs sm:text-sm">
+                            {purchase.supplierName}
                           </div>
+                          {purchase.supplierPhone && (
+                            <div className="text-xs text-gray-500 mt-1">{purchase.supplierPhone}</div>
+                          )}
+                        </div>
+                      </td>
+                      <td className="p-2 sm:p-3 md:p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap text-xs sm:text-sm">
+                        {(purchase.items || []).length} item(s)
+                      </td>
+                      <td className="p-2 sm:p-3 md:p-4 text-right text-gray-700 dark:text-gray-300 whitespace-nowrap price-responsive">
+                        Rs. {(purchase.subtotal || 0).toFixed(2)}
+                      </td>
+                      <td className="p-2 sm:p-3 md:p-4 text-right text-gray-700 dark:text-gray-300 whitespace-nowrap price-responsive">
+                        Rs. {(purchase.tax || 0).toFixed(2)}
+                      </td>
+                      <td className="p-2 sm:p-3 md:p-4 text-right font-semibold text-gray-800 dark:text-white whitespace-nowrap price-responsive">
+                        Rs. {(purchase.total || 0).toFixed(2)}
+                      </td>
+                      <td className="p-2 sm:p-3 md:p-4 text-right text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                        <div className="price-responsive">
+                          <div>Rs. {totalPaid.toFixed(2)}</div>
+                          {payments.length > 0 && (
+                            <div className="text-xs text-gray-500">
+                              {payments.length} payment{payments.length > 1 ? 's' : ''}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      <td className="p-2 sm:p-3 md:p-4 text-right font-semibold text-gray-800 dark:text-white whitespace-nowrap price-responsive">
+                        {(purchase.remainingBalance || 0) > 0 ? (
+                          <span className="text-orange-600 dark:text-orange-400">
+                            Rs. {(purchase.remainingBalance || 0).toFixed(2)}
+                          </span>
+                        ) : (
+                          <span className="text-green-600 dark:text-green-400">Rs. 0.00</span>
                         )}
-                      </div>
-                    </td>
-                    <td className="p-2 sm:p-3 md:p-4 text-right font-semibold text-gray-800 dark:text-white whitespace-nowrap price-responsive">
-                      {(purchase.remainingBalance || 0) > 0 ? (
-                        <span className="text-orange-600 dark:text-orange-400">
-                          Rs. {(purchase.remainingBalance || 0).toFixed(2)}
-                        </span>
-                      ) : (
-                        <span className="text-green-600 dark:text-green-400">Rs. 0.00</span>
-                      )}
-                    </td>
-                    <td className="p-2 sm:p-3 md:p-4 whitespace-nowrap">
-                      <span
-                        className={`px-1.5 sm:px-2 py-0.5 sm:py-1 text-xs font-medium rounded ${
-                          purchase.status === "completed"
+                      </td>
+                      <td className="p-2 sm:p-3 md:p-4 whitespace-nowrap">
+                        <span
+                          className={`px-1.5 sm:px-2 py-0.5 sm:py-1 text-xs font-medium rounded ${purchase.status === "completed"
                             ? "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400"
                             : purchase.status === "pending"
-                            ? "bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400"
-                            : "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400"
-                        }`}
-                      >
-                        {purchase.status || ((purchase.remainingBalance || 0) > 0 ? "pending" : "completed")}
-                      </span>
-                    </td>
-                    <td className="p-2 sm:p-3 md:p-4 whitespace-nowrap">
-                      <div className="flex items-center justify-center gap-1 sm:gap-2 flex-nowrap">
-                        <Link to={`/inventory/purchase/view/${purchase.id}`}>
-                          <button 
-                            className="p-1.5 sm:p-2 text-gray-600 hover:bg-gray-50 rounded dark:hover:bg-gray-900/20 border border-gray-300 dark:border-gray-600 flex-shrink-0"
-                            title="View Purchase"
-                          >
-                            <FaEye className="w-3 h-3 sm:w-4 sm:h-4 text-blue-500" />
-                          </button>
-                        </Link>
-                        {/* View Payments Button */}
-                        {purchase.payments && purchase.payments.length > 0 && (
-                          <button
-                            onClick={() => handleViewPayments(purchase)}
-                            className="p-1.5 sm:p-2 text-indigo-500 hover:bg-indigo-50 rounded dark:hover:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 flex-shrink-0"
-                            title="View Payments"
-                          >
-                            <FaListAlt className="w-3 h-3 sm:w-4 sm:h-4" />
-                          </button>
-                        )}
-                        {purchase.status === "pending" && (purchase.remainingBalance || 0) > 0 && (
-                          <button
-                            onClick={() => handleAddPayment(purchase)}
-                            className="p-1.5 sm:p-2 text-green-500 hover:bg-green-50 rounded dark:hover:bg-green-900/20 border border-green-200 dark:border-green-800 flex-shrink-0"
-                            title="Add Payment"
-                          >
-                            <FaCreditCard className="w-3 h-3 sm:w-4 sm:h-4" />
-                          </button>
-                        )}
-                        {purchase.status !== "cancelled" &&
-                          (currentUser?.role === "admin" ||
-                            currentUser?.role === "superadmin" ||
-                            currentUser?.id === purchase.userId) && (
+                              ? "bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400"
+                              : "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400"
+                            }`}
+                        >
+                          {purchase.status || ((purchase.remainingBalance || 0) > 0 ? "pending" : "completed")}
+                        </span>
+                      </td>
+                      <td className="p-2 sm:p-3 md:p-4 whitespace-nowrap">
+                        <div className="flex items-center justify-center gap-1 sm:gap-2 flex-nowrap">
+                          <Link to={`/inventory/purchase/view/${purchase.id}`}>
                             <button
-                              onClick={() => handleCancelPurchaseClick(purchase)}
-                              className="p-1.5 sm:p-2 text-orange-600 hover:bg-orange-50 rounded dark:hover:bg-orange-900/20 border border-orange-200 dark:border-orange-800 flex-shrink-0"
-                              title="Refund Purchase"
+                              className="p-1.5 sm:p-2 text-gray-600 hover:bg-gray-50 rounded dark:hover:bg-gray-900/20 border border-gray-300 dark:border-gray-600 flex-shrink-0"
+                              title="View Purchase"
                             >
-                              <FaUndo className="w-3 h-3 sm:w-4 sm:h-4" />
-                            </button>
-                          )}
-                        {purchase.status === "completed" || purchase.status === "cancelled" ? (
-                          <div className="relative group">
-                            <button 
-                              disabled
-                              className="p-1.5 sm:p-2 text-gray-400 cursor-not-allowed rounded dark:bg-gray-900/20 flex-shrink-0 opacity-50"
-                              title={purchase.status === "completed" ? "Completed payment edit nhi ho skti purchase ki" : "Cancelled purchases cannot be edited"}
-                            >
-                              <PencilIcon className="w-3 h-3 sm:w-4 sm:h-4" />
-                            </button>
-                            <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 text-xs text-white bg-gray-800 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
-                              {purchase.status === "completed" ? "Completed payment edit nhi ho skti purchase ki" : "Cancelled purchases cannot be edited"}
-                            </div>
-                          </div>
-                        ) : (
-                          <Link to={`/inventory/purchase/edit/${purchase.id}`}>
-                            <button 
-                              className="p-1.5 sm:p-2 text-blue-600 hover:bg-blue-50 rounded dark:hover:bg-blue-900/20 flex-shrink-0"
-                              title="Edit Purchase"
-                            >
-                              <PencilIcon className="w-3 h-3 sm:w-4 sm:h-4" />
+                              <FaEye className="w-3 h-3 sm:w-4 sm:h-4 text-blue-500" />
                             </button>
                           </Link>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              }).filter(Boolean)
-            )}
-          </tbody>
-        </table>
-      </div>
+                          {/* View Payments Button */}
+                          {purchase.payments && purchase.payments.length > 0 && (
+                            <button
+                              onClick={() => handleViewPayments(purchase)}
+                              className="p-1.5 sm:p-2 text-indigo-500 hover:bg-indigo-50 rounded dark:hover:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 flex-shrink-0"
+                              title="View Payments"
+                            >
+                              <FaListAlt className="w-3 h-3 sm:w-4 sm:h-4" />
+                            </button>
+                          )}
+                          {currentUser && hasResourcePermission(currentUser.role, 'purchases:add_payment', currentUser.permissions) && purchase.status === "pending" && (purchase.remainingBalance || 0) > 0 && (
+                            <button
+                              onClick={() => handleAddPayment(purchase)}
+                              className="p-1.5 sm:p-2 text-green-500 hover:bg-green-50 rounded dark:hover:bg-green-900/20 border border-green-200 dark:border-green-800 flex-shrink-0"
+                              title="Add Payment"
+                            >
+                              <FaCreditCard className="w-3 h-3 sm:w-4 sm:h-4" />
+                            </button>
+                          )}
+                          {purchase.status !== "cancelled" &&
+                            currentUser && hasResourcePermission(currentUser.role, 'purchases:cancel', currentUser.permissions) && (
+                              <button
+                                onClick={() => handleCancelPurchaseClick(purchase)}
+                                className="p-1.5 sm:p-2 text-orange-600 hover:bg-orange-50 rounded dark:hover:bg-orange-900/20 border border-orange-200 dark:border-orange-800 flex-shrink-0"
+                                title="Refund Purchase"
+                              >
+                                <FaUndo className="w-3 h-3 sm:w-4 sm:h-4" />
+                              </button>
+                            )}
+                          {currentUser && hasResourcePermission(currentUser.role, 'purchases:update', currentUser.permissions) && (
+                            purchase.status === "completed" || purchase.status === "cancelled" ? (
+                              <div className="relative group">
+                                <button
+                                  disabled
+                                  className="p-1.5 sm:p-2 text-gray-400 cursor-not-allowed rounded dark:bg-gray-900/20 flex-shrink-0 opacity-50"
+                                  title={purchase.status === "completed" ? "Completed payment edit nhi ho skti purchase ki" : "Cancelled purchases cannot be edited"}
+                                >
+                                  <PencilIcon className="w-3 h-3 sm:w-4 sm:h-4" />
+                                </button>
+                                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 text-xs text-white bg-gray-800 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
+                                  {purchase.status === "completed" ? "Completed payment edit nhi ho skti purchase ki" : "Cancelled purchases cannot be edited"}
+                                </div>
+                              </div>
+                            ) : (
+                              <Link to={`/inventory/purchase/edit/${purchase.id}`}>
+                                <button
+                                  className="p-1.5 sm:p-2 text-blue-600 hover:bg-blue-50 rounded dark:hover:bg-blue-900/20 flex-shrink-0"
+                                  title="Edit Purchase"
+                                >
+                                  <PencilIcon className="w-3 h-3 sm:w-4 sm:h-4" />
+                                </button>
+                              </Link>
+                            )
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                }).filter(Boolean)
+              )}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {/* Add Payment Modal */}
       {showAddPaymentModal && selectedPurchase && (
-        <div 
+        <div
           className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/30 py-8"
           onClick={() => {
             setShowAddPaymentModal(false);
             setSelectedPurchase(null);
           }}
         >
-          <div 
+          <div
             className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
@@ -667,7 +669,7 @@ export default function PurchaseList() {
                       // Parse date string directly to extract components without UTC conversion
                       const dateToShow = p.date || selectedPurchase.date;
                       let displayDate = "";
-                      
+
                       if (dateToShow) {
                         if (typeof dateToShow === 'string') {
                           // Extract date and time from ISO string directly
@@ -678,17 +680,17 @@ export default function PurchaseList() {
                             const day = dateTimeMatch[3];
                             const hours = dateTimeMatch[4];
                             const minutes = dateTimeMatch[5];
-                            
+
                             // Format date: MMM DD, YYYY
                             const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
                             const monthName = monthNames[parseInt(month, 10) - 1];
-                            
+
                             // Format time in 12-hour format
                             const hoursNum = parseInt(hours, 10);
                             const isPM = hoursNum >= 12;
                             const displayHours = hoursNum === 0 ? 12 : hoursNum > 12 ? hoursNum - 12 : hoursNum;
                             const ampm = isPM ? "PM" : "AM";
-                            
+
                             displayDate = `${monthName} ${parseInt(day, 10)}, ${year} ${displayHours}:${minutes} ${ampm}`;
                           } else {
                             displayDate = formatBackendDateUTC(dateToShow);
@@ -697,7 +699,7 @@ export default function PurchaseList() {
                           displayDate = formatBackendDateUTC(dateToShow as any);
                         }
                       }
-                      
+
                       return (
                         <div key={idx} className="text-xs text-gray-600 dark:text-gray-400">
                           {displayDate} - {p.type.toUpperCase()}: Rs. {(p.amount || 0).toFixed(2)}
@@ -851,14 +853,14 @@ export default function PurchaseList() {
 
       {/* View Payments Modal */}
       {showViewPaymentsModal && selectedPurchase && (
-        <div 
+        <div
           className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/30 py-8"
           onClick={() => {
             setShowViewPaymentsModal(false);
             setSelectedPurchase(null);
           }}
         >
-          <div 
+          <div
             className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-3xl mx-4 max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
@@ -881,7 +883,7 @@ export default function PurchaseList() {
                 </div>
                 <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
                   <p className="text-xs text-gray-600 dark:text-gray-400">
-                    Total Payments: <span className="font-semibold">{(selectedPurchase.payments || []).length}</span> | 
+                    Total Payments: <span className="font-semibold">{(selectedPurchase.payments || []).length}</span> |
                     Total Paid: <span className="font-semibold">Rs. {(selectedPurchase.payments || []).reduce((sum: number, p: PurchasePayment) => sum + (p?.amount || 0), 0).toFixed(2)}</span>
                   </p>
                 </div>
@@ -914,94 +916,94 @@ export default function PurchaseList() {
                           return dateA - dateB;
                         })
                         .map((payment: PurchasePayment, index: number) => {
-                        return (
-                          <tr key={index} className="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                            <td className="p-3 text-gray-700 dark:text-gray-300 font-medium">{index + 1}</td>
-                            <td className="p-3 text-gray-700 dark:text-gray-300">
-                              <span className="font-medium">
-                                {(() => {
-                                  // Show date/time exactly as it comes from backend without UTC conversion
-                                  const dateToShow = payment.date || selectedPurchase.date;
-                                  
-                                  if (!dateToShow) return "";
-                                  
-                                  // Parse date string directly to extract components without UTC conversion
-                                  // Handle both ISO format (2026-01-24T04:36:52.331Z) and other formats
-                                  let year: string, month: string, day: string, hours: string, minutes: string, seconds: string;
-                                  
-                                  if (typeof dateToShow === 'string') {
-                                    // Extract date and time from ISO string directly
-                                    // Format: "2026-01-24T04:36:52.331Z" or "2026-01-24T04:36:52.331"
-                                    const dateTimeMatch = dateToShow.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/);
-                                    if (dateTimeMatch) {
-                                      year = dateTimeMatch[1];
-                                      month = dateTimeMatch[2];
-                                      day = dateTimeMatch[3];
-                                      hours = dateTimeMatch[4];
-                                      minutes = dateTimeMatch[5];
-                                      seconds = dateTimeMatch[6];
-                                      
+                          return (
+                            <tr key={index} className="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                              <td className="p-3 text-gray-700 dark:text-gray-300 font-medium">{index + 1}</td>
+                              <td className="p-3 text-gray-700 dark:text-gray-300">
+                                <span className="font-medium">
+                                  {(() => {
+                                    // Show date/time exactly as it comes from backend without UTC conversion
+                                    const dateToShow = payment.date || selectedPurchase.date;
+
+                                    if (!dateToShow) return "";
+
+                                    // Parse date string directly to extract components without UTC conversion
+                                    // Handle both ISO format (2026-01-24T04:36:52.331Z) and other formats
+                                    let year: string, month: string, day: string, hours: string, minutes: string, seconds: string;
+
+                                    if (typeof dateToShow === 'string') {
+                                      // Extract date and time from ISO string directly
+                                      // Format: "2026-01-24T04:36:52.331Z" or "2026-01-24T04:36:52.331"
+                                      const dateTimeMatch = dateToShow.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/);
+                                      if (dateTimeMatch) {
+                                        year = dateTimeMatch[1];
+                                        month = dateTimeMatch[2];
+                                        day = dateTimeMatch[3];
+                                        hours = dateTimeMatch[4];
+                                        minutes = dateTimeMatch[5];
+                                        seconds = dateTimeMatch[6];
+
+                                        // Format time in 12-hour format
+                                        const hoursNum = parseInt(hours, 10);
+                                        const isPM = hoursNum >= 12;
+                                        const displayHours = hoursNum === 0 ? 12 : hoursNum > 12 ? hoursNum - 12 : hoursNum;
+                                        const hoursStr = String(displayHours).padStart(2, "0");
+                                        const ampm = isPM ? "PM" : "AM";
+
+                                        // Show date and time: MM/DD/YYYY HH:MM:SS AM/PM
+                                        return `${month}/${day}/${year} ${hoursStr}:${minutes}:${seconds} ${ampm}`;
+                                      } else {
+                                        // Fallback: use formatBackendDateUTC for date-only
+                                        return formatBackendDateUTC(dateToShow);
+                                      }
+                                    } else {
+                                      // If it's a Date object or other type, use formatBackendDateUTC
+                                      const dateObj = (dateToShow as any) instanceof Date ? (dateToShow as Date) : new Date(dateToShow as any);
+                                      if (isNaN(dateObj.getTime())) {
+                                        return formatBackendDateUTC(dateToShow as any);
+                                      }
+
+                                      year = String(dateObj.getFullYear());
+                                      month = String(dateObj.getMonth() + 1).padStart(2, "0");
+                                      day = String(dateObj.getDate()).padStart(2, "0");
+                                      hours = String(dateObj.getHours()).padStart(2, "0");
+                                      minutes = String(dateObj.getMinutes()).padStart(2, "0");
+                                      seconds = String(dateObj.getSeconds()).padStart(2, "0");
+
                                       // Format time in 12-hour format
                                       const hoursNum = parseInt(hours, 10);
                                       const isPM = hoursNum >= 12;
                                       const displayHours = hoursNum === 0 ? 12 : hoursNum > 12 ? hoursNum - 12 : hoursNum;
                                       const hoursStr = String(displayHours).padStart(2, "0");
                                       const ampm = isPM ? "PM" : "AM";
-                                      
-                                      // Show date and time: MM/DD/YYYY HH:MM:SS AM/PM
+
                                       return `${month}/${day}/${year} ${hoursStr}:${minutes}:${seconds} ${ampm}`;
-                                    } else {
-                                      // Fallback: use formatBackendDateUTC for date-only
-                                      return formatBackendDateUTC(dateToShow);
                                     }
-                                  } else {
-                                    // If it's a Date object or other type, use formatBackendDateUTC
-                                    const dateObj = (dateToShow as any) instanceof Date ? (dateToShow as Date) : new Date(dateToShow as any);
-                                    if (isNaN(dateObj.getTime())) {
-                                      return formatBackendDateUTC(dateToShow as any);
-                                    }
-                                    
-                                    year = String(dateObj.getFullYear());
-                                    month = String(dateObj.getMonth() + 1).padStart(2, "0");
-                                    day = String(dateObj.getDate()).padStart(2, "0");
-                                    hours = String(dateObj.getHours()).padStart(2, "0");
-                                    minutes = String(dateObj.getMinutes()).padStart(2, "0");
-                                    seconds = String(dateObj.getSeconds()).padStart(2, "0");
-                                    
-                                    // Format time in 12-hour format
-                                    const hoursNum = parseInt(hours, 10);
-                                    const isPM = hoursNum >= 12;
-                                    const displayHours = hoursNum === 0 ? 12 : hoursNum > 12 ? hoursNum - 12 : hoursNum;
-                                    const hoursStr = String(displayHours).padStart(2, "0");
-                                    const ampm = isPM ? "PM" : "AM";
-                                    
-                                    return `${month}/${day}/${year} ${hoursStr}:${minutes}:${seconds} ${ampm}`;
-                                  }
-                                })()}
-                              </span>
-                            </td>
-                            <td className="p-3">
-                              <span className="px-2 py-1 text-xs font-medium rounded bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400 uppercase">
-                                {payment.type}
-                              </span>
-                            </td>
-                            <td className="p-3 text-right font-semibold text-gray-800 dark:text-white">
-                              Rs. {(payment.amount || 0).toFixed(2)}
-                            </td>
-                            <td className="p-3">
-                              <div className="flex items-center justify-center gap-2">
-                                <button
-                                  onClick={() => handlePrintPayment(selectedPurchase.id, index)}
-                                  className="p-1.5 text-blue-600 hover:bg-blue-50 rounded dark:hover:bg-blue-900/20 border border-blue-200 dark:border-blue-800"
-                                  title="Print Payment Receipt"
-                                >
-                                  <DownloadIcon className="w-4 h-4" />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })
+                                  })()}
+                                </span>
+                              </td>
+                              <td className="p-3">
+                                <span className="px-2 py-1 text-xs font-medium rounded bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400 uppercase">
+                                  {payment.type}
+                                </span>
+                              </td>
+                              <td className="p-3 text-right font-semibold text-gray-800 dark:text-white">
+                                Rs. {(payment.amount || 0).toFixed(2)}
+                              </td>
+                              <td className="p-3">
+                                <div className="flex items-center justify-center gap-2">
+                                  <button
+                                    onClick={() => handlePrintPayment(selectedPurchase.id, index)}
+                                    className="p-1.5 text-blue-600 hover:bg-blue-50 rounded dark:hover:bg-blue-900/20 border border-blue-200 dark:border-blue-800"
+                                    title="Print Payment Receipt"
+                                  >
+                                    <DownloadIcon className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
                     )}
                   </tbody>
                   <tfoot className="bg-gray-50 dark:bg-gray-800">
@@ -1102,7 +1104,7 @@ export default function PurchaseList() {
               </p>
             </div>
           </div>
-          
+
           {purchaseToCancel && (() => {
             const payments = (purchaseToCancel.payments || []) as PurchasePayment[];
             const totalPaid = payments.reduce((sum: number, p: PurchasePayment) => sum + (p?.amount || 0), 0);
@@ -1110,13 +1112,13 @@ export default function PurchaseList() {
             const today = new Date();
             const daysDifference = Math.floor((today.getTime() - purchaseCreatedAt.getTime()) / (1000 * 60 * 60 * 24));
             const canReturn = daysDifference <= 7;
-            
+
             return (
               <>
                 <p className="mb-4 text-gray-700 dark:text-gray-300">
                   Are you sure you want to cancel this purchase? This will deduct product quantities and refund payments. This action cannot be undone.
                 </p>
-                
+
                 {!canReturn && (
                   <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded">
                     <p className="text-sm text-red-600 dark:text-red-400">
@@ -1124,7 +1126,7 @@ export default function PurchaseList() {
                     </p>
                   </div>
                 )}
-                
+
                 {totalPaid > 0 && canReturn && (
                   <div className="mb-6 space-y-4">
                     <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded">
@@ -1132,7 +1134,7 @@ export default function PurchaseList() {
                         Refund Amount: Rs. {totalPaid.toFixed(2)}
                       </p>
                     </div>
-                    
+
                     <div className="space-y-3">
                       <div>
                         <Label>Refund Method *</Label>
@@ -1142,7 +1144,7 @@ export default function PurchaseList() {
                           options={[
                             { value: "cash", label: "Cash" },
                             { value: "bank_transfer", label: "Bank Transfer" },
-    
+
                           ]}
                           className="w-full"
                         />
@@ -1233,7 +1235,7 @@ export default function PurchaseList() {
                     </div>
                   </div>
                 )}
-                
+
                 <div className="flex gap-3 justify-end">
                   <Button
                     variant="outline"
@@ -1254,7 +1256,7 @@ export default function PurchaseList() {
                     size="sm"
                     onClick={confirmCancelPurchase}
                     className="bg-orange-600 hover:bg-orange-700 text-white"
-                    disabled={!canReturn || 
+                    disabled={!canReturn ||
                       (refundMethod === "bank_transfer" && (!selectedBankAccountId || (bankBalance !== null && bankBalance < totalPaid))) ||
                       (refundMethod === "card" && (!selectedCardId || (cardBalance !== null && cardBalance < totalPaid)))}
                   >

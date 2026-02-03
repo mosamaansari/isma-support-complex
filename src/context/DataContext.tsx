@@ -17,6 +17,7 @@ import {
 import api from "../services/api";
 import { extractErrorMessage } from "../utils/errorHandler";
 import { formatDateToLocalISO } from "../utils/dateHelpers";
+import { hasResourcePermission } from "../utils/permissions";
 
 interface DataContextType {
   // Users
@@ -247,13 +248,19 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setLoading(true);
     setError(null);
     try {
-      // Only load settings which might be needed globally
+      // Only load settings if user has permission
       // Other data (products, sales, expenses, purchases) will be loaded by individual pages
-      await refreshSettings();
+      if (hasResourcePermission(currentUser.role, "settings:view", currentUser.permissions)) {
+        await refreshSettings();
+      }
       await refreshCurrentUser(); // Ensure we have latest user data (profile pic etc)
     } catch (err: any) {
-      setError(extractErrorMessage(err) || "Failed to load settings");
-      console.error("Error loading essential data:", err);
+      // Don't show error for settings permission issues as it's optional
+      const errorMessage = extractErrorMessage(err);
+      if (!errorMessage?.includes('permission') && !errorMessage?.includes('403')) {
+        setError(errorMessage || "Failed to load settings");
+        console.error("Error loading essential data:", err);
+      }
     } finally {
       setLoading(false);
     }
@@ -325,7 +332,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       if (userId) {
         // Fetch fresh data from API
-        const user = await api.getUser(userId);
+        const user = await api.getProfile();
         if (user) {
           setCurrentUser(user);
           // Try to update localStorage
@@ -436,9 +443,15 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setProductsPagination(result.pagination);
       }
     } catch (err: any) {
-      // console.error("refreshProducts error:", err);
-      setError(extractErrorMessage(err) || "Failed to load products");
-      throw err;
+      // Silently handle permission errors - don't block the page
+      const errorMessage = extractErrorMessage(err);
+      if (errorMessage?.includes('permission') || err.response?.status === 403) {
+        console.warn('Products access restricted:', errorMessage);
+      } else {
+        console.error('Failed to load products:', errorMessage);
+        setError(errorMessage || "Failed to load products");
+      }
+      // Don't throw error to prevent blocking the page
     } finally {
       setLoadingProducts(false);
     }
@@ -500,8 +513,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const currentPage = page !== undefined ? page : (salesPagination?.page || 1);
       const currentPageSize = pageSize !== undefined ? pageSize : (salesPagination?.pageSize || 10);
       console.log("refreshSales called with:", { page: currentPage, pageSize: currentPageSize, filters });
-      const result = await api.getSales({ 
-        page: currentPage, 
+      const result = await api.getSales({
+        page: currentPage,
         pageSize: currentPageSize,
         ...(filters?.search && { search: filters.search }),
         ...(filters?.status && filters.status !== "all" && { status: filters.status }),
@@ -517,7 +530,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setError(extractErrorMessage(err) || "Failed to load sales");
       throw err;
     }
-  }, [salesPagination?.page, salesPagination?.pageSize]); // Only depend on pagination state, not on other frequently changing values
+  }, []); // Remove dependencies to keep function stable and avoid unnecessary filter resets
 
   const addSale = async (saleData: Omit<Sale, "id" | "createdAt">) => {
     try {
@@ -580,7 +593,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setError(null);
       // Transform sale data for API
       const apiData: any = {};
-      
+
       if (saleData.items) {
         apiData.items = saleData.items.map((item) => ({
           productId: item.productId,
@@ -597,7 +610,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           discountType: item.discountType || "percent",
         }));
       }
-      
+
       if (saleData.customerName !== undefined) apiData.customerName = saleData.customerName;
       if (saleData.customerPhone !== undefined) apiData.customerPhone = saleData.customerPhone;
       if (saleData.customerCity !== undefined) apiData.customerCity = saleData.customerCity;
@@ -608,7 +621,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (saleData.deliveryCharges !== undefined) apiData.deliveryCharges = saleData.deliveryCharges;
       if (saleData.subtotal !== undefined) apiData.subtotal = saleData.subtotal;
       if (saleData.total !== undefined) apiData.total = saleData.total;
-      
+      if ((saleData as any).additionalDiscount !== undefined) apiData.additionalDiscount = (saleData as any).additionalDiscount;
+      if ((saleData as any).additionalDiscountType !== undefined) apiData.additionalDiscountType = (saleData as any).additionalDiscountType;
+
       if (saleData.payments !== undefined && Array.isArray(saleData.payments)) {
         apiData.payments = saleData.payments;
       }
@@ -673,8 +688,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const currentPage = page !== undefined ? page : (expensesPagination?.page || 1);
       const currentPageSize = pageSize !== undefined ? pageSize : (expensesPagination?.pageSize || 10);
       console.log("refreshExpenses called with:", { page: currentPage, pageSize: currentPageSize, filters });
-      const result = await api.getExpenses({ 
-        page: currentPage, 
+      const result = await api.getExpenses({
+        page: currentPage,
         pageSize: currentPageSize,
         ...(filters?.search && { search: filters.search }),
         ...(filters?.category && filters.category !== "all" && { category: filters.category }),
@@ -759,8 +774,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const currentPage = page !== undefined ? page : (purchasesPagination?.page || 1);
       const currentPageSize = pageSize !== undefined ? pageSize : (purchasesPagination?.pageSize || 10);
       console.log("refreshPurchases called with:", { page: currentPage, pageSize: currentPageSize, filters });
-      const result = await api.getPurchases({ 
-        page: currentPage, 
+      const result = await api.getPurchases({
+        page: currentPage,
         pageSize: currentPageSize,
         // Add filters when backend supports them
         ...(filters?.search && { search: filters.search }),
@@ -927,8 +942,14 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const data = await api.getCategories();
       setCategories(data);
     } catch (err: any) {
-      setError(extractErrorMessage(err) || "Failed to load categories");
-      throw err;
+      // Silently handle permission errors - don't block the page
+      const errorMessage = extractErrorMessage(err);
+      if (errorMessage?.includes('permission') || err.response?.status === 403) {
+        console.warn('Categories access restricted:', errorMessage);
+      } else {
+        console.error('Failed to load categories:', errorMessage);
+      }
+      // Don't throw error or set global error state
     }
   };
 
@@ -1028,8 +1049,14 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const data = await api.getBrands();
       setBrands(data);
     } catch (err: any) {
-      setError(extractErrorMessage(err) || "Failed to load brands");
-      throw err;
+      // Silently handle permission errors - don't block the page
+      const errorMessage = extractErrorMessage(err);
+      if (errorMessage?.includes('permission') || err.response?.status === 403) {
+        console.warn('Brands access restricted:', errorMessage);
+      } else {
+        console.error('Failed to load brands:', errorMessage);
+      }
+      // Don't throw error or set global error state
     }
   };
 
@@ -1078,8 +1105,14 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const data = await api.getSettings();
       setSettings(data);
     } catch (err: any) {
-      setError(extractErrorMessage(err) || "Failed to load settings");
-      // Keep default settings on error
+      // Silently handle permission errors - don't block the page
+      const errorMessage = extractErrorMessage(err);
+      if (errorMessage?.includes('permission') || err.response?.status === 403) {
+        console.warn('Settings access restricted:', errorMessage);
+      } else {
+        console.error('Failed to load settings:', errorMessage);
+      }
+      // Keep default settings on error, don't set global error state
     }
   };
 
@@ -1136,8 +1169,14 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const data = await api.getBankAccounts();
       setBankAccounts(data);
     } catch (err: any) {
-      setError(extractErrorMessage(err) || "Failed to load bank accounts");
-      throw err;
+      // Silently handle permission errors - don't block the page
+      const errorMessage = extractErrorMessage(err);
+      if (errorMessage?.includes('permission') || err.response?.status === 403) {
+        console.warn('Bank accounts access restricted:', errorMessage);
+      } else {
+        console.error('Failed to load bank accounts:', errorMessage);
+      }
+      // Don't throw error or set global error state
     } finally {
       setLoadingBankAccounts(false);
     }
@@ -1193,8 +1232,14 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const data = await api.getCards();
       setCards(data);
     } catch (err: any) {
-      setError(extractErrorMessage(err) || "Failed to load cards");
-      throw err;
+      // Silently handle permission errors - don't block the page
+      const errorMessage = extractErrorMessage(err);
+      if (errorMessage?.includes('permission') || err.response?.status === 403) {
+        console.warn('Cards access restricted:', errorMessage);
+      } else {
+        console.error('Failed to load cards:', errorMessage);
+      }
+      // Don't throw error or set global error state
     } finally {
       setLoadingCards(false);
     }

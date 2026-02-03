@@ -11,47 +11,89 @@ export const hasPermission = (
     return false;
   }
 
-  // Superadmin and admin have all permissions
+  // Superadmin and admin roles have all permissions bypass
   if (req.user.role === "superadmin" || req.user.role === "admin") {
+    return true;
+  }
+
+  // For AdminUser table (userType === "admin"), they have all permissions
+  if (req.user.userType === "admin") {
     return true;
   }
 
   // Check user permissions
   const userPermissions = req.user.permissions || [];
-  
-  // Check exact match
+
+  // 1. Check exact match
   if (userPermissions.includes(requiredPermission)) {
     return true;
   }
 
-  // Special permission mappings:
-  // Users with sales, purchase, or expense permissions can also access:
-  // - Daily confirmation (for daily balance confirmation)
-  // - Opening balance view (to see balances)
-  // - Balance transactions view (to see transaction history)
-  if (requiredPermission === "daily_confirmation:view" || 
-      requiredPermission === "daily_confirmation:confirm") {
-    if (userPermissions.some((p) => p.includes("sales") || p.includes("purchase") || p.includes("expense"))) {
-      return true;
-    }
-  }
-  
-  if (requiredPermission === "opening_balance:view" || 
-      requiredPermission === "closing_balance:view" ||
-      requiredPermission === "balance_transactions:view") {
-    if (userPermissions.some((p) => p.includes("sales") || p.includes("purchase") || p.includes("expense"))) {
-      return true;
-    }
-  }
-
-  // Check pattern matching (e.g., "sales:*" matches "sales:create")
-  return userPermissions.some((perm) => {
+  // 2. Check pattern matching (e.g., "sales:*" matches "sales:create")
+  const matchesPattern = userPermissions.some((perm) => {
     if (perm.endsWith("*")) {
       const prefix = perm.slice(0, -1);
       return requiredPermission.startsWith(prefix);
     }
     return false;
   });
+
+  if (matchesPattern) {
+    return true;
+  }
+
+  // 3. Special permission mappings based on core module needs
+
+  // Products Viewing: Users with sales or purchase permissions often need to view products
+  if (requiredPermission === "products:view") {
+    if (userPermissions.some((p) => p.includes("sales") || p.includes("purchases"))) {
+      return true;
+    }
+  }
+
+  // Bank/Cards Viewing: Users creating entries often need to select bank accounts/cards
+  if (requiredPermission === "bank_accounts:view" || requiredPermission === "cards:view") {
+    if (userPermissions.some((p) => p.includes("sales") || p.includes("purchases") || p.includes("expenses"))) {
+      return true;
+    }
+  }
+
+  // Suppliers Viewing: Users creating purchases need to view suppliers
+  if (requiredPermission === "suppliers:view") {
+    if (userPermissions.some((p) => p.includes("purchases"))) {
+      return true;
+    }
+  }
+
+  // Account/Opening Balance Viewing:
+  if (requiredPermission === "opening_balance:view") {
+    if (userPermissions.some((p) => p.includes("sales") || p.includes("purchases") || p.includes("expenses"))) {
+      return true;
+    }
+  }
+
+  // 4. Role-based fallback for core operational flow if permissions array is empty or missing specific view
+  if (req.user.role === "cashier") {
+    if (requiredPermission === "sales:view" ||
+      requiredPermission === "sales:create" ||
+      requiredPermission === "products:view" ||
+      requiredPermission === "opening_balance:view") {
+      return true;
+    }
+  }
+
+  if (req.user.role === "warehouse_manager") {
+    if (requiredPermission === "products:view" ||
+      requiredPermission === "products:create" ||
+      requiredPermission === "products:update" ||
+      requiredPermission === "purchases:view" ||
+      requiredPermission === "purchases:create" ||
+      requiredPermission === "opening_balance:view") {
+      return true;
+    }
+  }
+
+  return false;
 };
 
 // Middleware to check permission
@@ -65,18 +107,12 @@ export const requirePermission = (permission: string) => {
       });
     }
 
-    // If user is from AdminUser table (userType === "admin"), they have all permissions
-    if (req.user.userType === "admin") {
+    // Bypass for superadmin/admin roles and admin type users
+    if (req.user.userType === "admin" || req.user.role === "superadmin" || req.user.role === "admin") {
       return next();
     }
 
-    // For users from User table, check their role and permissions
-    // Superadmin and admin roles from User table also have all permissions
-    if (req.user.role === "superadmin" || req.user.role === "admin") {
-      return next();
-    }
-
-    // Fetch user with permissions if not already loaded
+    // Refresh permissions from DB if not present in request (though auth middleware should handle this)
     if (!req.user.permissions) {
       const user = await prisma.user.findUnique({
         where: { id: req.user.id },
@@ -92,12 +128,10 @@ export const requirePermission = (permission: string) => {
       return res.status(403).json({
         message: "Insufficient permissions",
         response: null,
-        error: "Insufficient permissions",
+        error: `Insufficient permissions. Required: ${permission}`,
       });
     }
 
     next();
   };
 };
-
-

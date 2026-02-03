@@ -29,51 +29,54 @@ export default function TaxDiscountInput({
 }: TaxDiscountInputProps) {
   // Set max to 100 for percentage type if not explicitly provided
   const effectiveMax = max !== undefined ? max : (type === "percent" ? 100 : undefined);
-  
+
   const [localValue, setLocalValue] = useState<string>(
     value !== null && value !== undefined ? String(value) : ""
   );
 
-  // Update local value when prop value changes (but don't sync if user is typing)
+  // Update local value when prop value changes (allowing 0 as a valid and visible value)
   useEffect(() => {
-    setLocalValue(value !== null && value !== undefined && value !== 0 ? String(value) : "");
+    setLocalValue(value !== null && value !== undefined ? String(value) : "");
   }, [value]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const inputValue = e.target.value;
-    
+
     if (inputValue === "") {
       setLocalValue("");
       onValueChange(null);
       return;
     }
-    
+
+    // Use raw input value for local state to allow typing (including decimals)
+    setLocalValue(inputValue);
+
     const numValue = handleDecimalInput(inputValue);
     if (numValue === undefined) {
+      onValueChange(null);
       return;
     }
 
-    // Apply max validation: if type is percent and no explicit max, limit to 100
-    if (effectiveMax !== undefined && numValue > effectiveMax) {
-      // Clamp to max value
-      setLocalValue(String(effectiveMax));
+    // Apply max validation: only for percent type (typically 100)
+    if (type === "percent" && effectiveMax !== undefined && numValue > effectiveMax) {
+      // Don't clamp immediately during typing as it's annoying, 
+      // but notify parent of the max allowed for calculations
       onValueChange(effectiveMax);
       return;
     }
 
-    setLocalValue(inputValue);
     onValueChange(numValue);
   };
 
   const handleBlur = () => {
-    // Sync local value with prop value on blur, and validate max
+    // Sync local value with prop value on blur and apply clamping
     if (value !== null && value !== undefined) {
-      if (effectiveMax !== undefined && value > effectiveMax) {
-        setLocalValue(String(effectiveMax));
-        onValueChange(effectiveMax);
-      } else {
-        setLocalValue(value !== 0 ? String(value) : "");
+      let finalValue = value;
+      if (type === "percent" && effectiveMax !== undefined && value > effectiveMax) {
+        finalValue = effectiveMax;
       }
+      setLocalValue(String(finalValue));
+      onValueChange(finalValue);
     } else {
       setLocalValue("");
     }
@@ -101,17 +104,17 @@ export default function TaxDiscountInput({
             onChange={(e) => {
               const newType = e.target.value as "percent" | "value";
               onTypeChange(newType);
-              // If changing to percent and value > 100, clamp it
+              // Only clamp if we are switching TO percent and the current value is > 100
               if (newType === "percent" && value !== null && value !== undefined && value > 100) {
                 onValueChange(100);
                 setLocalValue("100");
               }
             }}
             disabled={disabled}
-            className="h-11 rounded-r-lg rounded-l-none border border-l-1 border-gray-300 bg-transparent px-2  py-2.5 pr-6 text-sm text-gray-700 focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:focus:border-brand-800 appearance-none cursor-pointer w-[50px] min-w-[50px] text-center"
+            className="h-11 rounded-r-lg rounded-l-none border border-l-1 border-gray-300 bg-white dark:bg-gray-900 px-2 py-2.5 pr-6 text-sm text-gray-700 focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-500/10 dark:border-gray-700 dark:text-white/90 dark:focus:border-brand-800 appearance-none cursor-pointer w-[60px] min-w-[60px] text-center"
           >
-            <option value="percent">%</option>
             <option value="value">Rs</option>
+            <option value="percent">%</option>
           </select>
           <div className="pointer-events-none absolute inset-y-0 right-1 flex items-center">
             <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -10,15 +10,16 @@ import Joi from "joi";
 const router = Router();
 
 // Get all bank accounts
-router.get("/", authenticate, bankAccountController.getBankAccounts.bind(bankAccountController));
+router.get("/", authenticate, requirePermission(PERMISSIONS.BANK_ACCOUNTS_VIEW), bankAccountController.getBankAccounts.bind(bankAccountController));
 
 // Get default bank account
-router.get("/default", authenticate, bankAccountController.getDefaultBankAccount.bind(bankAccountController));
+router.get("/default", authenticate, requirePermission(PERMISSIONS.BANK_ACCOUNTS_VIEW), bankAccountController.getDefaultBankAccount.bind(bankAccountController));
 
 // Get single bank account
 router.get(
   "/:id",
   authenticate,
+  requirePermission(PERMISSIONS.BANK_ACCOUNTS_VIEW),
   paramsValidator(
     Joi.object({
       id: Joi.string().required().trim().min(1).messages({
@@ -73,5 +74,3 @@ router.delete(
 );
 
 export default router;
-
-

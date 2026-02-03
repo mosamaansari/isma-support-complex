@@ -1,4 +1,4 @@
- import prisma from "../config/database";
+import prisma from "../config/database";
 import logger from "../utils/logger";
 import whatsappService from "./whatsapp.service";
 import productService from "./product.service";
@@ -136,20 +136,20 @@ class SaleService {
       const summaryStats = allMatchingSales.reduce(
         (acc, sale) => {
           const saleTotal = Number(sale.total || 0);
-          
+
           // Filter out payments with invalid amounts (0, null, undefined, NaN)
           const validPayments = (sale.payments as Array<{ type?: string; amount?: number; date?: string }> || [])
-            .filter((p: any) => 
-              p?.amount !== undefined && 
-              p?.amount !== null && 
-              !isNaN(Number(p.amount)) && 
+            .filter((p: any) =>
+              p?.amount !== undefined &&
+              p?.amount !== null &&
+              !isNaN(Number(p.amount)) &&
               Number(p.amount) > 0
             );
           const totalPaid = validPayments.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
-          
+
           // Calculate remaining balance
           const remainingBalance = Math.max(0, saleTotal - totalPaid);
-          
+
           if (sale.status === 'cancelled') {
             // For cancelled sales, count the number of cancelled sales (not amount)
             acc.totalRefunded += 1;
@@ -159,12 +159,12 @@ class SaleService {
             acc.totalRemaining += remainingBalance;
             // Total paid should only include payments from non-cancelled sales
             acc.totalPaid += totalPaid;
-            
+
             if (sale.status === 'completed') {
               acc.completedSales += saleTotal;
             }
           }
-          
+
           return acc;
         },
         {
@@ -380,13 +380,13 @@ class SaleService {
     // Validate that date is today (if provided)
     validateTodayDate(data.date, 'sale date');
     console.log(data)
-    
+
     // Parse sale date properly to avoid timezone issues
     // Use parseLocalISO to avoid timezone conversion issues
     const saleDate = data.date ? parseLocalISO(data.date) : new Date();
     const saleDateStr = formatLocalYMD(saleDate);
     console.log("saleDateStr", saleDateStr, "original date:", data.date);
-    
+
     // Generate bill number based on target date to stay consistent with client
     const targetDateForBill = saleDate;
     const yearOutput = targetDateForBill.getFullYear();
@@ -632,7 +632,7 @@ class SaleService {
         const amount = payment.amount ?? 0;
         return amount !== null && amount !== undefined && !isNaN(Number(amount)) && Number(amount) > 0;
       });
-      
+
       if (validPayments.length > 0) {
         // We have valid payments - process them
         // Store dates as ISO strings without UTC conversion (no "Z" suffix)
@@ -807,7 +807,7 @@ class SaleService {
         const saleDateDay = sale.date.getDate();
         // Create date at noon to avoid timezone conversion issues (same as balanceManagement service expects)
         const saleDateForBalance = new Date(saleDateYear, saleDateMonth, saleDateDay, 12, 0, 0, 0);
-        
+
         // Handle cash, bank_transfer, and card payments
         if (payment.type === "cash") {
           await balanceManagementService.updateCashBalance(
@@ -928,6 +928,8 @@ class SaleService {
         cardId?: string;
         bankAccountId?: string;
       }>;
+      additionalDiscount?: number;
+      additionalDiscountType?: "percent" | "value";
     },
     userId: string
   ) {
@@ -950,7 +952,7 @@ class SaleService {
       const saleDate = new Date(sale.date);
       const today = new Date();
       const daysDiff = Math.floor((today.getTime() - saleDate.getTime()) / (1000 * 60 * 60 * 24));
-      
+
       if (daysDiff > 7) {
         throw new Error(`Cannot edit completed sales older than 7 days. This sale is ${daysDiff} days old.`);
       }
@@ -960,7 +962,7 @@ class SaleService {
     if (sale.status === "pending") {
       // Store original product IDs with quantities
       const originalProductIds = new Set(sale.items.map(item => item.productId));
-      
+
       // Prevent editing/deleting old products
       if (data.items) {
         // Group items by productId to handle multiple rows of same product
@@ -983,43 +985,43 @@ class SaleService {
         // Check each old product
         for (const [productId, oldItems] of oldItemsByProductId.entries()) {
           const newItems = newItemsByProductId.get(productId) || [];
-          
+
           // Must have at least as many new items as old items (can't delete)
           if (newItems.length < oldItems.length) {
             throw new Error(`Cannot delete old products. Product "${oldItems[0].productName || productId}" cannot be removed from pending sales.`);
           }
-          
+
           // For the old items (first N items), check that price hasn't changed
           // New items beyond the old count are new additions and can have any price
           for (let i = 0; i < oldItems.length; i++) {
             const oldItem = oldItems[i];
             const newItem = newItems[i];
-            
+
             if (!newItem) {
               throw new Error(`Cannot delete old products. Product "${oldItem.productName || productId}" cannot be removed.`);
             }
-            
+
             // Prevent editing old product price (compare with small tolerance for floating point)
             const oldPrice = Number(oldItem.customPrice ?? oldItem.unitPrice ?? 0);
             const newPrice = Number((newItem as any).customPrice ?? (newItem as any).unitPrice ?? 0);
             const priceDiff = Math.abs(oldPrice - newPrice);
-            
+
             if (priceDiff > 0.01) { // Tolerance of 0.01 for floating point comparison
               throw new Error(`Cannot update price for old products. Product "${oldItem.productName || productId}" price cannot be changed from ${oldPrice} to ${newPrice}.`);
             }
-            
+
             // Also check quantity hasn't changed for old items
             const oldQty = Number(oldItem.quantity || 0);
             const newQty = Number(newItem.quantity || 0);
             const qtyDiff = Math.abs(oldQty - newQty);
-            
+
             if (qtyDiff > 0.01) {
               throw new Error(`Cannot update quantity for old products. Product "${oldItem.productName || productId}" quantity cannot be changed.`);
             }
           }
         }
       }
-      
+
       // Prevent editing payments
       if (data.payments !== undefined) {
         const oldPayments = (sale.payments as Array<any>) || [];
@@ -1035,22 +1037,22 @@ class SaleService {
             throw new Error("Cannot modify existing payments for pending sales.");
           }
           // Check if payment details changed
-          if (oldPayment.type !== newPayment.type || 
-              oldPayment.amount !== newPayment.amount ||
-              oldPayment.bankAccountId !== newPayment.bankAccountId ||
-              oldPayment.cardId !== newPayment.cardId) {
+          if (oldPayment.type !== newPayment.type ||
+            oldPayment.amount !== newPayment.amount ||
+            oldPayment.bankAccountId !== newPayment.bankAccountId ||
+            oldPayment.cardId !== newPayment.cardId) {
             throw new Error("Cannot edit existing payments for pending sales. You can only add new payments.");
           }
         }
       }
-      
+
       // Prevent editing tax
       if (data.tax !== undefined || data.taxType !== undefined) {
         const oldTax = Number(sale.tax || 0);
         const newTax = data.tax !== undefined ? Number(data.tax) : oldTax;
         const oldTaxType = sale.taxType || "percent";
         const newTaxType = data.taxType || oldTaxType;
-        
+
         if (oldTax !== newTax || oldTaxType !== newTaxType) {
           throw new Error("Cannot edit tax for pending sales.");
         }
@@ -1202,9 +1204,10 @@ class SaleService {
       }
 
       updateData.items = {
+        deleteMany: {},
         create: saleItems,
       };
-      
+
       // Calculate subtotal from items
       const calculatedSubtotal = saleItems.reduce((sum, item) => sum + Number(item.total || 0), 0);
       updateData.subtotal = limitDecimalPlaces(calculatedSubtotal);
@@ -1212,18 +1215,53 @@ class SaleService {
 
     // Calculate total with discount and tax
     const subtotal = updateData.subtotal !== undefined ? updateData.subtotal : Number(sale.subtotal);
-    const discount = data.discount !== undefined ? Number(data.discount || 0) : Number(sale.discount || 0);
-    const discountType = data.discountType || sale.discountType || "percent";
+
+    let discount = data.discount !== undefined ? Number(data.discount || 0) : Number(sale.discount || 0);
+    let discountType = data.discountType || sale.discountType || "percent";
+
+    // Handle additional discount with strict type preservation logic as requested
+    if (data.additionalDiscount !== undefined && data.additionalDiscount > 0) {
+      const oldDiscountValue = Number(sale.discount || 0);
+      const oldType = sale.discountType || "percent";
+      const addDiscountValue = Number(data.additionalDiscount);
+      const addType = data.additionalDiscountType || "percent";
+
+      if (oldDiscountValue === 0) {
+        // If there was no discount, just take the new one's value and type
+        discount = addDiscountValue;
+        discountType = addType;
+      } else if (oldType === addType) {
+        // Same type, just sum the values
+        discount = oldDiscountValue + addDiscountValue;
+        discountType = oldType;
+      } else {
+        // MISMATCH: Preserve original type by converting the new discount
+        if (oldType === "value") {
+          // Old is Rupees, New is Percentage -> Convert New % to Rupees
+          const addValue = (subtotal * addDiscountValue) / 100;
+          discount = oldDiscountValue + addValue;
+          discountType = "value";
+        } else {
+          // Old is Percentage, New is Rupees -> Convert New Rupees to Percentage
+          // Note: Subtotal must be > 0 to calculate percentage
+          const addPercent = subtotal > 0 ? (addDiscountValue / subtotal) * 100 : 0;
+          discount = oldDiscountValue + addPercent;
+          discountType = "percent";
+        }
+      }
+    }
+
     const tax = data.tax !== undefined ? Number(data.tax || 0) : Number(sale.tax || 0);
     const taxType = data.taxType || sale.taxType || "percent";
     const deliveryCharges = data.deliveryCharges !== undefined ? Number(data.deliveryCharges || 0) : Number((sale as any).deliveryCharges || 0);
 
-    // Calculate discount amount
+    // Calculate discount amount for total calculation
     let discountAmount = 0;
     if (discount > 0) {
       if (discountType === "value") {
         discountAmount = limitDecimalPlaces(discount);
       } else {
+        // Use higher precision during intermediate calculation, then round
         discountAmount = limitDecimalPlaces((subtotal * discount) / 100);
       }
     }
@@ -1243,38 +1281,33 @@ class SaleService {
 
     // Update totals with calculated values
     updateData.subtotal = limitDecimalPlaces(subtotal);
-    updateData.discount = discount;
+    updateData.discount = limitDecimalPlaces(discount); // Store rounded value for DB consistency
     updateData.discountType = discountType;
     updateData.tax = tax;
     updateData.taxType = taxType;
     updateData.deliveryCharges = limitDecimalPlaces(deliveryCharges);
     updateData.total = calculatedTotal;
-    
-    // Track old payments to detect new ones
-    const oldPayments = (sale.payments as Array<{
-      type: string;
-      amount: number;
-      cardId?: string;
-      bankAccountId?: string;
-      date?: string | Date;
-    }>) || [];
-    
+
+    // Track payments for balance transactions and ALWAYS recalculate remaining balance
+    const oldPayments = (sale.payments as any[]) || [];
+    const updatedPayments = data.payments || oldPayments;
+    const totalPaid = updatedPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+
+    // CRITICAL: Ensure remaining balance is accurate based on new total and current/new payments
+    updateData.remainingBalance = limitDecimalPlaces(calculatedTotal - totalPaid);
+
     if (data.payments) {
       updateData.payments = data.payments as any;
-      // Recalculate remaining balance using calculated total
-      const totalPaid = data.payments.reduce((sum, payment) => sum + (payment.amount || 0), 0);
-      const saleTotal = calculatedTotal;
-      if (totalPaid > saleTotal) {
+      if (totalPaid > calculatedTotal) {
         throw new Error("Total paid amount cannot exceed total amount");
       }
-      updateData.remainingBalance = limitDecimalPlaces(saleTotal - totalPaid);
-      
-      // Update status based on remaining balance
-      if (updateData.remainingBalance <= 0) {
-        updateData.status = "completed";
-      } else {
-        updateData.status = "pending";
-      }
+    }
+
+    // Update status based on recalculated remaining balance
+    if (updateData.remainingBalance <= 0) {
+      updateData.status = "completed";
+    } else {
+      updateData.status = "pending";
     }
 
     const updatedSale = await prisma.sale.update({
@@ -1299,7 +1332,7 @@ class SaleService {
     if (data.payments && data.payments.length > oldPayments.length) {
       const balanceManagementService = (await import("./balanceManagement.service")).default;
       const newPayments = data.payments.slice(oldPayments.length);
-      
+
       for (const payment of newPayments) {
         const paymentAmount = payment.amount || 0;
         if (paymentAmount <= 0) continue;
@@ -1396,7 +1429,7 @@ class SaleService {
     const saleCreatedAt = new Date(sale.createdAt);
     const today = new Date();
     const daysDifference = Math.floor((today.getTime() - saleCreatedAt.getTime()) / (1000 * 60 * 60 * 24));
-    
+
     if (daysDifference > 7) {
       throw new Error("Sale cannot be cancelled. Only sales within 7 days of creation can be cancelled.");
     }
@@ -1634,7 +1667,7 @@ class SaleService {
     // Update sale status
     const updatedSale = await prisma.sale.update({
       where: { id },
-      data: { 
+      data: {
         status: "cancelled",
         updatedAt: getCurrentLocalDateTime(),
       },

@@ -225,4 +225,10 @@ export const updatePasswordSchema = Joi.object({
     }),
 });
 
+export const getUsersQuerySchema = Joi.object({
+  page: Joi.number().optional().min(1).default(1),
+  pageSize: Joi.number().optional().min(1).max(100).default(10),
+  search: Joi.string().optional().allow(""),
+});
+
 

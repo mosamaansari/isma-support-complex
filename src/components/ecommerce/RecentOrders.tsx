@@ -8,8 +8,8 @@ import {
   TableRow,
 } from "../ui/table";
 import Badge from "../ui/badge/Badge";
-import api from "../../services/api";
 import { formatPriceWithCurrencyComplete } from "../../utils/priceHelpers";
+import { DashboardStats } from "../../types";
 
 interface RecentSale {
   id: string;
@@ -20,31 +20,25 @@ interface RecentSale {
   status: string;
 }
 
-export default function RecentOrders() {
+interface RecentOrdersProps {
+  stats: DashboardStats | null;
+  loading: boolean;
+}
+
+export default function RecentOrders({ stats, loading }: RecentOrdersProps) {
   const [recentSales, setRecentSales] = useState<RecentSale[]>([]);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        setLoading(true);
-        const stats = await api.getDashboardStats();
-        // Handle null/undefined recentSales
-        if (stats?.recentSales && Array.isArray(stats.recentSales)) {
-          setRecentSales(stats.recentSales);
-        } else {
-          setRecentSales([]);
-        }
-      } catch (error: any) {
-        console.error("Error loading recent sales:", error);
+    if (!loading && stats) {
+      if (stats.recentSales && Array.isArray(stats.recentSales)) {
+        setRecentSales(stats.recentSales);
+      } else {
         setRecentSales([]);
-      } finally {
-        setLoading(false);
       }
-    };
-
-    loadData();
-  }, []);
+    } else if (!loading && !stats) {
+      setRecentSales([]);
+    }
+  }, [stats, loading]);
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);

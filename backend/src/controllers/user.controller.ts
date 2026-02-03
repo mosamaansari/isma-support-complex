@@ -29,9 +29,59 @@ class UserController {
     }
   }
 
+  async getProfile(req: AuthRequest, res: Response) {
+    try {
+      if (!req.user) {
+        return res.status(401).json({
+          message: "Authentication required",
+          response: null,
+          error: "Authentication required",
+        });
+      }
+
+      const user = await userService.getUser(req.user.id);
+      return res.status(200).json({
+        message: "Profile retrieved successfully",
+        response: {
+          data: user,
+        },
+        error: null,
+      });
+    } catch (error: any) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
+      logger.error("Get profile error:", error);
+      return res.status(500).json({
+        message: errorMessage,
+        response: null,
+        error: errorMessage,
+      });
+    }
+  }
+
   async getUser(req: AuthRequest, res: Response) {
     try {
       const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+
+      // Allow users to view their own profile without USERS_VIEW permission
+      const isOwnProfile = req.user?.id === id;
+
+      // If not viewing own profile, check for USERS_VIEW permission
+      if (!isOwnProfile) {
+        const hasPermission = req.user?.role === "superadmin" ||
+          req.user?.role === "admin" ||
+          req.user?.userType === "admin" ||
+          (req.user?.permissions || []).includes("users:view");
+
+        if (!hasPermission) {
+          return res.status(403).json({
+            message: "Insufficient permissions",
+            response: null,
+            error: "Insufficient permissions",
+          });
+        }
+      }
+
       const user = await userService.getUser(id);
       return res.status(200).json({
         message: "User retrieved successfully",
@@ -61,14 +111,7 @@ class UserController {
 
   async createUser(req: AuthRequest, res: Response) {
     try {
-      // Only admin and superadmin can create users
-      if (req.user?.role !== "admin" && req.user?.role !== "superadmin") {
-        return res.status(403).json({
-          message: "Only admin and superadmin can create users",
-          response: null,
-          error: "Only admin and superadmin can create users",
-        });
-      }
+
 
       // Prevent creating admin/superadmin in user table
       if (req.body.role === "superadmin" || req.body.role === "admin") {
@@ -109,14 +152,7 @@ class UserController {
 
   async updateUser(req: AuthRequest, res: Response) {
     try {
-      // Only admin and superadmin can update users
-      if (req.user?.role !== "admin" && req.user?.role !== "superadmin") {
-        return res.status(403).json({
-          message: "Not authorized to update users",
-          response: null,
-          error: "Not authorized to update users",
-        });
-      }
+
 
       // Prevent updating to admin/superadmin role
       if (req.body.role === "superadmin" || req.body.role === "admin") {
@@ -218,12 +254,12 @@ class UserController {
         error instanceof Error ? error.message : "An unexpected error occurred";
       logger.error("Update password error:", error);
       if (error instanceof Error) {
-      if (
-        error.message === "User not found" ||
+        if (
+          error.message === "User not found" ||
           error.message === "Current password is required" ||
-        error.message === "Current password is incorrect"
-      ) {
-        const statusCode = error.message.includes("password") ? 401 : 404;
+          error.message === "Current password is incorrect"
+        ) {
+          const statusCode = error.message.includes("password") ? 401 : 404;
           return res.status(statusCode).json({
             message: errorMessage,
             response: null,

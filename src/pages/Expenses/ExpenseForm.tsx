@@ -16,6 +16,8 @@ import Button from "../../components/ui/button/Button";
 import { ChevronLeftIcon } from "../../icons";
 import { getTodayDate } from "../../utils/dateHelpers";
 import { restrictDecimalInput } from "../../utils/numberHelpers";
+import { hasResourcePermission } from "../../utils/permissions";
+
 
 const expenseFormSchema = yup.object().shape({
   amount: yup
@@ -99,7 +101,7 @@ export default function ExpenseForm() {
   useEffect(() => {
     // Always set date to today's date (for both new and edit)
     setValue("date", getTodayDate());
-    
+
     if (cards.length === 0) {
       refreshCards();
     }
@@ -174,7 +176,7 @@ export default function ExpenseForm() {
     try {
       // Clear previous backend errors
       setBackendErrors({});
-      
+
       if (isEdit && id) {
         await updateExpense(id, expenseData);
         showSuccess("Expense updated successfully!");
@@ -197,12 +199,12 @@ export default function ExpenseForm() {
           }
         });
         setBackendErrors(validationErrors);
-        
+
         // Set errors in react-hook-form
         Object.keys(validationErrors).forEach((field) => {
           setValue(field as any, formData[field as keyof typeof formData], { shouldValidate: false });
         });
-        
+
         // Show generic error message
         showError("Please fix the validation errors below");
       } else {
@@ -213,7 +215,18 @@ export default function ExpenseForm() {
     }
   };
 
+  if (!currentUser || !hasResourcePermission(currentUser.role, isEdit ? 'expenses:update' : 'expenses:create', currentUser.permissions)) {
+    return (
+      <div className="p-8 text-center">
+        <p className="text-red-600 dark:text-red-400">
+          Access denied. Insufficient permissions to {isEdit ? 'edit' : 'add'} expenses.
+        </p>
+      </div>
+    );
+  }
+
   return (
+
     <>
       <PageMeta
         title={`${isEdit ? "Edit" : "Add"} Expense | Isma Sports Complex`}

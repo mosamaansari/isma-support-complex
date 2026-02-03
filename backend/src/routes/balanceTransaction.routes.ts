@@ -10,7 +10,7 @@ const router = Router();
 router.get(
   "/",
   authenticate,
-  requirePermission(PERMISSIONS.BALANCE_TRANSACTIONS_VIEW),
+  requirePermission(PERMISSIONS.BANK_ACCOUNTS_VIEW),
   balanceTransactionController.getTransactions.bind(balanceTransactionController)
 );
 
@@ -18,7 +18,7 @@ router.get(
 router.get(
   "/cash",
   authenticate,
-  requirePermission(PERMISSIONS.BALANCE_TRANSACTIONS_VIEW),
+  requirePermission(PERMISSIONS.BANK_ACCOUNTS_VIEW),
   balanceTransactionController.getCashTransactions.bind(balanceTransactionController)
 );
 
@@ -26,7 +26,7 @@ router.get(
 router.get(
   "/bank",
   authenticate,
-  requirePermission(PERMISSIONS.BALANCE_TRANSACTIONS_VIEW),
+  requirePermission(PERMISSIONS.BANK_ACCOUNTS_VIEW),
   balanceTransactionController.getBankTransactions.bind(balanceTransactionController)
 );
 
@@ -34,7 +34,7 @@ router.get(
 router.get(
   "/grouped",
   authenticate,
-  requirePermission(PERMISSIONS.BALANCE_TRANSACTIONS_VIEW),
+  requirePermission(PERMISSIONS.BANK_ACCOUNTS_VIEW),
   balanceTransactionController.getAllTransactionsGroupedByDay.bind(balanceTransactionController)
 );
 
@@ -42,7 +42,7 @@ router.get(
 router.get(
   "/bank-balance",
   authenticate,
-  requirePermission(PERMISSIONS.BALANCE_TRANSACTIONS_VIEW),
+  requirePermission(PERMISSIONS.BANK_ACCOUNTS_VIEW),
   balanceTransactionController.getCurrentBankBalance.bind(balanceTransactionController)
 );
 
@@ -50,9 +50,8 @@ router.get(
 router.get(
   "/card-balance",
   authenticate,
-  requirePermission(PERMISSIONS.BALANCE_TRANSACTIONS_VIEW),
+  requirePermission(PERMISSIONS.CARDS_VIEW),
   balanceTransactionController.getCurrentCardBalance.bind(balanceTransactionController)
 );
 
 export default router;
-

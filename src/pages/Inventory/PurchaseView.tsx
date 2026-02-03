@@ -6,8 +6,11 @@ import { Purchase, PurchasePayment } from "../../types";
 import Button from "../../components/ui/button/Button";
 import { ChevronLeftIcon, DownloadIcon } from "../../icons";
 import { formatBackendDateOnly } from "../../utils/dateHelpers";
+import { useData } from "../../context/DataContext";
+import { hasResourcePermission } from "../../utils/permissions";
 
 export default function PurchaseView() {
+  const { currentUser } = useData();
   const { id } = useParams<{ id: string }>();
   const [purchase, setPurchase] = useState<Purchase | null>(null);
   const [loading, setLoading] = useState(true);
@@ -70,13 +73,13 @@ export default function PurchaseView() {
   // Calculate actual discount and tax amounts
   const discountType = (purchase as any).discountType || "percent";
   const taxType = (purchase as any).taxType || "percent";
-  
-  const actualDiscountAmount = discountType === "value" 
-    ? (purchase as any).discount 
+
+  const actualDiscountAmount = discountType === "value"
+    ? (purchase as any).discount
     : (purchase.subtotal * ((purchase as any).discount || 0)) / 100;
-    
-  const actualTaxAmount = taxType === "value" 
-    ? purchase.tax 
+
+  const actualTaxAmount = taxType === "value"
+    ? purchase.tax
     : ((purchase.subtotal - actualDiscountAmount) * purchase.tax) / 100;
 
   return (
@@ -100,23 +103,25 @@ export default function PurchaseView() {
               <DownloadIcon className="w-4 h-4" />
               Print
             </button>
-            {purchase.status === "pending" ? (
-              <Link to={`/inventory/purchase/edit/${purchase.id}`}>
-                <Button>Edit Purchase</Button>
-              </Link>
-            ) : (
-              <div className="relative group">
-                <button
-                  disabled
-                  className="px-4 py-2 bg-gray-400 text-white rounded-lg cursor-not-allowed opacity-50 flex items-center gap-2"
-                  title={purchase.status === "completed" ? "Completed payment edit nhi ho skti purchase ki" : "Cancelled purchases cannot be edited"}
-                >
-                  Edit Purchase
-                </button>
-                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 text-xs text-white bg-gray-800 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
-                  {purchase.status === "completed" ? "Completed payment edit nhi ho skti purchase ki" : "Cancelled purchases cannot be edited"}
+            {currentUser && hasResourcePermission(currentUser.role, 'purchases:update', currentUser.permissions) && (
+              purchase.status === "pending" ? (
+                <Link to={`/inventory/purchase/edit/${purchase.id}`}>
+                  <Button>Edit Purchase</Button>
+                </Link>
+              ) : (
+                <div className="relative group">
+                  <button
+                    disabled
+                    className="px-4 py-2 bg-gray-400 text-white rounded-lg cursor-not-allowed opacity-50 flex items-center gap-2"
+                    title={purchase.status === "completed" ? "Completed payment edit nhi ho skti purchase ki" : "Cancelled purchases cannot be edited"}
+                  >
+                    Edit Purchase
+                  </button>
+                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 text-xs text-white bg-gray-800 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
+                    {purchase.status === "completed" ? "Completed payment edit nhi ho skti purchase ki" : "Cancelled purchases cannot be edited"}
+                  </div>
                 </div>
-              </div>
+              )
             )}
           </div>
         </div>
@@ -139,13 +144,12 @@ export default function PurchaseView() {
               <p className="text-gray-600 dark:text-gray-400 text-sm">
                 Status:{" "}
                 <span
-                  className={`px-2 py-1 text-xs font-medium rounded ${
-                    purchase.status === "completed"
+                  className={`px-2 py-1 text-xs font-medium rounded ${purchase.status === "completed"
                       ? "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400"
                       : purchase.status === "pending"
-                      ? "bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400"
-                      : "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400"
-                  }`}
+                        ? "bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400"
+                        : "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400"
+                    }`}
                 >
                   {purchase.status || "completed"}
                 </span>

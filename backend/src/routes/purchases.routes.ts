@@ -18,6 +18,7 @@ const router = Router();
 router.get(
   "/",
   authenticate,
+  requirePermission(PERMISSIONS.PURCHASES_VIEW),
   queryValidator(getPurchasesQuerySchema),
   purchaseController.getPurchases.bind(purchaseController)
 );
@@ -26,6 +27,7 @@ router.get(
 router.get(
   "/:id",
   authenticate,
+  requirePermission(PERMISSIONS.PURCHASES_VIEW),
   paramsValidator(
     Joi.object({
       id: Joi.string().required().trim().min(1).messages({

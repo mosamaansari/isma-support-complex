@@ -62,10 +62,10 @@ class ExpenseService {
     const summaryStats = allMatchingExpenses.reduce(
       (acc, expense) => {
         const expenseAmount = Number(expense.amount || 0);
-        
+
         acc.totalExpenses += expenseAmount;
         acc.totalCount += 1;
-        
+
         // Count by payment type
         if (expense.paymentType === 'cash') {
           acc.cashExpenses += expenseAmount;
@@ -74,14 +74,14 @@ class ExpenseService {
         } else if (expense.paymentType === 'card') {
           acc.cardExpenses += expenseAmount;
         }
-        
+
         // Count by category
         if (!acc.categoryTotals[expense.category]) {
           acc.categoryTotals[expense.category] = { total: 0, count: 0 };
         }
         acc.categoryTotals[expense.category].total += expenseAmount;
         acc.categoryTotals[expense.category].count += 1;
-        
+
         return acc;
       },
       {
@@ -180,14 +180,14 @@ class ExpenseService {
     // Check balance from daily closing balance BEFORE creating expense
     const dailyClosingBalanceService = (await import("./dailyClosingBalance.service")).default;
     const { formatLocalYMD, parseLocalISO, getCurrentLocalDateTime } = await import("../utils/date");
-    
+
     // Use expense date if provided, otherwise use current date
     // Parse date properly to avoid timezone issues - same as opening balance
-    const expenseDateForCheck = data.date 
-      ? parseLocalISO(data.date) 
+    const expenseDateForCheck = data.date
+      ? parseLocalISO(data.date)
       : getCurrentLocalDateTime();
     const expenseDateStr = formatLocalYMD(expenseDateForCheck); // YYYY-MM-DD format in local timezone
-    
+
     // Get or calculate closing balance for expense date
     const closingBalance = await dailyClosingBalanceService.getClosingBalance(expenseDateStr);
 
@@ -214,10 +214,10 @@ class ExpenseService {
 
     // Use provided date if available, otherwise use current date and time
     // Parse date properly to avoid timezone issues - same as opening balance
-    const expenseDateForDB = data.date 
-      ? parseLocalISO(data.date) 
+    const expenseDateForDB = data.date
+      ? parseLocalISO(data.date)
       : getCurrentLocalDateTime();
-    
+
     const expenseData: any = {
       amount: data.amount,
       category: data.category,
@@ -251,7 +251,7 @@ class ExpenseService {
     try {
       // Import balance management service for updating balances
       const balanceManagementService = (await import("./balanceManagement.service")).default;
-      
+
       // Use the expense date (which is already parsed correctly above)
       // Normalize to noon (12:00:00) for @db.Date column to avoid timezone conversion issues
       // Same as opening balance - this ensures the date stored in balance_transactions matches the expense date
@@ -350,7 +350,7 @@ class ExpenseService {
 
     const updateData: any = {};
     if (data.amount !== undefined) updateData.amount = data.amount;
-    
+
     // If category is being updated, look up the expense category ID
     if (data.category !== undefined) {
       updateData.category = data.category;
@@ -367,7 +367,7 @@ class ExpenseService {
         updateData.expenseCategoryId = null;
       }
     }
-    
+
     if (data.description !== undefined) updateData.description = data.description;
     if (data.paymentType !== undefined) updateData.paymentType = data.paymentType as any;
     if (data.cardId !== undefined) updateData.cardId = data.cardId || null;
@@ -400,11 +400,11 @@ class ExpenseService {
     // Check if expense is from today only
     const expenseDate = new Date(expense.date);
     const today = new Date();
-    
+
     // Normalize both dates to compare only year-month-day (ignore time)
     const expenseDateStr = `${expenseDate.getFullYear()}-${String(expenseDate.getMonth() + 1).padStart(2, '0')}-${String(expenseDate.getDate()).padStart(2, '0')}`;
     const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    
+
     if (expenseDateStr !== todayStr) {
       throw new Error("Only today's expenses can be deleted");
     }
@@ -413,7 +413,7 @@ class ExpenseService {
     try {
       const balanceManagementService = (await import("./balanceManagement.service")).default;
       const { parseLocalYMDForDB, formatLocalYMD, getTodayInPakistan } = await import("../utils/date");
-      
+
       // Use today's date for refund transaction (same as sale/purchase cancellation)
       // This ensures the refund appears in today's balance transactions and reports
       const refundDateForBalance = parseLocalYMDForDB(formatLocalYMD(getTodayInPakistan()));
@@ -473,8 +473,9 @@ class ExpenseService {
       throw new Error("Expense not found");
     }
 
-    // User can modify if it's their own expense or if they're admin/superadmin
-    return expense.userId === userId || userRole === "superadmin" || userRole === "admin";
+    // Permission check is already done by requirePermission(PERMISSIONS.EXPENSES_UPDATE/DELETE) in the routes.
+    // We allow the modification to proceed if they reached this point (authorized via middleware).
+    return true;
   }
 
   async getAllTimeTotals() {

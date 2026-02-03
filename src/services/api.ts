@@ -19,15 +19,15 @@ class ApiClient {
     this.client.interceptors.request.use(
       (config) => {
         try {
-        const token = localStorage.getItem("authToken");
-        if (token) {
-          config.headers.Authorization = `Bearer ${token}`;
-        }
+          const token = localStorage.getItem("authToken");
+          if (token) {
+            config.headers.Authorization = `Bearer ${token}`;
+          }
           // console.log("API Request:", config.method?.toUpperCase(), config.url, config.params || config.data || "");
           return config;
         } catch (err) {
           console.error("Error in request interceptor:", err);
-        return config;
+          return config;
         }
       },
       (error) => {
@@ -42,17 +42,17 @@ class ApiClient {
         try {
           // Transform response to handle new format { message, response, error }
           // Only transform if response has the new format structure
-          if (response.data && 
-              typeof response.data === 'object' && 
-              response.data.response !== undefined &&
-              response.data.response !== null &&
-              (response.data.message !== undefined || response.data.error !== undefined)) {
+          if (response.data &&
+            typeof response.data === 'object' &&
+            response.data.response !== undefined &&
+            response.data.response !== null &&
+            (response.data.message !== undefined || response.data.error !== undefined)) {
             // For list endpoints, response.response contains { data: [...], pagination: {...} }
             // For single item endpoints, response.response contains { data: item }
             // Extract the response object which contains the actual data
             // console.log("Transforming response:", response.config?.url, response.data);
             return { ...response, data: response.data.response };
-        }
+          }
           // For old format or auth endpoints, return as is
           // console.log("Returning response as is:", response.config?.url);
           return response;
@@ -66,9 +66,9 @@ class ApiClient {
         if (error.response?.status === 401) {
           // Don't redirect if it's a login endpoint or password update endpoint (let the form handle the error)
           const url = error.config?.url || "";
-          if (!url.includes("/auth/login") && 
-              !url.includes("/auth/superadmin/login") &&
-              !url.includes("/users/profile/password")) {
+          if (!url.includes("/auth/login") &&
+            !url.includes("/auth/superadmin/login") &&
+            !url.includes("/users/profile/password")) {
             // Unauthorized - clear token and redirect to login
             localStorage.removeItem("authToken");
             localStorage.removeItem("currentUser");
@@ -125,12 +125,12 @@ class ApiClient {
 
   async logout() {
     try {
-    await this.client.post("/auth/logout");
+      await this.client.post("/auth/logout");
     } catch (err) {
       console.error("Logout error:", err);
     } finally {
-    localStorage.removeItem("authToken");
-    localStorage.removeItem("currentUser");
+      localStorage.removeItem("authToken");
+      localStorage.removeItem("currentUser");
     }
   }
 
@@ -369,30 +369,33 @@ class ApiClient {
     page?: number;
     pageSize?: number;
   }) {
-    const response = await this.client.get("/purchases", { params });
-    if (response.data && response.data.data && response.data.pagination) {
+    const key = `getPurchases-${JSON.stringify(params)}`;
+    return this.deduplicateRequest(key, async () => {
+      const response = await this.client.get("/purchases", { params });
+      if (response.data && response.data.data && response.data.pagination) {
+        return {
+          data: Array.isArray(response.data.data)
+            ? response.data.data.map(normalizePurchase)
+            : [],
+          pagination: {
+            ...response.data.pagination,
+            summary: response.data.summary,
+          },
+        };
+      }
+      // Fallback for old format
       return {
-        data: Array.isArray(response.data.data)
-          ? response.data.data.map(normalizePurchase)
+        data: Array.isArray(response.data)
+          ? response.data.map(normalizePurchase)
           : [],
         pagination: {
-          ...response.data.pagination,
-          summary: response.data.summary,
+          page: 1,
+          pageSize: response.data.length || 10,
+          total: response.data.length || 0,
+          totalPages: 1,
         },
       };
-    }
-    // Fallback for old format
-    return {
-      data: Array.isArray(response.data)
-        ? response.data.map(normalizePurchase)
-        : [],
-      pagination: {
-        page: 1,
-        pageSize: response.data.length || 10,
-        total: response.data.length || 0,
-        totalPages: 1,
-      },
-    };
+    });
   }
 
   async createPurchase(data: any) {
@@ -432,14 +435,20 @@ class ApiClient {
 
   // Opening Balance endpoints
   async getOpeningBalance(date: string) {
-    const response = await this.client.get("/opening-balances/date", { params: { date } });
-    return response.data;
+    const key = `getOpeningBalance-${date}`;
+    return this.deduplicateRequest(key, async () => {
+      const response = await this.client.get("/opening-balances/date", { params: { date } });
+      return response.data;
+    });
   }
 
   /** Get STORED opening balance for a date from DailyOpeningBalance table only (no running calc). Returns null if no record. */
   async getStoredOpeningBalance(date: string) {
-    const response = await this.client.get("/opening-balances/date", { params: { date, storedOnly: "true" } });
-    return response.data;
+    const key = `getStoredOpeningBalance-${date}`;
+    return this.deduplicateRequest(key, async () => {
+      const response = await this.client.get("/opening-balances/date", { params: { date, storedOnly: "true" } });
+      return response.data;
+    });
   }
 
   async getOpeningBalances(params?: { startDate?: string; endDate?: string }) {
@@ -472,12 +481,16 @@ class ApiClient {
 
   // Reports endpoints
   async getDailyReport(date: string) {
-    const response = await this.client.get("/reports/daily", { params: { date } });
-    return response.data;
+    const key = `getDailyReport-${date}`;
+    return this.deduplicateRequest(key, async () => {
+      const response = await this.client.get("/reports/daily", { params: { date } });
+      return response.data;
+    });
   }
 
   async generateDailyReportPDF(date: string) {
-    const response = await this.client.get("/reports/daily/pdf", { 
+    // PDF generation might not need deduplication as it's usually user-triggered once
+    const response = await this.client.get("/reports/daily/pdf", {
       params: { date },
       responseType: "blob"
     });
@@ -485,62 +498,79 @@ class ApiClient {
   }
 
   async getDateRangeReport(startDate: string, endDate: string) {
-    const response = await this.client.get("/reports/range", { params: { startDate, endDate } });
-    return response.data;
+    const key = `getDateRangeReport-${startDate}-${endDate}`;
+    return this.deduplicateRequest(key, async () => {
+      const response = await this.client.get("/reports/range", { params: { startDate, endDate } });
+      return response.data;
+    });
   }
 
   async getDashboardStats() {
-    const response = await this.client.get("/dashboard");
-    return response.data;
+    return this.deduplicateRequest("getDashboardStats", async () => {
+      const response = await this.client.get("/dashboard");
+      return response.data;
+    });
   }
 
   async getSalesReport(params?: { startDate?: string; endDate?: string }) {
-    const response = await this.client.get("/reports/sales", { params });
-    return response.data;
+    const key = `getSalesReport-${JSON.stringify(params || {})}`;
+    return this.deduplicateRequest(key, async () => {
+      const response = await this.client.get("/reports/sales", { params });
+      return response.data;
+    });
   }
 
   async getExpensesReport(params?: { startDate?: string; endDate?: string }) {
-    const response = await this.client.get("/reports/expenses", { params });
-    return response.data;
+    const key = `getExpensesReport-${JSON.stringify(params || {})}`;
+    return this.deduplicateRequest(key, async () => {
+      const response = await this.client.get("/reports/expenses", { params });
+      return response.data;
+    });
   }
 
   async getProfitLossReport(params?: { startDate?: string; endDate?: string }) {
-    const response = await this.client.get("/reports/profit-loss", { params });
-    return response.data;
+    const key = `getProfitLossReport-${JSON.stringify(params || {})}`;
+    return this.deduplicateRequest(key, async () => {
+      const response = await this.client.get("/reports/profit-loss", { params });
+      return response.data;
+    });
   }
 
   // Users endpoints
   async getUsers(params?: { page?: number; pageSize?: number }) {
-    const response = await this.client.get("/users", { params });
-    // Response is already transformed by interceptor
-    // For list endpoints, it's { data: [...], pagination: {...} }
-    if (response.data && response.data.data && response.data.pagination) {
+    const key = `getUsers-${JSON.stringify(params || {})}`;
+    return this.deduplicateRequest(key, async () => {
+      const response = await this.client.get("/users", { params });
+      // Response is already transformed by interceptor
+      // For list endpoints, it's { data: [...], pagination: {...} }
+      if (response.data && response.data.data && response.data.pagination) {
+        return {
+          data: Array.isArray(response.data.data) ? response.data.data : [],
+          pagination: response.data.pagination,
+        };
+      }
+      // Fallback for old format
+      if (Array.isArray(response.data)) {
+        return {
+          data: response.data,
+          pagination: {
+            page: 1,
+            pageSize: response.data.length || 10,
+            total: response.data.length || 0,
+            totalPages: 1,
+          },
+        };
+      }
       return {
-        data: Array.isArray(response.data.data) ? response.data.data : [],
-        pagination: response.data.pagination,
-      };
-    }
-    // Fallback for old format
-    if (Array.isArray(response.data)) {
-      return {
-        data: response.data,
-        pagination: {
+        data: response.data?.data || [],
+        pagination: response.data?.pagination || {
           page: 1,
-          pageSize: response.data.length || 10,
-          total: response.data.length || 0,
+          pageSize: 10,
+          total: 0,
           totalPages: 1,
         },
       };
-    }
-    return {
-      data: response.data?.data || [],
-      pagination: response.data?.pagination || {
-        page: 1,
-        pageSize: 10,
-        total: 0,
-        totalPages: 1,
-      },
-    };
+    });
   }
 
   async getUser(id: string) {
@@ -548,6 +578,15 @@ class ApiClient {
     // Response is already transformed by interceptor
     const user = response.data?.data || response.data;
     return user;
+  }
+
+  async getProfile() {
+    return this.deduplicateRequest("getProfile", async () => {
+      const response = await this.client.get("/users/profile");
+      // Response is already transformed by interceptor
+      const user = response.data?.data || response.data;
+      return user;
+    });
   }
 
   async createUser(data: any) {
@@ -886,27 +925,36 @@ class ApiClient {
 
   // Balance Transaction endpoints
   async getCashTransactions(startDate?: string, endDate?: string, excludeRefunds: boolean = false) {
-    const response = await this.client.get("/balance-transactions/cash", {
-      params: { startDate, endDate, excludeRefunds },
+    const key = `getCashTransactions-${startDate}-${endDate}-${excludeRefunds}`;
+    return this.deduplicateRequest(key, async () => {
+      const response = await this.client.get("/balance-transactions/cash", {
+        params: { startDate, endDate, excludeRefunds },
+      });
+      // After interceptor, response.data is response.response, which contains { data: [...] }
+      return response.data?.data || response.data || [];
     });
-    // After interceptor, response.data is response.response, which contains { data: [...] }
-    return response.data?.data || response.data || [];
   }
 
   async getBankTransactions(bankAccountId: string, startDate?: string, endDate?: string, excludeRefunds: boolean = false) {
-    const response = await this.client.get("/balance-transactions/bank", {
-      params: { bankAccountId, startDate, endDate, excludeRefunds },
+    const key = `getBankTransactions-${bankAccountId}-${startDate}-${endDate}-${excludeRefunds}`;
+    return this.deduplicateRequest(key, async () => {
+      const response = await this.client.get("/balance-transactions/bank", {
+        params: { bankAccountId, startDate, endDate, excludeRefunds },
+      });
+      // After interceptor, response.data is response.response, which contains { data: [...] }
+      return response.data?.data || response.data || [];
     });
-    // After interceptor, response.data is response.response, which contains { data: [...] }
-    return response.data?.data || response.data || [];
   }
 
   async getAllTransactionsGroupedByDay(startDate?: string, endDate?: string, excludeRefunds: boolean = false) {
-    const response = await this.client.get("/balance-transactions/grouped", {
-      params: { startDate, endDate, excludeRefunds },
+    const key = `getAllTransactionsGroupedByDay-${startDate}-${endDate}-${excludeRefunds}`;
+    return this.deduplicateRequest(key, async () => {
+      const response = await this.client.get("/balance-transactions/grouped", {
+        params: { startDate, endDate, excludeRefunds },
+      });
+      // After interceptor, response.data is response.response, which contains { data: [...] }
+      return response.data?.data || response.data || [];
     });
-    // After interceptor, response.data is response.response, which contains { data: [...] }
-    return response.data?.data || response.data || [];
   }
 
   async getCurrentBankBalance(bankAccountId: string) {
@@ -925,24 +973,33 @@ class ApiClient {
 
   // Daily Closing Balance endpoints
   async getClosingBalance(date: string) {
-    const response = await this.client.get("/daily-closing-balance", {
-      params: { date },
+    const key = `getClosingBalance-${date}`;
+    return this.deduplicateRequest(key, async () => {
+      const response = await this.client.get("/daily-closing-balance", {
+        params: { date },
+      });
+      return response.data?.response || response.data;
     });
-    return response.data?.response || response.data;
   }
 
   async getPreviousDayClosingBalance(date: string) {
-    const response = await this.client.get("/daily-closing-balance/previous", {
-      params: { date },
+    const key = `getPreviousDayClosingBalance-${date}`;
+    return this.deduplicateRequest(key, async () => {
+      const response = await this.client.get("/daily-closing-balance/previous", {
+        params: { date },
+      });
+      return response.data?.response || response.data;
     });
-    return response.data?.response || response.data;
   }
 
   async getClosingBalances(startDate: string, endDate: string) {
-    const response = await this.client.get("/daily-closing-balance/range", {
-      params: { startDate, endDate },
+    const key = `getClosingBalances-${startDate}-${endDate}`;
+    return this.deduplicateRequest(key, async () => {
+      const response = await this.client.get("/daily-closing-balance/range", {
+        params: { startDate, endDate },
+      });
+      return response.data?.response || response.data;
     });
-    return response.data?.response || response.data;
   }
 
   async getTransactions(params?: {

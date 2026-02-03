@@ -1,63 +1,17 @@
-import { useEffect, useState } from "react";
 import { DollarLineIcon, BoxIconLine, FileIcon } from "../../icons";
-import api from "../../services/api";
 import { formatPriceWithCurrencyComplete } from "../../utils/priceHelpers";
+import { DashboardStats } from "../../types";
 
-interface DashboardStats {
-  metrics: {
-    todaySales: number;
-    todaySalesNonCancelled: number;
-    todayPurchasesNonCancelled: number;
-    totalSales: number;
-    totalExpenses: number;
-    totalPurchases: number;
-    lowStockCount: number;
-    pendingSalesCount: number;
-    pendingSalesAmount: number;
-    pendingPurchasesCount: number;
-    pendingPurchasesAmount: number;
-    netProfit: number;
-    totalProducts: number;
-  };
+
+
+interface EcommerceMetricsProps {
+  stats: DashboardStats | null;
+  loading: boolean;
 }
 
-export default function EcommerceMetrics() {
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [loading, setLoading] = useState(true);
+export default function EcommerceMetrics({ stats, loading }: EcommerceMetricsProps) {
 
-  useEffect(() => {
-    const loadStats = async () => {
-      try {
-        setLoading(true);
-        const data = await api.getDashboardStats();
-        setStats(data);
-      } catch (error: any) {
-        console.error("Error loading dashboard stats:", error);
-        // Set default stats on error
-        setStats({
-          metrics: {
-            todaySales: 0,
-            todaySalesNonCancelled: 0,
-            todayPurchasesNonCancelled: 0,
-            totalSales: 0,
-            totalExpenses: 0,
-            totalPurchases: 0,
-            lowStockCount: 0,
-            pendingSalesCount: 0,
-            pendingSalesAmount: 0,
-            pendingPurchasesCount: 0,
-            pendingPurchasesAmount: 0,
-            netProfit: 0,
-            totalProducts: 0,
-          },
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
 
-    loadStats();
-  }, []);
 
   if (loading) {
     return (
@@ -123,49 +77,53 @@ export default function EcommerceMetrics() {
     bg: string;
     suffix?: string;
   }> = [
-    {
-      title: "Total Products",
-      value: safeMetrics.totalProducts,
-      icon: <BoxIconLine className="text-indigo-600 size-6 dark:text-indigo-400" />,
-      bg: "bg-indigo-100 dark:bg-indigo-500/10",
-      suffix: " ",
-    },
-    {
-      title: "Total Sales",
-      value: safeMetrics.totalSales,
-      icon: <DollarLineIcon className="text-blue-600 size-6 dark:text-blue-400" />,
-      bg: "bg-blue-100 dark:bg-blue-500/10",
-    },
-    {
-      title: "Total Purchases",
-      value: safeMetrics.totalPurchases,
-      icon: <BoxIconLine className="text-purple-600 size-6 dark:text-purple-400" />,
-      bg: "bg-purple-100 dark:bg-purple-500/10",
-    },
-    {
-      title: "Total Expenses",
-      value: safeMetrics.totalExpenses,
-      icon: <FileIcon className="text-red-600 size-6 dark:text-red-400" />,
-      bg: "bg-red-100 dark:bg-red-500/10",
-    },
+      {
+        title: "Total Products",
+        value: safeMetrics.totalProducts,
+        icon: <BoxIconLine className="text-indigo-600 size-6 dark:text-indigo-400" />,
+        bg: "bg-indigo-100 dark:bg-indigo-500/10",
+        suffix: " ",
+      },
+      {
+        title: "Total Sales",
+        value: safeMetrics.totalSales,
+        icon: <DollarLineIcon className="text-blue-600 size-6 dark:text-blue-400" />,
+        bg: "bg-blue-100 dark:bg-blue-500/10",
+      },
+      {
+        title: "Total Purchases",
+        value: safeMetrics.totalPurchases,
+        icon: <BoxIconLine className="text-purple-600 size-6 dark:text-purple-400" />,
+        bg: "bg-purple-100 dark:bg-purple-500/10",
+      },
+      {
+        title: "Total Expenses",
+        value: safeMetrics.totalExpenses,
+        icon: <FileIcon className="text-red-600 size-6 dark:text-red-400" />,
+        bg: "bg-red-100 dark:bg-red-500/10",
+      },
 
-    {
-      title: "Today Sales Amount",
-      value: safeMetrics.todaySalesNonCancelled,
-      icon: <DollarLineIcon className="text-green-600 size-6 dark:text-green-400" />,
-      bg: "bg-green-100 dark:bg-green-500/10",
-    },
-    {
-      title: "Today Purchase Amount",
-      value: safeMetrics.todayPurchasesNonCancelled,
-      icon: <BoxIconLine className="text-orange-600 size-6 dark:text-orange-400" />,
-      bg: "bg-orange-100 dark:bg-orange-500/10",
-    },
-  ];
+      {
+        title: "Today Sales Amount",
+        value: safeMetrics.todaySalesNonCancelled,
+        icon: <DollarLineIcon className="text-green-600 size-6 dark:text-green-400" />,
+        bg: "bg-green-100 dark:bg-green-500/10",
+      },
+      {
+        title: "Today Purchase Amount",
+        value: safeMetrics.todayPurchasesNonCancelled,
+        icon: <BoxIconLine className="text-orange-600 size-6 dark:text-orange-400" />,
+        bg: "bg-orange-100 dark:bg-orange-500/10",
+      },
+    ];
+
+  // Show all cards without permission checks
+  const filteredCards = cards;
+
 
   return (
     <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6 md:gap-6">
-      {cards.map((card, idx) => (
+      {filteredCards.map((card, idx) => (
         <div
           key={idx}
           className="rounded-xl sm:rounded-2xl border border-gray-200 bg-white p-4 sm:p-5 dark:border-gray-800 dark:bg-white/[0.03] md:p-6"

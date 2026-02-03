@@ -53,9 +53,11 @@ export default function SalesEntry() {
   const [payments, setPayments] = useState<SalePayment[]>([]);
   const [date, setDate] = useState(getTodayDate());
   const [globalDiscount, setGlobalDiscount] = useState<number | null>(null);
-  const [globalDiscountType, setGlobalDiscountType] = useState<"percent" | "value">("percent");
+  const [globalDiscountType, setGlobalDiscountType] = useState<"percent" | "value">("value");
   const [globalTax, setGlobalTax] = useState<number | null>(null);
   const [globalTaxType, setGlobalTaxType] = useState<"percent" | "value">("percent");
+  const [existingDiscount, setExistingDiscount] = useState<number | null>(null);
+  const [existingDiscountType, setExistingDiscountType] = useState<"percent" | "value">("value");
   const [deliveryCharges, setDeliveryCharges] = useState<number | null>(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [backendErrors, setBackendErrors] = useState<Record<string, string>>({});
@@ -127,7 +129,7 @@ export default function SalesEntry() {
         .then((sale: any) => {
           // Store sale status
           setSaleStatus(sale.status || "pending");
-          
+
           setValue("customerName", sale.customerName || "");
           setValue("customerPhone", sale.customerPhone || "");
           setValue("customerCity", sale.customerCity || "");
@@ -136,8 +138,10 @@ export default function SalesEntry() {
           setValue("date", saleDate);
           setGlobalTaxType((sale.taxType as "percent" | "value") || "percent");
           setGlobalTax(sale.tax ? Number(sale.tax) : null);
-          setGlobalDiscountType((sale.discountType as "percent" | "value") || "percent");
-          setGlobalDiscount(sale.discount ? Number(sale.discount) : null);
+          setExistingDiscountType((sale.discountType as "percent" | "value") || "value");
+          setExistingDiscount(sale.discount !== undefined && sale.discount !== null ? Number(sale.discount) : 0);
+          setGlobalDiscount(null);
+          setGlobalDiscountType((sale.discountType as "percent" | "value") || "value");
           setDeliveryCharges(
             sale.deliveryCharges !== undefined && sale.deliveryCharges !== null
               ? Number(sale.deliveryCharges)
@@ -379,31 +383,31 @@ export default function SalesEntry() {
       const unlockedRow = selectedProducts.find(
         (item) => item.productId === product.id && !originalRowIds.has(item.rowId)
       );
-      
+
       if (unlockedRow) {
         // Update the unlocked row's quantity - but only if there's stock available
         const currentShopQty = unlockedRow.shopQuantity || 0;
         const currentWarehouseQty = unlockedRow.warehouseQuantity || 0;
         const priceType: "single" | "dozen" = (unlockedRow as any).priceType || "single";
-        
+
         // Use fresh product data from search dropdown, not stale data from unlockedRow
         const availableShop = product.shopQuantity ?? 0;
         const availableWarehouse = product.warehouseQuantity ?? 0;
         const totalAvailable = availableShop + availableWarehouse;
-        
+
         // If no stock available at all, don't auto-increment, just show message
         if (totalAvailable === 0) {
           showError(`No stock available for ${unlockedRow.productName}. Please manually adjust quantities.`);
           return;
         }
-        
+
         // Try to increment shop quantity first, if not available try warehouse
         let nextShopQty = currentShopQty;
         let nextWarehouseQty = currentWarehouseQty;
-        
+
         const qtyMultiplier = priceType === "dozen" ? 12 : 1;
         const incrementUnits = 1 * qtyMultiplier;
-        
+
         if (availableShop >= (currentShopQty * qtyMultiplier) + incrementUnits) {
           // Add to shop
           nextShopQty = currentShopQty + 1;
@@ -411,9 +415,9 @@ export default function SalesEntry() {
             selectedProducts.map((item) =>
               item.rowId === unlockedRow.rowId
                 ? recalcItemTotals({ ...item, product } as any, {
-                    shopQuantity: nextShopQty,
-                    warehouseQuantity: nextWarehouseQty,
-                  })
+                  shopQuantity: nextShopQty,
+                  warehouseQuantity: nextWarehouseQty,
+                })
                 : item
             )
           );
@@ -424,9 +428,9 @@ export default function SalesEntry() {
             selectedProducts.map((item) =>
               item.rowId === unlockedRow.rowId
                 ? recalcItemTotals({ ...item, product } as any, {
-                    shopQuantity: nextShopQty,
-                    warehouseQuantity: nextWarehouseQty,
-                  })
+                  shopQuantity: nextShopQty,
+                  warehouseQuantity: nextWarehouseQty,
+                })
                 : item
             )
           );
@@ -437,7 +441,7 @@ export default function SalesEntry() {
       } else {
         // No unlocked row exists, create a new one (with empty quantities - user will fill them)
         const rowId = `${product.id}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        
+
         const baseItem = {
           productId: product.id,
           productName: product.name,
@@ -450,7 +454,7 @@ export default function SalesEntry() {
           priceSingle: product.salePrice || 0,
           priceDozen: (product.salePrice || 0) * 12,
           discount: undefined,
-          discountType: "percent",
+          discountType: "value",
           total: 0,
           product,
           rowId,
@@ -469,25 +473,25 @@ export default function SalesEntry() {
         const currentShopQty = existingItem.shopQuantity || 0;
         const currentWarehouseQty = existingItem.warehouseQuantity || 0;
         const priceType: "single" | "dozen" = (existingItem as any).priceType || "single";
-        
+
         // Use fresh product data from search dropdown, not stale data from existingItem
         const availableShop = product.shopQuantity ?? 0;
         const availableWarehouse = product.warehouseQuantity ?? 0;
         const totalAvailable = availableShop + availableWarehouse;
-        
+
         // If no stock available at all, don't auto-increment
         if (totalAvailable === 0) {
           showError(`No stock available for ${existingItem.productName}. Please manually adjust quantities.`);
           return;
         }
-        
+
         // Try to increment shop quantity first, if not available try warehouse
         let nextShopQty = currentShopQty;
         let nextWarehouseQty = currentWarehouseQty;
-        
+
         const qtyMultiplier = priceType === "dozen" ? 12 : 1;
         const incrementUnits = 1 * qtyMultiplier;
-        
+
         if (availableShop >= (currentShopQty * qtyMultiplier) + incrementUnits) {
           // Add to shop
           nextShopQty = currentShopQty + 1;
@@ -495,9 +499,9 @@ export default function SalesEntry() {
             selectedProducts.map((item) =>
               item.productId === product.id
                 ? recalcItemTotals({ ...item, product } as any, {
-                    shopQuantity: nextShopQty,
-                    warehouseQuantity: nextWarehouseQty,
-                  })
+                  shopQuantity: nextShopQty,
+                  warehouseQuantity: nextWarehouseQty,
+                })
                 : item
             )
           );
@@ -508,9 +512,9 @@ export default function SalesEntry() {
             selectedProducts.map((item) =>
               item.productId === product.id
                 ? recalcItemTotals({ ...item, product } as any, {
-                    shopQuantity: nextShopQty,
-                    warehouseQuantity: nextWarehouseQty,
-                  })
+                  shopQuantity: nextShopQty,
+                  warehouseQuantity: nextWarehouseQty,
+                })
                 : item
             )
           );
@@ -521,7 +525,7 @@ export default function SalesEntry() {
       } else {
         // New product: Add as new row (with empty quantities - user will fill them)
         const rowId = product.id;
-        
+
         const baseItem = {
           productId: product.id,
           productName: product.name,
@@ -534,7 +538,7 @@ export default function SalesEntry() {
           priceSingle: product.salePrice || 0,
           priceDozen: (product.salePrice || 0) * 12,
           discount: undefined,
-          discountType: "percent",
+          discountType: "value",
           total: 0,
           product,
           rowId,
@@ -702,13 +706,28 @@ export default function SalesEntry() {
 
     // Calculate global discount based on type (rounded to 2 decimals)
     let globalDiscountAmount = 0;
-    if (globalDiscount !== null && globalDiscount !== undefined) {
-      if (globalDiscountType === "value") {
-        globalDiscountAmount = Math.round(globalDiscount * 100) / 100;
+
+    // Calculate existing discount amount
+    let oldDiscountAmount = 0;
+    if (existingDiscount !== null && existingDiscount !== undefined) {
+      if (existingDiscountType === "value") {
+        oldDiscountAmount = Math.round(existingDiscount * 100) / 100;
       } else {
-        globalDiscountAmount = Math.round((subtotal * globalDiscount / 100) * 100) / 100;
+        oldDiscountAmount = Math.round((subtotal * existingDiscount / 100) * 100) / 100;
       }
     }
+
+    // Calculate new additional discount amount
+    let newDiscountAmount = 0;
+    if (globalDiscount !== null && globalDiscount !== undefined) {
+      if (globalDiscountType === "value") {
+        newDiscountAmount = Math.round(globalDiscount * 100) / 100;
+      } else {
+        newDiscountAmount = Math.round((subtotal * globalDiscount / 100) * 100) / 100;
+      }
+    }
+
+    globalDiscountAmount = oldDiscountAmount + newDiscountAmount;
 
     // Calculate global tax based on type (rounded to 2 decimals)
     let globalTaxAmount = 0;
@@ -725,7 +744,15 @@ export default function SalesEntry() {
 
     const total = Math.round(Math.max(0, subtotal - globalDiscountAmount + globalTaxAmount + deliveryAmount) * 100) / 100;
 
-    return { subtotal, discountAmount: globalDiscountAmount, taxAmount: globalTaxAmount, deliveryAmount, total };
+    return {
+      subtotal,
+      discountAmount: globalDiscountAmount,
+      oldDiscountAmount,
+      newDiscountAmount,
+      taxAmount: globalTaxAmount,
+      deliveryAmount,
+      total
+    };
   };
 
   const generateBillNumber = () => {
@@ -899,8 +926,8 @@ export default function SalesEntry() {
         // For edit mode, send only changed fields (backend calculates subtotal and total)
         const updateData: any = {
           items: saleItems,
-          discount: globalDiscount || 0,
-          discountType: globalDiscountType,
+          additionalDiscount: globalDiscount || 0,
+          additionalDiscountType: globalDiscountType,
           tax: globalTax || 0,
           taxType: globalTaxType,
           deliveryCharges: deliveryCharges || 0,
@@ -940,7 +967,7 @@ export default function SalesEntry() {
     }
   };
 
-  const { subtotal, total } = calculateTotals();
+  const { subtotal, total, oldDiscountAmount, newDiscountAmount, discountAmount } = calculateTotals();
   const totalPaid = payments.reduce((sum, payment) => sum + (payment.amount ?? 0), 0);
   const remainingBalance = total - totalPaid;
 
@@ -955,93 +982,93 @@ export default function SalesEntry() {
           <h2 className="mb-4 text-lg sm:text-xl font-semibold text-gray-800 dark:text-white">
             Product Search
           </h2>
-            {formError && (
-              <div className="mb-4 p-3 text-sm text-error-600 bg-error-50 border border-error-200 rounded dark:text-error-300 dark:bg-error-900/20 dark:border-error-800">
-                {formError}
-              </div>
-            )}
-            <Input
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search products by name or brand..."
-            />
-            {filteredProducts.length > 0 && (
-              <div className="mt-2 border border-gray-200 rounded-lg dark:border-gray-700 max-h-60 overflow-y-auto">
-                {filteredProducts.map((product) => (
-                  <div
-                    key={product.id}
-                    onClick={() => addProductToCart(product)}
-                    className="p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-100 dark:border-gray-700 last:border-b-0"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-medium text-gray-800 dark:text-white">
-                          {product.name}
-                        </p>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">
-                          {product.brand || "N/A"} - Shop: {product.shopQuantity || 0} | Warehouse: {product.warehouseQuantity || 0}
-                        </p>
-                      </div>
-                      <p className="font-semibold text-brand-600 dark:text-brand-400">
-                        Rs. {product.salePrice ? product.salePrice.toFixed(2) : "N/A"}
+          {formError && (
+            <div className="mb-4 p-3 text-sm text-error-600 bg-error-50 border border-error-200 rounded dark:text-error-300 dark:bg-error-900/20 dark:border-error-800">
+              {formError}
+            </div>
+          )}
+          <Input
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search products by name or brand..."
+          />
+          {filteredProducts.length > 0 && (
+            <div className="mt-2 border border-gray-200 rounded-lg dark:border-gray-700 max-h-60 overflow-y-auto">
+              {filteredProducts.map((product) => (
+                <div
+                  key={product.id}
+                  onClick={() => addProductToCart(product)}
+                  className="p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-100 dark:border-gray-700 last:border-b-0"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-gray-800 dark:text-white">
+                        {product.name}
+                      </p>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                        {product.brand || "N/A"} - Shop: {product.shopQuantity || 0} | Warehouse: {product.warehouseQuantity || 0}
                       </p>
                     </div>
+                    <p className="font-semibold text-brand-600 dark:text-brand-400">
+                      Rs. {product.salePrice ? product.salePrice.toFixed(2) : "N/A"}
+                    </p>
                   </div>
-                ))}
-              </div>
-            )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="p-4 md:p-6 bg-white rounded-lg shadow-sm dark:bg-gray-800">
           <h2 className="mb-4 text-lg sm:text-xl font-semibold text-gray-800 dark:text-white">
             Selected Products
           </h2>
-            {selectedProducts.length === 0 ? (
-              <p className="text-sm sm:text-base text-gray-500 dark:text-gray-400">
-                No products selected. Search and add products above.
-              </p>
-            ) : (
-              <div className="table-container overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
-                <table className="w-full min-w-[1000px] table-fixed divide-y divide-gray-200 dark:divide-gray-700">
-                  <thead className="bg-gray-50 dark:bg-gray-800">
-                    <tr>
-                      <th scope="col" className="p-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[180px]">
-                        Product
-                      </th>
-                      <th scope="col" className="p-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[140px]">
-                        Price Type
-                      </th>
-                      <th scope="col" className="p-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[160px]">
-                        Price
-                      </th>
-                      <th scope="col" className="p-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[100px]">
-                        {selectedProducts.some(item => ((item as any).priceType || "single") === "dozen")
-                          ? "Shop Qty"
-                          : "Shop Qty"}
-                      </th>
-                      <th scope="col" className="p-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[100px]">
-                        {selectedProducts.some(item => ((item as any).priceType || "single") === "dozen")
-                          ? "Warehouse Qty"
-                          : "Warehouse Qty"}
-                      </th>
-                      <th scope="col" className="p-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[160px]" colSpan={2}>
-                        Discount
-                      </th>
-                      <th scope="col" className="p-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[140px]">
-                        Total
-                      </th>
-                      <th scope="col" className="p-2 text-center text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[80px]">
-                        Action
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200 dark:bg-gray-800 dark:divide-gray-700">
-                    {selectedProducts.map((item) => {
-                      const isOldProduct = originalRowIds.has(item.rowId);
-                      const isPendingSale = saleStatus === "pending";
-                      const disableOldProductFields = isEdit && isPendingSale && isOldProduct;
-                      
-                      return (
+          {selectedProducts.length === 0 ? (
+            <p className="text-sm sm:text-base text-gray-500 dark:text-gray-400">
+              No products selected. Search and add products above.
+            </p>
+          ) : (
+            <div className="table-container overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+              <table className="w-full min-w-[1000px] table-fixed divide-y divide-gray-200 dark:divide-gray-700">
+                <thead className="bg-gray-50 dark:bg-gray-800">
+                  <tr>
+                    <th scope="col" className="p-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[180px]">
+                      Product
+                    </th>
+                    <th scope="col" className="p-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[140px]">
+                      Price Type
+                    </th>
+                    <th scope="col" className="p-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[160px]">
+                      Price
+                    </th>
+                    <th scope="col" className="p-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[100px]">
+                      {selectedProducts.some(item => ((item as any).priceType || "single") === "dozen")
+                        ? "Shop Qty"
+                        : "Shop Qty"}
+                    </th>
+                    <th scope="col" className="p-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[100px]">
+                      {selectedProducts.some(item => ((item as any).priceType || "single") === "dozen")
+                        ? "Warehouse Qty"
+                        : "Warehouse Qty"}
+                    </th>
+                    <th scope="col" className="p-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[160px]" colSpan={2}>
+                      Discount
+                    </th>
+                    <th scope="col" className="p-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[140px]">
+                      Total
+                    </th>
+                    <th scope="col" className="p-2 text-center text-[10px] font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 w-[80px]">
+                      Action
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200 dark:bg-gray-800 dark:divide-gray-700">
+                  {selectedProducts.map((item) => {
+                    const isOldProduct = originalRowIds.has(item.rowId);
+                    const isPendingSale = saleStatus === "pending";
+                    const disableOldProductFields = isEdit && isPendingSale && isOldProduct;
+
+                    return (
                       <tr
                         key={item.rowId}
                         className="hover:bg-gray-50 dark:hover:bg-gray-700/50"
@@ -1196,11 +1223,11 @@ export default function SalesEntry() {
                         </td>
                       </tr>
                     );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
@@ -1289,114 +1316,114 @@ export default function SalesEntry() {
               )}
             </button>
             {isPaymentDetailsOpen && (
-            <div className="space-y-3">
-              {payments.map((payment, index) => (
-                <div key={index} className="p-3 border border-gray-200 rounded-lg dark:border-gray-700">
-                  <div className="flex items-center justify-between mb-2">
-                    <Label className="text-sm">Payment {index + 1}</Label>
-                    {!isEdit && (
-                      <button
-                        onClick={() => removePayment(index)}
-                        className="p-1 text-red-600 hover:bg-red-50 rounded dark:hover:bg-red-900/20"
-                      >
-                        <TrashBinIcon className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                  <div className="space-y-2">
-                    <div>
-                      <Label className="text-sm">Payment Type  <span className="text-error-500">*</span></Label>
-                      <Select
-                        value={payment.type}
-                        onChange={(value) =>
-                          updatePayment(index, "type", value)
-                        }
-                        options={[
-                          { value: "cash", label: "Cash" },
-                          { value: "bank_transfer", label: "Bank Transfer" },
-                        ]}
-                        disabled={isEdit}
-                      />
+              <div className="space-y-3">
+                {payments.map((payment, index) => (
+                  <div key={index} className="p-3 border border-gray-200 rounded-lg dark:border-gray-700">
+                    <div className="flex items-center justify-between mb-2">
+                      <Label className="text-sm">Payment {index + 1}</Label>
+                      {!isEdit && (
+                        <button
+                          onClick={() => removePayment(index)}
+                          className="p-1 text-red-600 hover:bg-red-50 rounded dark:hover:bg-red-900/20"
+                        >
+                          <TrashBinIcon className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
-                    <div>
-                      <Label className="text-sm">Amount (Optional)</Label>
-                      <Input
-                        type="number"
-                        min="0"
-                        max={String(remainingBalance + (payment.amount ?? 0))}
-                        value={(payment.amount !== null && payment.amount !== undefined && payment.amount !== 0) ? String(payment.amount) : ""}
-                        onChange={(e) => {
-                          const value = e.target.value === "" ? undefined : parseFloat(e.target.value);
-                          updatePayment(index, "amount", isNaN(value as any) || value === null ? undefined : value);
-                        }}
-                        placeholder="Enter amount (optional)"
-                        error={
-                          (showErrors && payment.amount !== undefined && payment.amount !== null && payment.amount < 0) ||
-                          !!backendErrors[`payments.${index}.amount`]
-                        }
-                        hint={
-                          (showErrors && payment.amount !== undefined && payment.amount !== null && payment.amount < 0
-                            ? "Amount cannot be negative"
-                            : undefined) ||
-                          backendErrors[`payments.${index}.amount`]
-                        }
-                        disabled={isEdit}
-                      />
-                    </div>
-                    {payment.type === "bank_transfer" && (
+                    <div className="space-y-2">
                       <div>
-                        <Label className="text-sm">Select Bank Account <span className="text-error-500">*</span></Label>
+                        <Label className="text-sm">Payment Type  <span className="text-error-500">*</span></Label>
                         <Select
-                          value={payment.bankAccountId || ""}
+                          value={payment.type}
                           onChange={(value) =>
-                            updatePayment(index, "bankAccountId", value)
+                            updatePayment(index, "type", value)
                           }
                           options={[
-                            ...bankAccounts
-                              .filter((acc) => acc.isActive)
-                              .map((acc) => ({
-                                value: acc.id,
-                                label: `${acc.accountName} - ${acc.bankName}${acc.isDefault ? " (Default)" : ""}`,
-                              })),
+                            { value: "cash", label: "Cash" },
+                            { value: "bank_transfer", label: "Bank Transfer" },
                           ]}
                           disabled={isEdit}
                         />
-                        {((showErrors && payment.type === "bank_transfer" && !payment.bankAccountId) ||
-                          backendErrors[`payments.${index}.bankAccountId`]) && (
-                            <p className="mt-1 text-xs text-error-500">
-                              {backendErrors[`payments.${index}.bankAccountId`] ||
-                                "Bank account is required for bank transfer"}
-                            </p>
-                          )}
                       </div>
-                    )}
+                      <div>
+                        <Label className="text-sm">Amount (Optional)</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          max={String(remainingBalance + (payment.amount ?? 0))}
+                          value={(payment.amount !== null && payment.amount !== undefined && payment.amount !== 0) ? String(payment.amount) : ""}
+                          onChange={(e) => {
+                            const value = e.target.value === "" ? undefined : parseFloat(e.target.value);
+                            updatePayment(index, "amount", isNaN(value as any) || value === null ? undefined : value);
+                          }}
+                          placeholder="Enter amount (optional)"
+                          error={
+                            (showErrors && payment.amount !== undefined && payment.amount !== null && payment.amount < 0) ||
+                            !!backendErrors[`payments.${index}.amount`]
+                          }
+                          hint={
+                            (showErrors && payment.amount !== undefined && payment.amount !== null && payment.amount < 0
+                              ? "Amount cannot be negative"
+                              : undefined) ||
+                            backendErrors[`payments.${index}.amount`]
+                          }
+                          disabled={isEdit}
+                        />
+                      </div>
+                      {payment.type === "bank_transfer" && (
+                        <div>
+                          <Label className="text-sm">Select Bank Account <span className="text-error-500">*</span></Label>
+                          <Select
+                            value={payment.bankAccountId || ""}
+                            onChange={(value) =>
+                              updatePayment(index, "bankAccountId", value)
+                            }
+                            options={[
+                              ...bankAccounts
+                                .filter((acc) => acc.isActive)
+                                .map((acc) => ({
+                                  value: acc.id,
+                                  label: `${acc.accountName} - ${acc.bankName}${acc.isDefault ? " (Default)" : ""}`,
+                                })),
+                            ]}
+                            disabled={isEdit}
+                          />
+                          {((showErrors && payment.type === "bank_transfer" && !payment.bankAccountId) ||
+                            backendErrors[`payments.${index}.bankAccountId`]) && (
+                              <p className="mt-1 text-xs text-error-500">
+                                {backendErrors[`payments.${index}.bankAccountId`] ||
+                                  "Bank account is required for bank transfer"}
+                              </p>
+                            )}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
-              {totalPaid > total && (
-                <div className="p-2 text-sm text-error-500 bg-error-50 border border-error-200 rounded dark:bg-error-900/20 dark:border-error-700">
-                  Total paid amount cannot exceed total amount.
-                </div>
-              )}
-              {!isEdit && (
-                <Button
-                  onClick={addPayment}
-                  variant="outline"
-                  size="sm"
-                  className="w-full"
-                >
-                  <PlusIcon className="w-4 h-4 mr-2" />
-                  Add Payment
-                </Button>
-              )}
-              {remainingBalance > 0 && (
-                <div className="p-2 bg-yellow-50 border border-yellow-200 rounded-lg dark:bg-yellow-900/20 dark:border-yellow-800">
-                  <p className="text-xs font-medium text-yellow-800 dark:text-yellow-200">
-                    Remaining Balance: Rs. {remainingBalance.toFixed(2)}
-                  </p>
-                </div>
-              )}
-            </div>
+                ))}
+                {totalPaid > total && (
+                  <div className="p-2 text-sm text-error-500 bg-error-50 border border-error-200 rounded dark:bg-error-900/20 dark:border-error-700">
+                    Total paid amount cannot exceed total amount.
+                  </div>
+                )}
+                {!isEdit && (
+                  <Button
+                    onClick={addPayment}
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                  >
+                    <PlusIcon className="w-4 h-4 mr-2" />
+                    Add Payment
+                  </Button>
+                )}
+                {remainingBalance > 0 && (
+                  <div className="p-2 bg-yellow-50 border border-yellow-200 rounded-lg dark:bg-yellow-900/20 dark:border-yellow-800">
+                    <p className="text-xs font-medium text-yellow-800 dark:text-yellow-200">
+                      Remaining Balance: Rs. {remainingBalance.toFixed(2)}
+                    </p>
+                  </div>
+                )}
+              </div>
             )}
           </div>
 
@@ -1414,101 +1441,125 @@ export default function SalesEntry() {
               )}
             </button>
             {isBillSummaryOpen && (
-            <div className="space-y-3">
-              <div className="flex justify-between">
-                <span className="text-sm text-gray-600 dark:text-gray-400">Subtotal:</span>
-                <span className="font-medium text-sm text-gray-800 dark:text-white">
-                  Rs. {subtotal.toFixed(2)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <Label className="mb-0 whitespace-nowrap text-sm">Discount:</Label>
-                <div className="flex-1 max-w-[200px]">
-                  <TaxDiscountInput
-                    value={globalDiscount}
-                    type={globalDiscountType}
-                    onValueChange={(value) => setGlobalDiscount(value ?? null)}
-                    onTypeChange={(type) => setGlobalDiscountType(type)}
-                    placeholder="0"
-                    min={0}
-                    step={0.01}
-                    disabled={isEdit}
-                  />
+              <div className="space-y-3">
+                <div className="flex justify-between">
+                  <span className="text-sm text-gray-600 dark:text-gray-400">Subtotal:</span>
+                  <span className="font-medium text-sm text-gray-800 dark:text-white">
+                    Rs. {subtotal.toFixed(2)}
+                  </span>
                 </div>
-              </div>
-              <div className="flex items-center justify-between gap-4">
-                <Label className="mb-0 whitespace-nowrap text-sm">Tax:</Label>
-                <div className="flex-1 max-w-[200px]">
-                  <TaxDiscountInput
-                    value={globalTax}
-                    type={globalTaxType}
-                    onValueChange={(value) => setGlobalTax(value ?? null)}
-                    onTypeChange={(type) => setGlobalTaxType(type)}
-                    placeholder="0"
-                    min={0}
-                    step={0.01}
-                    disabled={isEdit}
-                  />
+                {isEdit && existingDiscount !== null && existingDiscount !== 0 && (
+                  <div className="flex justify-between mb-1 items-center">
+                    <span className="text-xs text-gray-500 dark:text-gray-400">Previous Discount:</span>
+                    <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">
+                      - Rs. {oldDiscountAmount.toFixed(2)} ({existingDiscountType === "percent" ? `${existingDiscount}%` : `Rs. ${existingDiscount}`})
+                    </span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between gap-4">
+                  <Label className="mb-0 whitespace-nowrap text-sm">
+                    {isEdit ? "Add. Discount:" : "Discount:"}
+                  </Label>
+                  <div className="flex-1 max-w-[200px]">
+                    <TaxDiscountInput
+                      value={globalDiscount}
+                      type={globalDiscountType}
+                      onValueChange={(value) => setGlobalDiscount(value ?? null)}
+                      onTypeChange={(type) => setGlobalDiscountType(type)}
+                      placeholder="0"
+                      min={0}
+                      step={0.01}
+                      disabled={false}
+                    />
+                  </div>
                 </div>
-              </div>
-              <div className="flex items-center justify-between gap-4">
-                <Label className="mb-0 whitespace-nowrap text-sm">Delivery Charges:</Label>
-                <div className="flex-1 max-w-[200px]">
-                  <Input
-                    type="number"
-                    min={0}
-                    step={0.01}
-                    placeholder="0"
-                    value={deliveryCharges ?? ""}
-                    onInput={restrictDecimalInput}
-                    onChange={(e) => {
-                      if (e.target.value === "") {
-                        setDeliveryCharges(null);
-                        return;
-                      }
-                      const parsed = parseFloat(e.target.value);
-                      if (isNaN(parsed) || parsed < 0) {
-                        setDeliveryCharges(0);
-                        return;
-                      }
-                      setDeliveryCharges(parsed);
-                    }}
-                    disabled={isEdit}
-                  />
+                {isEdit && globalDiscount && globalDiscount !== 0 && (
+                  <div className="flex justify-between mt-1 items-center">
+                    <span className="text-xs text-brand-600 dark:text-brand-400">Additional Appli.:</span>
+                    <span className="text-xs font-semibold text-brand-600 dark:text-brand-400">
+                      - Rs. {newDiscountAmount.toFixed(2)}
+                    </span>
+                  </div>
+                )}
+                {isEdit && discountAmount !== 0 && (
+                  <div className="flex justify-between pt-1 mt-1 border-t border-dashed border-gray-200 dark:border-gray-700 items-center">
+                    <span className="text-xs font-medium text-gray-700 dark:text-gray-200">Total Discount:</span>
+                    <span className="text-sm font-bold text-gray-900 dark:text-white">
+                      - Rs. {discountAmount.toFixed(2)}
+                    </span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between gap-4">
+                  <Label className="mb-0 whitespace-nowrap text-sm">Tax:</Label>
+                  <div className="flex-1 max-w-[200px]">
+                    <TaxDiscountInput
+                      value={globalTax}
+                      type={globalTaxType}
+                      onValueChange={(value) => setGlobalTax(value ?? null)}
+                      onTypeChange={(type) => setGlobalTaxType(type)}
+                      placeholder="0"
+                      min={0}
+                      step={0.01}
+                      disabled={isEdit}
+                    />
+                  </div>
                 </div>
-              </div>
-              <div className="flex justify-between pt-3 border-t border-gray-200 dark:border-gray-700">
-                <span className="text-base font-semibold text-gray-800 dark:text-white">
-                  Total:
-                </span>
-                <span className="text-base font-bold text-brand-600 dark:text-brand-400">
-                  Rs. {total.toFixed(2)}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-sm text-gray-600 dark:text-gray-400">Total Paid:</span>
-                <span className="font-medium text-sm text-gray-800 dark:text-white">
-                  Rs. {totalPaid.toFixed(2)}
-                </span>
-              </div>
-              {remainingBalance > 0 && (
+                <div className="flex items-center justify-between gap-4">
+                  <Label className="mb-0 whitespace-nowrap text-sm">Delivery Charges:</Label>
+                  <div className="flex-1 max-w-[200px]">
+                    <Input
+                      type="number"
+                      min={0}
+                      step={0.01}
+                      placeholder="0"
+                      value={deliveryCharges ?? ""}
+                      onInput={restrictDecimalInput}
+                      onChange={(e) => {
+                        if (e.target.value === "") {
+                          setDeliveryCharges(null);
+                          return;
+                        }
+                        const parsed = parseFloat(e.target.value);
+                        if (isNaN(parsed) || parsed < 0) {
+                          setDeliveryCharges(0);
+                          return;
+                        }
+                        setDeliveryCharges(parsed);
+                      }}
+                      disabled={isEdit}
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-between pt-3 border-t border-gray-200 dark:border-gray-700">
+                  <span className="text-base font-semibold text-gray-800 dark:text-white">
+                    Total:
+                  </span>
+                  <span className="text-base font-bold text-brand-600 dark:text-brand-400">
+                    Rs. {total.toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-gray-600 dark:text-gray-400">Total Paid:</span>
+                  <span className="font-medium text-sm text-gray-800 dark:text-white">
+                    Rs. {totalPaid.toFixed(2)}
+                  </span>
+                </div>
                 <div className="flex justify-between">
                   <span className="text-sm text-gray-600 dark:text-gray-400">Remaining:</span>
-                  <span className="font-medium text-sm text-red-600 dark:text-red-400">
+                  <span className={`font-medium text-sm ${remainingBalance > 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}>
                     Rs. {remainingBalance.toFixed(2)}
                   </span>
                 </div>
-              )}
-              <Button
-                onClick={handleFormSubmit(onSubmit)}
-                className="w-full mt-4"
-                size="sm"
-                loading={isSubmitting}
-                disabled={selectedProducts.length === 0 || isSubmitting}
-              >
-                {isEdit ? "Update Sale" : "Generate Bill"}
-              </Button>
-            </div>
+                <Button
+                  onClick={handleFormSubmit(onSubmit)}
+                  className="w-full mt-4"
+                  size="sm"
+                  loading={isSubmitting}
+                  disabled={selectedProducts.length === 0 || isSubmitting}
+                >
+                  {isEdit ? "Update Sale" : "Generate Bill"}
+                </Button>
+              </div>
             )}
           </div>
         </div>

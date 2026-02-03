@@ -18,6 +18,7 @@ interface InputProps {
   max?: string | number;
   step?: number;
   minLength?: number;
+  maxLength?: number;
   disabled?: boolean;
   success?: boolean;
   error?: boolean;
@@ -43,6 +44,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(({
   max,
   step,
   minLength,
+  maxLength,
   disabled = false,
   success = false,
   error = false,
@@ -114,6 +116,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(({
         max={max}
         step={step}
         minLength={minLength}
+        maxLength={maxLength}
         disabled={disabled}
         required={required}
         readOnly={readOnly}
@@ -122,13 +125,12 @@ const Input = forwardRef<HTMLInputElement, InputProps>(({
 
       {hint && (
         <p
-          className={`mt-1.5 text-xs ${
-            error
-              ? "text-error-500"
-              : success
+          className={`mt-1.5 text-xs ${error
+            ? "text-error-500"
+            : success
               ? "text-success-500"
               : "text-gray-500"
-          }`}
+            }`}
         >
           {hint}
         </p>

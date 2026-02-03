@@ -10,7 +10,6 @@ const router = Router();
 router.get(
   "/check",
   authenticate,
-  requirePermission(PERMISSIONS.DAILY_CONFIRMATION_VIEW),
   dailyConfirmationController.checkConfirmation.bind(dailyConfirmationController)
 );
 
@@ -18,9 +17,7 @@ router.get(
 router.post(
   "/confirm",
   authenticate,
-  requirePermission(PERMISSIONS.DAILY_CONFIRMATION_CONFIRM),
   dailyConfirmationController.confirmDaily.bind(dailyConfirmationController)
 );
 
 export default router;
-

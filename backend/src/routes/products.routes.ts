@@ -17,6 +17,7 @@ const router = Router();
 router.get(
   "/",
   authenticate,
+  requirePermission(PERMISSIONS.PRODUCTS_VIEW),
   queryValidator(getProductsQuerySchema),
   productController.getProducts.bind(productController)
 );
@@ -25,6 +26,7 @@ router.get(
 router.get(
   "/inventory/low-stock",
   authenticate,
+  requirePermission(PERMISSIONS.PRODUCTS_VIEW),
   productController.getLowStockProducts.bind(productController)
 );
 
@@ -32,6 +34,7 @@ router.get(
 router.get(
   "/:id",
   authenticate,
+  requirePermission(PERMISSIONS.PRODUCTS_VIEW),
   paramsValidator(
     Joi.object({
       id: Joi.string().required().trim().min(1).messages({

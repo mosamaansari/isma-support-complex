@@ -1,8 +1,10 @@
 import express, { Router } from "express";
 import roleController from "../controllers/role.controller";
 import { authenticate } from "../middleware/auth";
+import { requirePermission } from "../middleware/permissions";
 import { bodyValidator, paramsValidator } from "../middleware/joiValidator";
 import { createRoleSchema, updateRoleSchema } from "../validators/role.validator";
+import { PERMISSIONS } from "../utils/permissions";
 import Joi from "joi";
 
 const router = Router();
@@ -14,6 +16,7 @@ router.get("/", authenticate, roleController.getRoles.bind(roleController));
 router.post(
   "/",
   authenticate,
+  requirePermission(PERMISSIONS.ROLES_CREATE),
   bodyValidator(createRoleSchema),
   roleController.createRole.bind(roleController)
 );
@@ -22,6 +25,7 @@ router.post(
 router.put(
   "/:id",
   authenticate,
+  requirePermission(PERMISSIONS.ROLES_UPDATE),
   paramsValidator(
     Joi.object({
       id: Joi.string().required().trim().min(1).messages({
@@ -38,6 +42,7 @@ router.put(
 router.delete(
   "/:id",
   authenticate,
+  requirePermission(PERMISSIONS.ROLES_DELETE),
   paramsValidator(
     Joi.object({
       id: Joi.string().required().trim().min(1).messages({
