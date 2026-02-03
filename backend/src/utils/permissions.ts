@@ -32,6 +32,10 @@ export const PERMISSIONS = {
   OPENING_BALANCE_UPDATE: "opening_balance:update",
   OPENING_BALANCE_DELETE: "opening_balance:delete",
 
+  // Closing Balance
+  CLOSING_BALANCE_VIEW: "closing_balance:view",
+  CLOSING_BALANCE_CALCULATE: "closing_balance:calculate",
+
   // Daily Confirmation (Removed separate permissions as per user request)
 
   // Bank Accounts
@@ -81,4 +85,5 @@ export const PERMISSIONS = {
   REPORTS_ALL: "reports:*",
   USERS_ALL: "users:*",
   SETTINGS_ALL: "settings:*",
+  CLOSING_BALANCE_ALL: "closing_balance:*",
 } as const;
