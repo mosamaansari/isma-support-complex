@@ -644,13 +644,17 @@ export default function SalesEntry() {
           const availableWarehouse = freshProduct?.warehouseQuantity ?? item.product?.warehouseQuantity ?? 0;
           const qtyMultiplier = priceType === "dozen" ? 12 : 1;
           const unitsToCheck = quantity !== null ? quantity * qtyMultiplier : null;
-          if (location === "shop" && unitsToCheck !== null && unitsToCheck > availableShop) {
-            showError(`Shop stock available for ${item.productName} is ${availableShop}`);
-            return item;
-          }
-          if (location === "warehouse" && unitsToCheck !== null && unitsToCheck > availableWarehouse) {
-            showError(`Warehouse stock available for ${item.productName} is ${availableWarehouse}`);
-            return item;
+          // Only check stock for new items (not already in the sale)
+          const isNewItem = !originalRowIds.has(item.rowId);
+          if (isNewItem) {
+            if (location === "shop" && unitsToCheck !== null && unitsToCheck > availableShop) {
+              showError(`Shop stock available for ${item.productName} is ${availableShop}`);
+              return item;
+            }
+            if (location === "warehouse" && unitsToCheck !== null && unitsToCheck > availableWarehouse) {
+              showError(`Warehouse stock available for ${item.productName} is ${availableWarehouse}`);
+              return item;
+            }
           }
           const shopEntered = location === "shop" ? (quantity ?? 0) : (item.shopQuantity ?? 0);
           const warehouseEntered = location === "warehouse" ? (quantity ?? 0) : (item.warehouseQuantity ?? 0);
@@ -699,17 +703,14 @@ export default function SalesEntry() {
   };
 
   const calculateTotals = () => {
-    // Use item.total which is already calculated with proper rounding in recalcItemTotals
+    // 1. Subtotal: Sum of all item totals (item.total already includes item-level discount)
     const subtotal = Math.round(selectedProducts.reduce((sum, item: any) => {
       return sum + (item.total || 0);
-    }, 0) * 100) / 100; // Round to 2 decimals
+    }, 0) * 100) / 100;
 
-    // Calculate global discount based on type (rounded to 2 decimals)
-    let globalDiscountAmount = 0;
-
-    // Calculate existing discount amount
+    // 2. Global Discounts
     let oldDiscountAmount = 0;
-    if (existingDiscount !== null && existingDiscount !== undefined) {
+    if (existingDiscount !== null && existingDiscount !== undefined && existingDiscount !== 0) {
       if (existingDiscountType === "value") {
         oldDiscountAmount = Math.round(existingDiscount * 100) / 100;
       } else {
@@ -717,9 +718,8 @@ export default function SalesEntry() {
       }
     }
 
-    // Calculate new additional discount amount
     let newDiscountAmount = 0;
-    if (globalDiscount !== null && globalDiscount !== undefined) {
+    if (globalDiscount !== null && globalDiscount !== undefined && globalDiscount !== 0) {
       if (globalDiscountType === "value") {
         newDiscountAmount = Math.round(globalDiscount * 100) / 100;
       } else {
@@ -727,26 +727,28 @@ export default function SalesEntry() {
       }
     }
 
-    globalDiscountAmount = oldDiscountAmount + newDiscountAmount;
+    const totalDiscountAmount = Math.round((oldDiscountAmount + newDiscountAmount) * 100) / 100;
 
-    // Calculate global tax based on type (rounded to 2 decimals)
+    // 3. Tax: Calculated on subtotal after ALL global discounts
     let globalTaxAmount = 0;
-    if (globalTax !== null && globalTax !== undefined) {
+    if (globalTax !== null && globalTax !== undefined && globalTax !== 0) {
+      const amountAfterDiscount = Math.max(0, subtotal - totalDiscountAmount);
       if (globalTaxType === "value") {
         globalTaxAmount = Math.round(globalTax * 100) / 100;
       } else {
-        const afterDiscount = subtotal - globalDiscountAmount;
-        globalTaxAmount = Math.round((afterDiscount * globalTax / 100) * 100) / 100;
+        globalTaxAmount = Math.round((amountAfterDiscount * globalTax / 100) * 100) / 100;
       }
     }
 
+    // 4. Delivery Charges
     const deliveryAmount = Math.round(Math.max(0, deliveryCharges || 0) * 100) / 100;
 
-    const total = Math.round(Math.max(0, subtotal - globalDiscountAmount + globalTaxAmount + deliveryAmount) * 100) / 100;
+    // 5. Final Total: Subtotal - Global Discounts + Tax + Delivery
+    const total = Math.round(Math.max(0, subtotal - totalDiscountAmount + globalTaxAmount + deliveryAmount) * 100) / 100;
 
     return {
       subtotal,
-      discountAmount: globalDiscountAmount,
+      discountAmount: totalDiscountAmount,
       oldDiscountAmount,
       newDiscountAmount,
       taxAmount: globalTaxAmount,
@@ -792,21 +794,38 @@ export default function SalesEntry() {
         return;
       }
 
-      const availableShop = products.find(p => p.id === item.productId)?.shopQuantity ?? item.product?.shopQuantity ?? 0;
-      const availableWarehouse = products.find(p => p.id === item.productId)?.warehouseQuantity ?? item.product?.warehouseQuantity ?? 0;
-      const shopUnits = priceType === "dozen" ? shopEntered * 12 : shopEntered;
-      const warehouseUnits = priceType === "dozen" ? warehouseEntered * 12 : warehouseEntered;
-      if (shopUnits > availableShop) {
-        showError(`Shop stock for "${item.productName}" is only ${availableShop}`);
-        return;
+      // Only check stock for new items (not already in the sale)
+      const isNewItem = !originalRowIds.has(item.rowId);
+      if (isNewItem) {
+        const availableShop = products.find(p => p.id === item.productId)?.shopQuantity ?? item.product?.shopQuantity ?? 0;
+        const availableWarehouse = products.find(p => p.id === item.productId)?.warehouseQuantity ?? item.product?.warehouseQuantity ?? 0;
+        const shopUnits = priceType === "dozen" ? shopEntered * 12 : shopEntered;
+        const warehouseUnits = priceType === "dozen" ? warehouseEntered * 12 : warehouseEntered;
+        if (shopUnits > availableShop) {
+          showError(`Shop stock for "${item.productName}" is only ${availableShop}`);
+          return;
+        }
+        if (warehouseUnits > availableWarehouse) {
+          showError(`Warehouse stock for "${item.productName}" is only ${availableWarehouse}`);
+          return;
+        }
       }
-      if (warehouseUnits > availableWarehouse) {
-        showError(`Warehouse stock for "${item.productName}" is only ${availableWarehouse}`);
+    }
+    const { subtotal, total, discountAmount, oldDiscountAmount, newDiscountAmount, taxAmount, deliveryAmount } = calculateTotals();
+    const totalPaid = payments.reduce((sum, payment) => sum + (payment.amount ?? 0), 0);
+
+    if (isEdit && globalDiscount && globalDiscount !== 0) {
+      const totalCapacityBeforeNewDiscount = subtotal - oldDiscountAmount + taxAmount + deliveryAmount;
+      if (newDiscountAmount > totalCapacityBeforeNewDiscount) {
+        showError(`Additional discount (Rs. ${newDiscountAmount.toFixed(2)}) exceeds remaining total (Rs. ${totalCapacityBeforeNewDiscount.toFixed(2)}). Please enter a lower amount.`);
         return;
       }
     }
-    const { subtotal, total } = calculateTotals();
-    const totalPaid = payments.reduce((sum, payment) => sum + (payment.amount ?? 0), 0);
+
+    if (total < 0) {
+      showError("Total amount cannot be negative. Please check your discounts.");
+      return;
+    }
 
     if (totalPaid > total) {
       showError("Total paid amount cannot exceed total amount");
@@ -967,7 +986,7 @@ export default function SalesEntry() {
     }
   };
 
-  const { subtotal, total, oldDiscountAmount, newDiscountAmount, discountAmount } = calculateTotals();
+  const { subtotal, total, oldDiscountAmount, newDiscountAmount, discountAmount, taxAmount, deliveryAmount } = calculateTotals();
   const totalPaid = payments.reduce((sum, payment) => sum + (payment.amount ?? 0), 0);
   const remainingBalance = total - totalPaid;
 
@@ -1471,6 +1490,22 @@ export default function SalesEntry() {
                       step={0.01}
                       disabled={false}
                     />
+                    {globalDiscount !== null && globalDiscount !== 0 && (
+                      (() => {
+                        const totalBeforeThisDiscount = isEdit
+                          ? Math.max(0, subtotal - oldDiscountAmount + taxAmount + deliveryAmount)
+                          : Math.max(0, subtotal + taxAmount + deliveryAmount);
+
+                        if (newDiscountAmount > totalBeforeThisDiscount) {
+                          return (
+                            <p className="mt-1 text-[10px] text-error-500 font-medium anim-shake">
+                              {isEdit ? "Add. discount" : "Discount"} exceeds remaining total (Rs. {totalBeforeThisDiscount.toFixed(2)})
+                            </p>
+                          );
+                        }
+                        return null;
+                      })()
+                    )}
                   </div>
                 </div>
                 {isEdit && globalDiscount && globalDiscount !== 0 && (
@@ -1481,12 +1516,19 @@ export default function SalesEntry() {
                     </span>
                   </div>
                 )}
-                {isEdit && discountAmount !== 0 && (
-                  <div className="flex justify-between pt-1 mt-1 border-t border-dashed border-gray-200 dark:border-gray-700 items-center">
-                    <span className="text-xs font-medium text-gray-700 dark:text-gray-200">Total Discount:</span>
-                    <span className="text-sm font-bold text-gray-900 dark:text-white">
-                      - Rs. {discountAmount.toFixed(2)}
-                    </span>
+                {discountAmount !== 0 && (
+                  <div className="flex flex-col pt-1 mt-1 border-t border-dashed border-gray-200 dark:border-gray-700">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-medium text-gray-700 dark:text-gray-200">Total Discount:</span>
+                      <span className="text-sm font-bold text-gray-900 dark:text-white">
+                        - Rs. {discountAmount.toFixed(2)}
+                      </span>
+                    </div>
+                    {total < 0 && (
+                      <p className="text-[10px] text-error-500 font-medium text-right mt-0.5">
+                        Discount makes total negative
+                      </p>
+                    )}
                   </div>
                 )}
                 <div className="flex items-center justify-between gap-4">

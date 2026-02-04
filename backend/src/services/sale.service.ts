@@ -579,6 +579,10 @@ class SaleService {
 
     const total = limitDecimalPlaces(subtotal - discountAmount + taxAmount + deliveryCharges);
 
+    if (total < 0) {
+      throw new Error("Total amount cannot be negative. Please check your discounts.");
+    }
+
     // Get or create customer (optional - use default if not provided)
     const customerName = data.customerName || "Walk-in Customer";
     const customerPhone = data.customerPhone && data.customerPhone.trim() !== "" && data.customerPhone !== "0000000000"
@@ -1278,6 +1282,10 @@ class SaleService {
     }
 
     const calculatedTotal = limitDecimalPlaces(subtotal - discountAmount + taxAmount + limitDecimalPlaces(deliveryCharges));
+
+    if (calculatedTotal < 0) {
+      throw new Error("Total amount cannot be negative. Please check your discounts.");
+    }
 
     // Update totals with calculated values
     updateData.subtotal = limitDecimalPlaces(subtotal);

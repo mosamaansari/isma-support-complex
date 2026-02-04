@@ -33,6 +33,10 @@ export const AVAILABLE_PERMISSIONS = {
   OPENING_BALANCE_UPDATE: "opening_balance:update",
   OPENING_BALANCE_DELETE: "opening_balance:delete",
 
+  // Closing Balance
+  CLOSING_BALANCE_VIEW: "closing_balance:view",
+  CLOSING_BALANCE_CALCULATE: "closing_balance:calculate",
+
 
   // Bank Accounts
   BANK_ACCOUNTS_VIEW: "bank_accounts:view",
@@ -130,6 +134,13 @@ export const PERMISSION_GROUPS = [
     ],
   },
   {
+    group: "Closing Balance",
+    permissions: [
+      { key: "CLOSING_BALANCE_VIEW", label: "View Closing Balance", value: AVAILABLE_PERMISSIONS.CLOSING_BALANCE_VIEW },
+      { key: "CLOSING_BALANCE_CALCULATE", label: "Calculate Closing Balance", value: AVAILABLE_PERMISSIONS.CLOSING_BALANCE_CALCULATE },
+    ],
+  },
+  {
     group: "Bank Accounts",
     permissions: [
       { key: "BANK_ACCOUNTS_VIEW", label: "View Bank Accounts", value: AVAILABLE_PERMISSIONS.BANK_ACCOUNTS_VIEW },
@@ -195,6 +206,8 @@ export const getDefaultPermissionsForRole = (role: UserRole): string[] => {
       AVAILABLE_PERMISSIONS.OPENING_BALANCE_CREATE,
       AVAILABLE_PERMISSIONS.OPENING_BALANCE_UPDATE,
       AVAILABLE_PERMISSIONS.OPENING_BALANCE_DELETE,
+      AVAILABLE_PERMISSIONS.CLOSING_BALANCE_VIEW,
+      AVAILABLE_PERMISSIONS.CLOSING_BALANCE_CALCULATE,
       AVAILABLE_PERMISSIONS.BANK_ACCOUNTS_VIEW,
       AVAILABLE_PERMISSIONS.BANK_ACCOUNTS_CREATE,
       AVAILABLE_PERMISSIONS.BANK_ACCOUNTS_UPDATE,
