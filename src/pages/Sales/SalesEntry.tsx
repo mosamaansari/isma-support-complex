@@ -811,7 +811,7 @@ export default function SalesEntry() {
         }
       }
     }
-    const { subtotal, total, discountAmount, oldDiscountAmount, newDiscountAmount, taxAmount, deliveryAmount } = calculateTotals();
+    const { subtotal, total, oldDiscountAmount, newDiscountAmount, taxAmount, deliveryAmount } = calculateTotals();
     const totalPaid = payments.reduce((sum, payment) => sum + (payment.amount ?? 0), 0);
 
     if (isEdit && globalDiscount && globalDiscount !== 0) {
