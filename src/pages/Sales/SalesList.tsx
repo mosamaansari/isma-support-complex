@@ -102,11 +102,14 @@ export default function SalesList() {
     totalSales: 0,
     totalPaid: 0,
     totalRemaining: 0,
-    totalRefunded: 0, // Count of refunded sales, not amount
+    totalRefunded: 0,
     completedSales: 0,
+    totalBillsCount: 0,
+    completedCount: 0,
+    pendingCount: 0
   };
 
-  const { totalSales, totalPaid, totalRemaining, totalRefunded, completedSales } = summaryStats;
+  const { totalSales, totalPaid, totalRemaining, totalRefunded, completedSales, totalBillsCount, completedCount, pendingCount } = summaryStats;
 
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
   const [saleToCancel, setSaleToCancel] = useState<any>(null);
@@ -342,7 +345,7 @@ export default function SalesList() {
             </p>
           </div>
           <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-            <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Completed Sales</p>
+            <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Completed Sales Amount</p>
             <p className="text-lg sm:text-xl lg:text-2xl font-bold text-blue-600 dark:text-blue-400 price-responsive">
               {formatPriceWithCurrencyComplete(completedSales)}
             </p>
@@ -350,19 +353,19 @@ export default function SalesList() {
           <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
             <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Total Bills</p>
             <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-800 dark:text-white">
-              {filteredSales.length}
+              {totalBillsCount || totalBillsCount === 0 ? totalBillsCount : filteredSales.length}
             </p>
           </div>
           <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
             <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Completed</p>
             <p className="text-lg sm:text-xl lg:text-2xl font-bold text-green-600 dark:text-green-400">
-              {filteredSales.filter((s) => s && s.status === "completed").length}
+              {completedCount || completedCount === 0 ? completedCount : filteredSales.filter((s) => s && s.status === "completed").length}
             </p>
           </div>
           <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
             <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Pending</p>
             <p className="text-lg sm:text-xl lg:text-2xl font-bold text-orange-600 dark:text-orange-400">
-              {filteredSales.filter((s) => s && s.status === "pending").length}
+              {pendingCount || pendingCount === 0 ? pendingCount : filteredSales.filter((s) => s && s.status === "pending").length}
             </p>
           </div>
         </div>
@@ -386,205 +389,210 @@ export default function SalesList() {
             <option value="cancelled">Cancelled</option>
           </select>
         </div>
-      </div>
+      </div >
 
       {loading && (
         <div className="p-8 text-center text-gray-500">
           Loading sales...
         </div>
-      )}
+      )
+      }
 
-      {!loading && (!sales || sales.length === 0) && (
-        <div className="p-8 text-center text-gray-500 bg-white rounded-lg shadow-sm dark:bg-gray-800">
-          <p className="mb-4">No sales found. Create your first sale!</p>
-          <Link to="/sales/entry">
-            <Button size="sm">Create Sale</Button>
-          </Link>
-        </div>
-      )}
+      {
+        !loading && (!sales || sales.length === 0) && (
+          <div className="p-8 text-center text-gray-500 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+            <p className="mb-4">No sales found. Create your first sale!</p>
+            <Link to="/sales/entry">
+              <Button size="sm">Create Sale</Button>
+            </Link>
+          </div>
+        )
+      }
 
-      {!loading && sales && sales.length > 0 && (
-        <div className="table-container bg-white rounded-lg shadow-sm dark:bg-gray-800">
-          <table className="responsive-table">
-            <thead>
-              <tr className="border-b border-gray-200 dark:border-gray-700">
-                <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
-                  Bill Number
-                </th>
-                <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[120px]">
-                  Date
-                </th>
-                <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[150px]">
-                  Customer
-                </th>
-                <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[80px]">
-                  Items
-                </th>
-                <th className="p-2 sm:p-3 md:p-4 text-right text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
-                  Total
-                </th>
-                <th className="p-2 sm:p-3 md:p-4 text-right text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
-                  Paid
-                </th>
-                <th className="p-2 sm:p-3 md:p-4 text-right text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[110px]">
-                  Remaining
-                </th>
-                <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[90px]">
-                  Status
-                </th>
-                <th className="p-2 sm:p-3 md:p-4 text-center text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[140px]">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredSales.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="p-4 sm:p-6 md:p-8 text-center text-gray-500 text-sm sm:text-base">
-                    No sales found
-                  </td>
+      {
+        !loading && sales && sales.length > 0 && (
+          <div className="table-container bg-white rounded-lg shadow-sm dark:bg-gray-800">
+            <table className="responsive-table">
+              <thead>
+                <tr className="border-b border-gray-200 dark:border-gray-700">
+                  <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
+                    Bill Number
+                  </th>
+                  <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[120px]">
+                    Date
+                  </th>
+                  <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[150px]">
+                    Customer
+                  </th>
+                  <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[80px]">
+                    Items
+                  </th>
+                  <th className="p-2 sm:p-3 md:p-4 text-right text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
+                    Total
+                  </th>
+                  <th className="p-2 sm:p-3 md:p-4 text-right text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[100px]">
+                    Paid
+                  </th>
+                  <th className="p-2 sm:p-3 md:p-4 text-right text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[110px]">
+                    Remaining
+                  </th>
+                  <th className="p-2 sm:p-3 md:p-4 text-left text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[90px]">
+                    Status
+                  </th>
+                  <th className="p-2 sm:p-3 md:p-4 text-center text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[140px]">
+                    Actions
+                  </th>
                 </tr>
-              ) : (
-                filteredSales.map((sale) => {
-                  if (!sale || !sale.billNumber) return null;
+              </thead>
+              <tbody>
+                {filteredSales.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="p-4 sm:p-6 md:p-8 text-center text-gray-500 text-sm sm:text-base">
+                      No sales found
+                    </td>
+                  </tr>
+                ) : (
+                  filteredSales.map((sale) => {
+                    if (!sale || !sale.billNumber) return null;
 
-                  // Filter out payments with invalid amounts (0, null, undefined, NaN) before calculating totalPaid
-                  const validPayments = (sale.payments || []).filter((p: SalePayment) =>
-                    p?.amount !== undefined &&
-                    p?.amount !== null &&
-                    !isNaN(Number(p.amount)) &&
-                    Number(p.amount) > 0
-                  );
-                  const totalPaid = validPayments.reduce((sum: number, p: SalePayment) => sum + (p?.amount || 0), 0);
-                  const remainingBalance = Math.max(0, (sale.total || 0) - totalPaid);
+                    // Filter out payments with invalid amounts (0, null, undefined, NaN) before calculating totalPaid
+                    const validPayments = (sale.payments || []).filter((p: SalePayment) =>
+                      p?.amount !== undefined &&
+                      p?.amount !== null &&
+                      !isNaN(Number(p.amount)) &&
+                      Number(p.amount) > 0
+                    );
+                    const totalPaid = validPayments.reduce((sum: number, p: SalePayment) => sum + (p?.amount || 0), 0);
+                    const remainingBalance = Math.max(0, (sale.total || 0) - totalPaid);
 
-                  return (
-                    <tr
-                      key={sale.id}
-                      className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50"
-                    >
-                      <td className="p-2 sm:p-3 md:p-4 font-medium text-gray-800 dark:text-white whitespace-nowrap text-xs sm:text-sm">
-                        {sale.billNumber}
-                      </td>
-                      <td className="p-2 sm:p-3 md:p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap text-xs sm:text-sm">
-                        <span className="hidden sm:inline">
-                          {formatBackendDate(sale.createdAt)}
-                        </span>
-                        <span className="sm:hidden">
-                          {formatBackendDateShort(sale.date || sale.createdAt)}
-                        </span>
-                      </td>
-                      <td className="p-2 sm:p-3 md:p-4 text-gray-700 dark:text-gray-300 max-w-[150px] sm:max-w-[200px]">
-                        <div className="line-clamp-2 sm:line-clamp-3">
-                          <div className="font-medium text-xs sm:text-sm">{sale.customerName || "Walk-in"}</div>
-                          {sale.customerPhone && sale.customerPhone !== "0000000000" && sale.customerPhone.trim() !== "" && (
-                            <div className="text-xs text-gray-500 mt-1">{sale.customerPhone}</div>
-                          )}
-                        </div>
-                      </td>
-                      <td className="p-2 sm:p-3 md:p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap text-xs sm:text-sm">
-                        {(sale.items || []).length} item(s)
-                      </td>
-                      <td className="p-2 sm:p-3 md:p-4 text-right font-semibold text-gray-800 dark:text-white whitespace-nowrap price-responsive">
-                        Rs. {(sale.total || 0).toFixed(2)}
-                      </td>
-                      <td className="p-2 sm:p-3 md:p-4 text-right text-gray-700 dark:text-gray-300 whitespace-nowrap price-responsive">
-                        Rs. {totalPaid.toFixed(2)}
-                      </td>
-                      <td className="p-2 sm:p-3 md:p-4 text-right font-semibold text-gray-800 dark:text-white whitespace-nowrap price-responsive">
-                        {remainingBalance > 0 ? (
-                          <span className="text-orange-600 dark:text-orange-400">
-                            Rs. {remainingBalance.toFixed(2)}
+                    return (
+                      <tr
+                        key={sale.id}
+                        className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                      >
+                        <td className="p-2 sm:p-3 md:p-4 font-medium text-gray-800 dark:text-white whitespace-nowrap text-xs sm:text-sm">
+                          {sale.billNumber}
+                        </td>
+                        <td className="p-2 sm:p-3 md:p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap text-xs sm:text-sm">
+                          <span className="hidden sm:inline">
+                            {formatBackendDate(sale.createdAt)}
                           </span>
-                        ) : (
-                          <span className="text-green-600 dark:text-green-400">Rs. 0.00</span>
-                        )}
-                      </td>
-                      <td className="p-2 sm:p-3 md:p-4 whitespace-nowrap">
-                        <span
-                          className={`px-1.5 sm:px-2 py-0.5 sm:py-1 text-xs font-medium rounded ${sale.status === "completed"
-                            ? "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400"
-                            : sale.status === "pending"
-                              ? "bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400"
-                              : "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400"
-                            }`}
-                        >
-                          {sale.status || "completed"}
-                        </span>
-                      </td>
-                      <td className="p-2 sm:p-3 md:p-4">
-                        <div className="flex items-center justify-center gap-1 sm:gap-2 flex-nowrap whitespace-nowrap">
-                          {/* View Bill Button */}
-                          <Link to={`/sales/bill/${sale.billNumber}`}>
-                            <button
-                              className="p-1.5 sm:p-2 text-gray-600 hover:bg-gray-50 rounded dark:hover:bg-gray-900/20 border border-gray-300 dark:border-gray-600 flex-shrink-0"
-                              title="View Bill"
-                            >
-                              <FaEye className="w-3 h-3 sm:w-4 sm:h-4 text-blue-500" />
-                            </button>
-                          </Link>
-                          {/* View Payments Button */}
-                          {sale.payments && sale.payments.length > 0 && (
-                            <button
-                              onClick={() => handleViewPayments(sale)}
-                              className="p-1.5 sm:p-2 text-indigo-500 hover:bg-indigo-50 rounded dark:hover:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 flex-shrink-0"
-                              title="View Payments"
-                            >
-                              <FaListAlt className="w-3 h-3 sm:w-4 sm:h-4" />
-                            </button>
+                          <span className="sm:hidden">
+                            {formatBackendDateShort(sale.date || sale.createdAt)}
+                          </span>
+                        </td>
+                        <td className="p-2 sm:p-3 md:p-4 text-gray-700 dark:text-gray-300 max-w-[150px] sm:max-w-[200px]">
+                          <div className="line-clamp-2 sm:line-clamp-3">
+                            <div className="font-medium text-xs sm:text-sm">{sale.customerName || "Walk-in"}</div>
+                            {sale.customerPhone && sale.customerPhone !== "0000000000" && sale.customerPhone.trim() !== "" && (
+                              <div className="text-xs text-gray-500 mt-1">{sale.customerPhone}</div>
+                            )}
+                          </div>
+                        </td>
+                        <td className="p-2 sm:p-3 md:p-4 text-gray-700 dark:text-gray-300 whitespace-nowrap text-xs sm:text-sm">
+                          {(sale.items || []).length} item(s)
+                        </td>
+                        <td className="p-2 sm:p-3 md:p-4 text-right font-semibold text-gray-800 dark:text-white whitespace-nowrap price-responsive">
+                          Rs. {(sale.total || 0).toFixed(2)}
+                        </td>
+                        <td className="p-2 sm:p-3 md:p-4 text-right text-gray-700 dark:text-gray-300 whitespace-nowrap price-responsive">
+                          Rs. {totalPaid.toFixed(2)}
+                        </td>
+                        <td className="p-2 sm:p-3 md:p-4 text-right font-semibold text-gray-800 dark:text-white whitespace-nowrap price-responsive">
+                          {remainingBalance > 0 ? (
+                            <span className="text-orange-600 dark:text-orange-400">
+                              Rs. {remainingBalance.toFixed(2)}
+                            </span>
+                          ) : (
+                            <span className="text-green-600 dark:text-green-400">Rs. 0.00</span>
                           )}
+                        </td>
+                        <td className="p-2 sm:p-3 md:p-4 whitespace-nowrap">
+                          <span
+                            className={`px-1.5 sm:px-2 py-0.5 sm:py-1 text-xs font-medium rounded ${sale.status === "completed"
+                              ? "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400"
+                              : sale.status === "pending"
+                                ? "bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400"
+                                : "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400"
+                              }`}
+                          >
+                            {sale.status || "completed"}
+                          </span>
+                        </td>
+                        <td className="p-2 sm:p-3 md:p-4">
+                          <div className="flex items-center justify-center gap-1 sm:gap-2 flex-nowrap whitespace-nowrap">
+                            {/* View Bill Button */}
+                            <Link to={`/sales/bill/${sale.billNumber}`}>
+                              <button
+                                className="p-1.5 sm:p-2 text-gray-600 hover:bg-gray-50 rounded dark:hover:bg-gray-900/20 border border-gray-300 dark:border-gray-600 flex-shrink-0"
+                                title="View Bill"
+                              >
+                                <FaEye className="w-3 h-3 sm:w-4 sm:h-4 text-blue-500" />
+                              </button>
+                            </Link>
+                            {/* View Payments Button */}
+                            {sale.payments && sale.payments.length > 0 && (
+                              <button
+                                onClick={() => handleViewPayments(sale)}
+                                className="p-1.5 sm:p-2 text-indigo-500 hover:bg-indigo-50 rounded dark:hover:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 flex-shrink-0"
+                                title="View Payments"
+                              >
+                                <FaListAlt className="w-3 h-3 sm:w-4 sm:h-4" />
+                              </button>
+                            )}
 
-                          {/* Add Payment Button */}
-                          {hasResourcePermission(currentUser.role, 'sales:add_payment', currentUser.permissions) && sale.status === "pending" && remainingBalance > 0 && (
-                            <button
-                              onClick={() => handleAddPayment(sale)}
-                              className="p-1.5 sm:p-2 text-green-500 hover:bg-green-50 rounded dark:hover:bg-green-900/20 border border-green-200 dark:border-green-800 flex-shrink-0"
-                              title="Add Payment"
-                            >
-                              <FaCreditCard className="w-3 h-3 sm:w-4 sm:h-4" />
-                            </button>
-                          )}
-                          {/* Edit Sale Button */}
-                          {hasResourcePermission(currentUser.role, 'sales:update', currentUser.permissions) && (
-                            sale.status === "pending" ? (
-                              <Link to={`/sales/edit/${sale.id}`}>
+                            {/* Add Payment Button */}
+                            {hasResourcePermission(currentUser.role, 'sales:add_payment', currentUser.permissions) && sale.status === "pending" && remainingBalance > 0 && (
+                              <button
+                                onClick={() => handleAddPayment(sale)}
+                                className="p-1.5 sm:p-2 text-green-500 hover:bg-green-50 rounded dark:hover:bg-green-900/20 border border-green-200 dark:border-green-800 flex-shrink-0"
+                                title="Add Payment"
+                              >
+                                <FaCreditCard className="w-3 h-3 sm:w-4 sm:h-4" />
+                              </button>
+                            )}
+                            {/* Edit Sale Button */}
+                            {hasResourcePermission(currentUser.role, 'sales:update', currentUser.permissions) && (
+                              sale.status === "pending" ? (
+                                <Link to={`/sales/edit/${sale.id}`}>
+                                  <button
+                                    className="p-1.5 sm:p-2 text-blue-600 hover:bg-blue-50 rounded dark:hover:bg-blue-900/20 flex-shrink-0"
+                                    title="Edit Sale"
+                                  >
+                                    <PencilIcon className="w-3 h-3 sm:w-4 sm:h-4" />
+                                  </button>
+                                </Link>
+                              ) : (
                                 <button
-                                  className="p-1.5 sm:p-2 text-blue-600 hover:bg-blue-50 rounded dark:hover:bg-blue-900/20 flex-shrink-0"
-                                  title="Edit Sale"
+                                  disabled
+                                  className="p-1.5 sm:p-2 text-gray-400 cursor-not-allowed rounded dark:bg-gray-900/20 flex-shrink-0 opacity-50"
+                                  title={sale.status === "completed" ? "Completed sales cannot be edited" : "Cancelled sales cannot be edited"}
                                 >
                                   <PencilIcon className="w-3 h-3 sm:w-4 sm:h-4" />
                                 </button>
-                              </Link>
-                            ) : (
+                              )
+                            )}
+                            {/* Cancel Sale Button */}
+                            {hasResourcePermission(currentUser.role, 'sales:cancel', currentUser.permissions) && sale.status !== "cancelled" && (
                               <button
-                                disabled
-                                className="p-1.5 sm:p-2 text-gray-400 cursor-not-allowed rounded dark:bg-gray-900/20 flex-shrink-0 opacity-50"
-                                title={sale.status === "completed" ? "Completed sales cannot be edited" : "Cancelled sales cannot be edited"}
+                                onClick={() => handleCancelSaleClick(sale)}
+                                className="p-1.5 sm:p-2 text-orange-600 hover:bg-orange-50 rounded dark:hover:bg-orange-900/20 border border-orange-200 dark:border-orange-800 flex-shrink-0"
+                                title="Refund Sale"
                               >
-                                <PencilIcon className="w-3 h-3 sm:w-4 sm:h-4" />
+                                <FaUndo className="w-3 h-3 sm:w-4 sm:h-4" />
                               </button>
-                            )
-                          )}
-                          {/* Cancel Sale Button */}
-                          {hasResourcePermission(currentUser.role, 'sales:cancel', currentUser.permissions) && sale.status !== "cancelled" && (
-                            <button
-                              onClick={() => handleCancelSaleClick(sale)}
-                              className="p-1.5 sm:p-2 text-orange-600 hover:bg-orange-50 rounded dark:hover:bg-orange-900/20 border border-orange-200 dark:border-orange-800 flex-shrink-0"
-                              title="Refund Sale"
-                            >
-                              <FaUndo className="w-3 h-3 sm:w-4 sm:h-4" />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                }).filter(Boolean)
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  }).filter(Boolean)
+                )}
+              </tbody>
+            </table>
+          </div>
+        )
+      }
 
       {/* Add Payment Modal */}
       <Modal isOpen={isPaymentModalOpen} onClose={closePaymentModal} className="max-w-md m-4">

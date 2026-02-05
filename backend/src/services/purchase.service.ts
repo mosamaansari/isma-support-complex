@@ -102,61 +102,52 @@ class PurchaseService {
         prisma.purchase.count({ where }),
       ]);
 
-      // Calculate summary statistics for all matching purchases (not just the paginated ones)
-      const allMatchingPurchases = await prisma.purchase.findMany({
-        where,
-        select: {
-          id: true,
-          total: true,
-          remainingBalance: true,
-          status: true,
-          payments: true,
-        },
-      });
+      // Calculate ALL TIME summary statistics using aggregations (ignoring paginated filters)
+      const [allTimeStats, completedStats, refundedCount, totalBills, completedCount, pendingCount] = await Promise.all([
+        // 1. Total Purchases and Remaining (Non-cancelled)
+        prisma.purchase.aggregate({
+          _sum: { total: true, remainingBalance: true },
+          where: { status: { not: "cancelled" } }
+        }),
+        // 2. Completed Purchases amount
+        prisma.purchase.aggregate({
+          _sum: { total: true },
+          where: { status: "completed" }
+        }),
+        // 3. Refunded/Cancelled Count
+        prisma.purchase.count({
+          where: { status: "cancelled" }
+        }),
+        // 4. Total Non-Cancelled Bills Count
+        prisma.purchase.count({
+          where: { status: { not: "cancelled" } }
+        }),
+        // 5. Completed Count
+        prisma.purchase.count({
+          where: { status: "completed" }
+        }),
+        // 6. Pending Count
+        prisma.purchase.count({
+          where: { status: "pending" }
+        })
+      ]);
 
-      // Calculate summary statistics
-      const summaryStats = allMatchingPurchases.reduce(
-        (acc: any, purchase: any) => {
-          const purchaseTotal = Number(purchase.total || 0);
-          
-          // Filter out payments with invalid amounts (0, null, undefined, NaN)
-          const validPayments = (purchase.payments as Array<{ type?: string; amount?: number; date?: string }> || [])
-            .filter((p: any) => 
-              p?.amount !== undefined && 
-              p?.amount !== null && 
-              !isNaN(Number(p.amount)) && 
-              Number(p.amount) > 0
-            );
-          const totalPaid = validPayments.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
-          
-          // Calculate remaining balance
-          const remainingBalance = Math.max(0, purchaseTotal - totalPaid);
-          
-          if (purchase.status === 'cancelled') {
-            // For cancelled purchases, count the number of cancelled purchases (not amount)
-            acc.totalRefunded += 1;
-          } else {
-            // For non-cancelled purchases, include in totals
-            acc.totalPurchases += purchaseTotal;
-            acc.totalRemaining += remainingBalance;
-            // Total paid should only include payments from non-cancelled purchases
-            acc.totalPaid += totalPaid;
-            
-            if (purchase.status === 'completed') {
-              acc.completedPurchases += purchaseTotal;
-            }
-          }
-          
-          return acc;
-        },
-        {
-          totalPurchases: 0,
-          totalPaid: 0,
-          totalRemaining: 0,
-          totalRefunded: 0, // Count of cancelled purchases, not amount
-          completedPurchases: 0,
-        }
-      );
+      const globalTotalPurchases = Number(allTimeStats._sum.total || 0);
+      const globalTotalRemaining = Number(allTimeStats._sum.remainingBalance || 0);
+      const globalTotalPaid = Math.max(0, globalTotalPurchases - globalTotalRemaining);
+      const globalCompletedPurchasesAmount = Number(completedStats._sum.total || 0);
+
+      const summaryStats = {
+        totalPurchases: globalTotalPurchases,
+        totalPaid: globalTotalPaid,
+        totalRemaining: globalTotalRemaining,
+        totalRefunded: refundedCount,
+        completedPurchases: globalCompletedPurchasesAmount,
+        // Add explicit Counts
+        totalBillsCount: totalBills,
+        completedCount: completedCount,
+        pendingCount: pendingCount
+      };
 
       return {
         data: purchases,
@@ -367,9 +358,9 @@ class PurchaseService {
       // Use payment date if provided, otherwise use purchase date, otherwise use current date/time
       // Use formatDateToLocalISO to ensure date is stored as string without "Z" suffix
       // This matches how addPaymentToPurchase stores dates
-      date: payment.date 
+      date: payment.date
         ? (typeof payment.date === 'string' ? payment.date : formatDateToLocalISO(parseLocalISO(payment.date)))
-        : (data.date 
+        : (data.date
           ? (typeof data.date === 'string' ? data.date : formatDateToLocalISO(parseLocalISO(data.date)))
           : formatDateToLocalISO(getCurrentLocalDateTime()))
     }));
@@ -385,7 +376,7 @@ class PurchaseService {
     // Check balance from daily closing balance BEFORE creating purchase
     const dailyClosingBalanceService = (await import("./dailyClosingBalance.service")).default;
     const { formatLocalYMD, parseLocalISO } = await import("../utils/date");
-    
+
     // Use purchase date if provided, otherwise use current date
     // Use parseLocalISO to avoid timezone conversion issues
     const purchaseDate = data.date ? parseLocalISO(data.date) : new Date();
@@ -512,7 +503,7 @@ class PurchaseService {
     // Update balances atomically for payments using balance management service
     // Balance already validated above, now update after successful purchase creation
     const balanceManagementService = (await import("./balanceManagement.service")).default;
-    
+
     for (const payment of data.payments) {
       // Skip payments with invalid amounts
       if (!payment.amount || payment.amount <= 0 || isNaN(Number(payment.amount))) {
@@ -528,7 +519,7 @@ class PurchaseService {
       const paymentDateDay = paymentOrPurchaseDate.getDate();
       // Create date at noon to avoid timezone conversion issues (same as balanceManagement service expects)
       const paymentDateForBalance = new Date(paymentDateYear, paymentDateMonth, paymentDateDay, 12, 0, 0, 0);
-      
+
       const amount = Number(payment.amount);
 
       try {
@@ -712,7 +703,7 @@ class PurchaseService {
       const purchaseDate = new Date(purchase.date);
       const today = new Date();
       const daysDiff = Math.floor((today.getTime() - purchaseDate.getTime()) / (1000 * 60 * 60 * 24));
-      
+
       if (daysDiff > 7) {
         throw new Error(`Cannot edit completed purchases older than 7 days. This purchase is ${daysDiff} days old.`);
       }
@@ -722,7 +713,7 @@ class PurchaseService {
     if (purchase.status === "pending") {
       // Store original product IDs
       const originalProductIds = new Set(purchase.items.map(item => item.productId));
-      
+
       // Prevent editing/deleting old products
       if (data.items) {
         for (const oldItem of purchase.items) {
@@ -730,7 +721,7 @@ class PurchaseService {
           if (!newItem) {
             throw new Error(`Cannot delete old products. Product "${oldItem.productName || oldItem.productId}" cannot be removed from pending purchases.`);
           }
-          
+
           // Prevent editing old product cost
           const oldCost = Number(oldItem.cost || 0);
           const newCost = Number((newItem as any).cost || 0);
@@ -739,7 +730,7 @@ class PurchaseService {
           }
         }
       }
-      
+
       // Prevent editing payments
       if (data.payments !== undefined) {
         const oldPayments = (purchase.payments as Array<any>) || [];
@@ -755,22 +746,22 @@ class PurchaseService {
             throw new Error("Cannot modify existing payments for pending purchases.");
           }
           // Check if payment details changed
-          if (oldPayment.type !== newPayment.type || 
-              oldPayment.amount !== newPayment.amount ||
-              oldPayment.bankAccountId !== newPayment.bankAccountId ||
-              oldPayment.cardId !== newPayment.cardId) {
+          if (oldPayment.type !== newPayment.type ||
+            oldPayment.amount !== newPayment.amount ||
+            oldPayment.bankAccountId !== newPayment.bankAccountId ||
+            oldPayment.cardId !== newPayment.cardId) {
             throw new Error("Cannot edit existing payments for pending purchases. You can only add new payments.");
           }
         }
       }
-      
+
       // Prevent editing tax
       if (data.tax !== undefined || data.taxType !== undefined) {
         const oldTax = Number(purchase.tax || 0);
         const newTax = data.tax !== undefined ? Number(data.tax) : oldTax;
         const oldTaxType = purchase.taxType || "percent";
         const newTaxType = data.taxType || oldTaxType;
-        
+
         if (oldTax !== newTax || oldTaxType !== newTaxType) {
           throw new Error("Cannot edit tax for pending purchases.");
         }
@@ -836,13 +827,13 @@ class PurchaseService {
             const priceType = (newItem as any).priceType || "single";
             const newShopUnits = priceType === "dozen" ? newShopQty * 12 : newShopQty;
             const newWarehouseUnits = priceType === "dozen" ? newWarehouseQty * 12 : newWarehouseQty;
-            
+
             // Calculate difference
             const shopDiff = newShopUnits - revertShopQty;
             const warehouseDiff = newWarehouseUnits - revertWarehouseQty;
-            
+
             // Allow quantity decreases - no validation needed as we're reverting stock (adding it back)
-            
+
             // Prevent cost/price updates - check if cost has changed
             const oldCost = Number(oldItem.cost || 0);
             const newCost = Number((newItem as any).cost || 0);
@@ -995,7 +986,7 @@ class PurchaseService {
     if (data.tax !== undefined) updateData.tax = data.tax;
     if (data.taxType !== undefined) updateData.taxType = data.taxType;
     if (data.total !== undefined) updateData.total = data.total;
-    
+
     // Track old payments to detect new ones
     const oldPayments = (purchase.payments as Array<{
       type: string;
@@ -1004,7 +995,7 @@ class PurchaseService {
       bankAccountId?: string;
       date?: string | Date;
     }>) || [];
-    
+
     if (data.payments) {
       // For pending purchases, restrictions already validated above
       // For completed purchases, allow full editing
@@ -1048,18 +1039,18 @@ class PurchaseService {
         bankAccountId?: string;
         date?: string | Date;
       }> = [];
-      
+
       if (data.payments.length > oldPayments.length) {
         // There are new payments - get payments beyond the old array length
         newPayments.push(...data.payments.slice(oldPayments.length));
         logger.info(`Found ${newPayments.length} new payment(s) for purchase ${purchase.id} (old: ${oldPayments.length}, new: ${data.payments.length})`);
       }
-      
+
       // Process new payments if any
       if (newPayments.length > 0) {
         try {
           const balanceManagementService = (await import("./balanceManagement.service")).default;
-          
+
           // Get user info
           let user: any = null;
           let userName = "System";
@@ -1081,7 +1072,7 @@ class PurchaseService {
               userName = user.name || user.username || "System";
             }
           }
-        
+
           for (const payment of newPayments) {
             const paymentAmount = payment.amount ?? 0;
             if (paymentAmount === null || paymentAmount === undefined || isNaN(Number(paymentAmount)) || paymentAmount <= 0) {
@@ -1090,8 +1081,8 @@ class PurchaseService {
             }
 
             // Use payment date if available, otherwise use today's date
-            const paymentDate = (payment as any).date 
-              ? parseLocalISO((payment as any).date) 
+            const paymentDate = (payment as any).date
+              ? parseLocalISO((payment as any).date)
               : parseLocalYMDForDB(formatLocalYMD(getTodayInPakistan()));
             const amount = Number(paymentAmount);
 
@@ -1209,7 +1200,7 @@ class PurchaseService {
     const purchaseDate = new Date(purchase.date || purchase.createdAt);
     const today = new Date();
     const daysDifference = Math.floor((today.getTime() - purchaseDate.getTime()) / (1000 * 60 * 60 * 24));
-    
+
     if (daysDifference > 7) {
       throw new Error("Purchase cannot be cancelled. Only purchases within 7 days can be cancelled.");
     }
@@ -1310,19 +1301,19 @@ class PurchaseService {
       if (product) {
         // Handle dozen quantity normalization (same logic as purchase creation)
         const qtyMultiplier =
-          (item.priceType === "dozen" && 
-           (item.costSingle === undefined || item.costSingle === null) && 
-           (item.costDozen !== undefined && item.costDozen !== null))
+          (item.priceType === "dozen" &&
+            (item.costSingle === undefined || item.costSingle === null) &&
+            (item.costDozen !== undefined && item.costDozen !== null))
             ? 12
             : 1;
 
         // Normalize quantities based on whether it was purchased in dozens or singles
         const normalizedQuantity = Number(item.quantity || 0) * qtyMultiplier;
-        const normalizedShopQuantity = item.shopQuantity !== undefined 
-          ? Number(item.shopQuantity) * qtyMultiplier 
+        const normalizedShopQuantity = item.shopQuantity !== undefined
+          ? Number(item.shopQuantity) * qtyMultiplier
           : undefined;
-        const normalizedWarehouseQuantity = item.warehouseQuantity !== undefined 
-          ? Number(item.warehouseQuantity) * qtyMultiplier 
+        const normalizedWarehouseQuantity = item.warehouseQuantity !== undefined
+          ? Number(item.warehouseQuantity) * qtyMultiplier
           : undefined;
 
         const itemForSplit = {
@@ -1374,19 +1365,19 @@ class PurchaseService {
       if (product) {
         // Handle dozen quantity normalization (same logic as purchase creation)
         const qtyMultiplier =
-          (item.priceType === "dozen" && 
-           (item.costSingle === undefined || item.costSingle === null) && 
-           (item.costDozen !== undefined && item.costDozen !== null))
+          (item.priceType === "dozen" &&
+            (item.costSingle === undefined || item.costSingle === null) &&
+            (item.costDozen !== undefined && item.costDozen !== null))
             ? 12
             : 1;
 
         // Normalize quantities based on whether it was purchased in dozens or singles
         const normalizedQuantity = Number(item.quantity || 0) * qtyMultiplier;
-        const normalizedShopQuantity = item.shopQuantity !== undefined 
-          ? Number(item.shopQuantity) * qtyMultiplier 
+        const normalizedShopQuantity = item.shopQuantity !== undefined
+          ? Number(item.shopQuantity) * qtyMultiplier
           : undefined;
-        const normalizedWarehouseQuantity = item.warehouseQuantity !== undefined 
-          ? Number(item.warehouseQuantity) * qtyMultiplier 
+        const normalizedWarehouseQuantity = item.warehouseQuantity !== undefined
+          ? Number(item.warehouseQuantity) * qtyMultiplier
           : undefined;
 
         const itemForSplit = {
@@ -1433,7 +1424,7 @@ class PurchaseService {
     // Update purchase status
     const updatedPurchase = await prisma.purchase.update({
       where: { id },
-      data: { 
+      data: {
         status: "cancelled",
         updatedAt: getCurrentLocalDateTime(),
       },
@@ -1498,10 +1489,10 @@ class PurchaseService {
     // Get balance management service for balance check
     try {
       const balanceManagementService = (await import("./balanceManagement.service")).default;
-      
+
       // Check if sufficient balance exists for this payment
       const paymentDateForBalance = parseLocalYMDForDB(formatLocalYMD(getTodayInPakistan()));
-      
+
       if (payment.type === "cash") {
         const currentCashBalance = await balanceManagementService.getCurrentCashBalance(paymentDateForBalance);
         if (currentCashBalance < paymentAmount) {

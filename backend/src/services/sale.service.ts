@@ -61,7 +61,7 @@ class SaleService {
       };
     }
 
-    if (filters.status) {
+    if (filters.status && filters.status !== "all") {
       where.status = filters.status;
     }
 
@@ -120,61 +120,52 @@ class SaleService {
         })),
       }));
 
-      // Calculate summary statistics for all matching sales (not just the paginated ones)
-      const allMatchingSales = await prisma.sale.findMany({
-        where,
-        select: {
-          id: true,
-          total: true,
-          remainingBalance: true,
-          status: true,
-          payments: true,
-        },
-      });
+      // Calculate ALL TIME summary statistics using aggregations (ignoring paginated filters)
+      const [allTimeStats, completedStats, refundedCount, totalBills, completedCount, pendingCount] = await Promise.all([
+        // 1. Total Sales and Remaining (Non-cancelled)
+        prisma.sale.aggregate({
+          _sum: { total: true, remainingBalance: true },
+          where: { status: { not: "cancelled" } }
+        }),
+        // 2. Completed Sales amount
+        prisma.sale.aggregate({
+          _sum: { total: true },
+          where: { status: "completed" }
+        }),
+        // 3. Refunded/Cancelled Count
+        prisma.sale.count({
+          where: { status: "cancelled" }
+        }),
+        // 4. Total Non-Cancelled Bills Count
+        prisma.sale.count({
+          where: { status: { not: "cancelled" } }
+        }),
+        // 5. Completed Count
+        prisma.sale.count({
+          where: { status: "completed" }
+        }),
+        // 6. Pending Count
+        prisma.sale.count({
+          where: { status: "pending" }
+        })
+      ]);
 
-      // Calculate summary statistics
-      const summaryStats = allMatchingSales.reduce(
-        (acc, sale) => {
-          const saleTotal = Number(sale.total || 0);
+      const globalTotalSales = Number(allTimeStats._sum.total || 0);
+      const globalTotalRemaining = Number(allTimeStats._sum.remainingBalance || 0);
+      const globalTotalPaid = Math.max(0, globalTotalSales - globalTotalRemaining);
+      const globalCompletedSalesAmount = Number(completedStats._sum.total || 0);
 
-          // Filter out payments with invalid amounts (0, null, undefined, NaN)
-          const validPayments = (sale.payments as Array<{ type?: string; amount?: number; date?: string }> || [])
-            .filter((p: any) =>
-              p?.amount !== undefined &&
-              p?.amount !== null &&
-              !isNaN(Number(p.amount)) &&
-              Number(p.amount) > 0
-            );
-          const totalPaid = validPayments.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
-
-          // Calculate remaining balance
-          const remainingBalance = Math.max(0, saleTotal - totalPaid);
-
-          if (sale.status === 'cancelled') {
-            // For cancelled sales, count the number of cancelled sales (not amount)
-            acc.totalRefunded += 1;
-          } else {
-            // For non-cancelled sales, include in totals
-            acc.totalSales += saleTotal;
-            acc.totalRemaining += remainingBalance;
-            // Total paid should only include payments from non-cancelled sales
-            acc.totalPaid += totalPaid;
-
-            if (sale.status === 'completed') {
-              acc.completedSales += saleTotal;
-            }
-          }
-
-          return acc;
-        },
-        {
-          totalSales: 0,
-          totalPaid: 0,
-          totalRemaining: 0,
-          totalRefunded: 0, // Count of cancelled sales, not amount
-          completedSales: 0,
-        }
-      );
+      const summaryStats = {
+        totalSales: globalTotalSales,
+        totalPaid: globalTotalPaid,
+        totalRemaining: globalTotalRemaining,
+        totalRefunded: refundedCount,
+        completedSales: globalCompletedSalesAmount,
+        // Add explicit Counts
+        totalBillsCount: totalBills,
+        completedCount: completedCount,
+        pendingCount: pendingCount
+      };
 
       return {
         data: formattedSales,
@@ -1076,6 +1067,117 @@ class SaleService {
       updateData.customerCity = data.customerCity || null;
     }
 
+    // --- PRE-VALIDATION TO PREVENT DATA LOSS ---
+    // Validate that the new total will support the payments BEFORE deleting old data/updating DB.
+
+    // 1. Calculate Expected Subtotal
+    let expectedSubtotal = Number(sale.subtotal?.toString() || 0);
+
+    if (data.items) {
+      let calculatedItemsSubtotal = 0;
+      for (const item of data.items) {
+        const product = await prisma.product.findUnique({ where: { id: item.productId } });
+        if (!product) continue; // Will be caught in main loop later
+
+        const qtyMultiplier = (item.priceType === "dozen" && (item.priceSingle === undefined || item.priceSingle === null) && (item.priceDozen !== undefined && item.priceDozen !== null)) ? 12 : 1;
+
+        const itemForSplit = {
+          ...item,
+          quantity: Number(item.quantity || 0) * qtyMultiplier,
+          shopQuantity: item.shopQuantity !== undefined ? Number(item.shopQuantity) * qtyMultiplier : undefined,
+          warehouseQuantity: item.warehouseQuantity !== undefined ? Number(item.warehouseQuantity) * qtyMultiplier : undefined,
+        };
+
+        // Utilize the same helper function as the main logic
+        const { totalQuantity } = splitSaleQuantities(itemForSplit);
+
+        const priceType = (item.priceType as any) || "single";
+        const baseUnitPrice = product.salePrice ? Number(product.salePrice) : 0;
+        const effectiveUnitPrice = item.customPrice ?? baseUnitPrice;
+
+        let priceSingle = item.priceSingle !== undefined && item.priceSingle !== null ? Number(item.priceSingle) : Number(effectiveUnitPrice);
+        let effectivePrice = item.customPrice ?? priceSingle ?? 0;
+
+        const itemSub = limitDecimalPlaces(effectivePrice * totalQuantity);
+
+        let itemDisc = 0;
+        if (item.discount && item.discount > 0) {
+          itemDisc = item.discountType === "value" ? limitDecimalPlaces(item.discount) : limitDecimalPlaces((itemSub * item.discount) / 100);
+        }
+        calculatedItemsSubtotal += limitDecimalPlaces(itemSub - itemDisc);
+      }
+      expectedSubtotal = limitDecimalPlaces(calculatedItemsSubtotal);
+    } else if (data.subtotal !== undefined) {
+      expectedSubtotal = Number(data.subtotal);
+    }
+
+    // 2. Calculate Expected Total
+    let expectedDiscount = data.discount !== undefined ? Number(data.discount || 0) : Number(sale.discount?.toString() || 0);
+    let expectedDiscountType = data.discountType || sale.discountType || "percent";
+
+    // Handle additional discount logic (Same as execution phase)
+    if (data.additionalDiscount !== undefined) {
+      const oldVal = Number(sale.discount?.toString() || 0);
+      const oldType = sale.discountType || "percent";
+      const addVal = Number(data.additionalDiscount);
+      const addType = data.additionalDiscountType || "percent";
+
+      if (oldVal === 0) { expectedDiscount = addVal; expectedDiscountType = addType; }
+      else if (oldType === addType) { expectedDiscount = oldVal + addVal; expectedDiscountType = oldType; }
+      else {
+        if (oldType === "value") {
+          const addValue = (expectedSubtotal * addVal) / 100;
+          expectedDiscount = oldVal + addValue;
+          expectedDiscountType = "value";
+        } else {
+          const pct = expectedSubtotal > 0 ? (addVal / expectedSubtotal) * 100 : 0;
+          expectedDiscount = oldVal + pct;
+          expectedDiscountType = "percent";
+        }
+      }
+    }
+
+    const expectedTax = data.tax !== undefined ? Number(data.tax || 0) : Number(sale.tax?.toString() || 0);
+    const expectedTaxType = data.taxType || sale.taxType || "percent";
+    const expectedDelivery = data.deliveryCharges !== undefined ? Number(data.deliveryCharges || 0) : Number((sale as any).deliveryCharges?.toString() || 0);
+
+    let expDiscAmount = 0;
+    if (expectedDiscount > 0) {
+      expDiscAmount = expectedDiscountType === "value" ? limitDecimalPlaces(expectedDiscount) : limitDecimalPlaces((expectedSubtotal * expectedDiscount) / 100);
+    }
+
+    let expTaxAmount = 0;
+    if (expectedTax > 0) {
+      const after = expectedSubtotal - expDiscAmount;
+      expTaxAmount = expectedTaxType === "value" ? limitDecimalPlaces(expectedTax) : limitDecimalPlaces((after * expectedTax) / 100);
+    }
+
+    const expectedTotal = limitDecimalPlaces(expectedSubtotal - expDiscAmount + expTaxAmount + limitDecimalPlaces(expectedDelivery));
+
+    if (expectedTotal < 0) throw new Error("Total amount cannot be negative. Please check your discounts.");
+
+    // 3. Validate Payments (Same logic as execution phase)
+    const preValidOldPayments = (sale.payments as any[]) || [];
+    let preValidUpdatedPayments = data.payments || preValidOldPayments;
+
+    // Safety 1
+    if (data.payments && data.payments.length < preValidOldPayments.length) {
+      preValidUpdatedPayments = preValidOldPayments;
+    }
+    // Safety 2
+    const preValidNewPaid = preValidUpdatedPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    const preValidOldPaid = preValidOldPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+
+    if (preValidNewPaid === 0 && preValidOldPaid > 0) preValidUpdatedPayments = preValidOldPayments;
+
+    const expectedPaid = preValidUpdatedPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+
+    // CRITICAL VALIDATION
+    if (expectedPaid > expectedTotal) {
+      throw new Error("Total paid amount cannot exceed total amount. Please ensure payments do not exceed the remaining balance.");
+    }
+    // --- END PRE-VALIDATION ---
+
     // Update items if provided, adjusting stock differences
     if (data.items) {
       // 1) Revert old stock
@@ -1218,14 +1320,16 @@ class SaleService {
     }
 
     // Calculate total with discount and tax
-    const subtotal = updateData.subtotal !== undefined ? updateData.subtotal : Number(sale.subtotal);
+    // Handle Prisma Decimal types by converting to string first to avoid NaN
+    const subtotal = updateData.subtotal !== undefined ? updateData.subtotal : Number(sale.subtotal?.toString() || 0);
 
-    let discount = data.discount !== undefined ? Number(data.discount || 0) : Number(sale.discount || 0);
+    let discount = data.discount !== undefined ? Number(data.discount || 0) : Number(sale.discount?.toString() || 0);
     let discountType = data.discountType || sale.discountType || "percent";
 
     // Handle additional discount with strict type preservation logic as requested
-    if (data.additionalDiscount !== undefined && data.additionalDiscount > 0) {
-      const oldDiscountValue = Number(sale.discount || 0);
+    // Logic: Always sum additional discount with old discount from DB
+    if (data.additionalDiscount !== undefined) {
+      const oldDiscountValue = Number(sale.discount?.toString() || 0);
       const oldType = sale.discountType || "percent";
       const addDiscountValue = Number(data.additionalDiscount);
       const addType = data.additionalDiscountType || "percent";
@@ -1255,9 +1359,9 @@ class SaleService {
       }
     }
 
-    const tax = data.tax !== undefined ? Number(data.tax || 0) : Number(sale.tax || 0);
+    const tax = data.tax !== undefined ? Number(data.tax || 0) : Number(sale.tax?.toString() || 0);
     const taxType = data.taxType || sale.taxType || "percent";
-    const deliveryCharges = data.deliveryCharges !== undefined ? Number(data.deliveryCharges || 0) : Number((sale as any).deliveryCharges || 0);
+    const deliveryCharges = data.deliveryCharges !== undefined ? Number(data.deliveryCharges || 0) : Number((sale as any).deliveryCharges?.toString() || 0);
 
     // Calculate discount amount for total calculation
     let discountAmount = 0;
@@ -1297,17 +1401,37 @@ class SaleService {
     updateData.total = calculatedTotal;
 
     // Track payments for balance transactions and ALWAYS recalculate remaining balance
+    // Track payments for balance transactions and ALWAYS recalculate remaining balance
     const oldPayments = (sale.payments as any[]) || [];
-    const updatedPayments = data.payments || oldPayments;
+    let updatedPayments = data.payments || oldPayments;
+
+    // Safety check 1: Prevent accidental deletion of payments by length mismatch
+    if (data.payments && data.payments.length < oldPayments.length) {
+      updatedPayments = oldPayments;
+    }
+
+    // Safety check 2: Prevent accidental zeroing of total paid amount
+    // If the new payment list results in 0 paid (e.g. empty list or 0 amounts),
+    // but we previously had payments, revert to old payments.
+    // This protects against frontend sending empty arrays when only updating other fields.
+    const potentialNewTotalPaid = updatedPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    const oldTotalPaid = oldPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+
+    if (potentialNewTotalPaid === 0 && oldTotalPaid > 0) {
+      updatedPayments = oldPayments;
+    }
+
     const totalPaid = updatedPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
 
     // CRITICAL: Ensure remaining balance is accurate based on new total and current/new payments
     updateData.remainingBalance = limitDecimalPlaces(calculatedTotal - totalPaid);
 
-    if (data.payments) {
-      updateData.payments = data.payments as any;
+    // Only update payments field if we have valid updated payments
+    // If we reverted to old payments, strictly ensuring we don't write empty data
+    if (data.payments || updatedPayments === oldPayments) {
+      updateData.payments = updatedPayments as any;
       if (totalPaid > calculatedTotal) {
-        throw new Error("Total paid amount cannot exceed total amount");
+        throw new Error("Total paid amount cannot exceed total amount. Please ensure payments do not exceed the remaining balance.");
       }
     }
 
@@ -1337,9 +1461,9 @@ class SaleService {
     });
 
     // Create balance transactions for new payments added during edit
-    if (data.payments && data.payments.length > oldPayments.length) {
+    if (updatedPayments && updatedPayments.length > oldPayments.length) {
       const balanceManagementService = (await import("./balanceManagement.service")).default;
-      const newPayments = data.payments.slice(oldPayments.length);
+      const newPayments = updatedPayments.slice(oldPayments.length);
 
       for (const payment of newPayments) {
         const paymentAmount = payment.amount || 0;
@@ -1394,9 +1518,9 @@ class SaleService {
 
     // Update customer due amount
     if (updatedSale.customerId) {
-      const oldDue = Number(sale.customer?.dueAmount || 0);
-      const newRemainingBalance = Number(updatedSale.remainingBalance || 0);
-      const oldRemainingBalance = Number(sale.remainingBalance || 0);
+      const oldDue = Number(sale.customer?.dueAmount?.toString() || 0);
+      const newRemainingBalance = Number(updatedSale.remainingBalance?.toString() || 0);
+      const oldRemainingBalance = Number(sale.remainingBalance?.toString() || 0);
       const dueChange = newRemainingBalance - oldRemainingBalance;
 
       await prisma.customer.update({

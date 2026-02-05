@@ -828,7 +828,7 @@ export default function SalesEntry() {
     }
 
     if (totalPaid > total) {
-      showError("Total paid amount cannot exceed total amount");
+      showError("Total paid amount cannot exceed total amount. Please ensure payments do not exceed the remaining balance.");
       return;
     }
 
@@ -1084,8 +1084,9 @@ export default function SalesEntry() {
                 <tbody className="bg-white divide-y divide-gray-200 dark:bg-gray-800 dark:divide-gray-700">
                   {selectedProducts.map((item) => {
                     const isOldProduct = originalRowIds.has(item.rowId);
-                    const isPendingSale = saleStatus === "pending";
-                    const disableOldProductFields = isEdit && isPendingSale && isOldProduct;
+                    // Disable editing for old products in ALL edit modes (pending or completed)
+                    // This ensures old items remain immutable as requested ("old ko kuch na kar sko")
+                    const disableOldProductFields = isEdit && isOldProduct;
 
                     return (
                       <tr
@@ -1421,7 +1422,7 @@ export default function SalesEntry() {
                 ))}
                 {totalPaid > total && (
                   <div className="p-2 text-sm text-error-500 bg-error-50 border border-error-200 rounded dark:bg-error-900/20 dark:border-error-700">
-                    Total paid amount cannot exceed total amount.
+                    Total paid amount cannot exceed total amount. Please ensure payments do not exceed the remaining balance.
                   </div>
                 )}
                 {!isEdit && (
