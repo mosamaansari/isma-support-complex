@@ -910,9 +910,8 @@ class PurchaseService {
         if (priceType === "dozen") {
           if (item.costDozen !== undefined && item.costDozen !== null) {
             costDozen = Number(item.costDozen);
-            if (!(item.costSingle !== undefined && item.costSingle !== null)) {
-              costSingle = costDozen / 12;
-            }
+            // Always recalculate single cost from dozen cost to ensure precision
+            costSingle = costDozen / 12;
           } else {
             costDozen = costSingle * 12;
           }
@@ -921,7 +920,7 @@ class PurchaseService {
         }
 
         const unitCost = Number(costSingle || 0);
-        const itemSubtotal = unitCost * totalQuantity;
+        const itemSubtotal = Math.round(unitCost * totalQuantity);
 
         // Calculate discount based on type
         const discount = item.discount || 0;
@@ -929,13 +928,13 @@ class PurchaseService {
         let itemDiscount = 0;
         if (discount > 0) {
           if (discountType === "value") {
-            itemDiscount = discount;
+            itemDiscount = Math.round(discount);
           } else {
-            itemDiscount = (itemSubtotal * discount) / 100;
+            itemDiscount = Math.round((itemSubtotal * discount) / 100);
           }
         }
 
-        const itemTotal = itemSubtotal - itemDiscount;
+        const itemTotal = Math.round(itemSubtotal - itemDiscount);
 
         purchaseItems.push({
           productId: product.id,

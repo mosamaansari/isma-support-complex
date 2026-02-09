@@ -290,13 +290,15 @@ export default function PurchaseEntry() {
     const warehouseUnits = priceType === "dozen" ? enteredWarehouseQty * 12 : enteredWarehouseQty;
     const totalUnits = shopUnits + warehouseUnits;
 
+    const total = Math.round(unitCost * totalUnits); // Round to nearest integer
+
     return {
       ...updated,
       // quantity is always units
       quantity: totalUnits,
       priceType,
       cost: unitCost,
-      total: unitCost * totalUnits,
+      total,
     };
   };
 
@@ -420,14 +422,14 @@ export default function PurchaseEntry() {
   let taxAmount = 0;
   if (tax !== null && tax !== undefined) {
     if (taxType === "value") {
-      taxAmount = tax;
+      taxAmount = Math.round(tax * 100) / 100;
     } else {
-      taxAmount = (subtotal * tax) / 100;
+      taxAmount = Math.round(((subtotal * tax) / 100) * 100) / 100;
     }
   }
-  const total = subtotal + taxAmount;
+  const total = Math.round((subtotal + taxAmount) * 100) / 100;
   const totalPaid = payments.reduce((sum, payment) => sum + (payment.amount || 0), 0);
-  const remainingBalance = total - totalPaid;
+  const remainingBalance = Math.round((total - totalPaid) * 100) / 100;
 
   const addPayment = () => {
     setPayments([
@@ -470,8 +472,13 @@ export default function PurchaseEntry() {
   };
 
   const onSubmit = async (data: any) => {
+    if (!currentUser) {
+      showError("You must be logged in to perform this action.");
+      return;
+    }
+
     // Check permission for creating purchase (only for new purchases, not edits)
-    if (!isEdit && currentUser) {
+    if (!isEdit) {
       const canCreate = currentUser.role === "superadmin" ||
         currentUser.role === "admin" ||
         hasPermission(
@@ -484,6 +491,7 @@ export default function PurchaseEntry() {
         showError("You don't have permission to create purchases. Please contact your administrator.");
         return;
       }
+
     }
 
     if (selectedProducts.length === 0) {
@@ -562,7 +570,7 @@ export default function PurchaseEntry() {
           costSingle: (item as any).costSingle ?? item.cost,
           costDozen: (item as any).costDozen ?? ((item.cost || 0) * 12),
           discount: item.discount || 0,
-          total: item.total || 0,
+          total: Math.round(item.total || 0), // Ensure total is rounded
           toWarehouse: warehouseQtyUnits > 0 && shopQtyUnits === 0 ? true : (shopQtyUnits > 0 && warehouseQtyUnits === 0 ? false : (item.toWarehouse !== undefined ? item.toWarehouse : true)),
         };
       });

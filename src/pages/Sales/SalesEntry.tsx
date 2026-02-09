@@ -171,6 +171,10 @@ export default function SalesEntry() {
               priceSingle: item.priceSingle ?? item.unitPrice,
               priceDozen: item.priceDozen ?? ((item.priceSingle ?? item.unitPrice ?? 0) * 12),
               customPrice: item.customPrice ?? null,
+              unitPrice: item.unitPrice || 0,
+              discount: item.discount || 0,
+              discountType: item.discountType || "value",
+              total: Math.round(item.total || 0),
               shopQuantity: displayShopQty,
               warehouseQuantity: displayWarehouseQty,
               quantity: priceType === "dozen"
@@ -325,20 +329,20 @@ export default function SalesEntry() {
     const discount = updated.discount ?? 0;
     const discountType = updated.discountType || "percent";
 
-    // Calculate subtotal first (rounded to 2 decimals at the end)
-    const subtotal = Math.round((effectivePrice * quantityUnits) * 100) / 100;
+    // Calculate subtotal first (rounded to whole number)
+    const subtotal = Math.round(effectivePrice * quantityUnits);
 
     // Calculate discount amount based on type
     let discountAmount = 0;
     if (discount > 0) {
       if (discountType === "value") {
-        discountAmount = Math.round(discount * 100) / 100; // Round to 2 decimals
+        discountAmount = Math.round(discount);
       } else {
-        discountAmount = Math.round((subtotal * discount / 100) * 100) / 100; // Round to 2 decimals
+        discountAmount = Math.round((subtotal * discount) / 100);
       }
     }
 
-    const total = Math.round((subtotal - discountAmount) * 100) / 100; // Round to 2 decimals
+    const total = Math.round(subtotal - discountAmount);
 
     // Preserve priceSingle and priceDozen if they were explicitly set in overrides (user typed values)
     // Otherwise calculate from customPrice or use existing values
@@ -706,7 +710,7 @@ export default function SalesEntry() {
     // 1. Subtotal: Sum of all item totals (item.total already includes item-level discount)
     const subtotal = Math.round(selectedProducts.reduce((sum, item: any) => {
       return sum + (item.total || 0);
-    }, 0) * 100) / 100;
+    }, 0));
 
     // 2. Global Discounts
     let oldDiscountAmount = 0;

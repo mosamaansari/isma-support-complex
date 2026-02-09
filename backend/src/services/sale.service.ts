@@ -105,6 +105,7 @@ class SaleService {
         discount: Number(sale.discount),
         tax: Number(sale.tax),
         total: Number(sale.total),
+        deliveryCharges: Number((sale as any).deliveryCharges || 0),
         remainingBalance: Number(sale.remainingBalance),
         discountType: sale.discountType || "percent",
         taxType: sale.taxType || "percent",
@@ -225,6 +226,7 @@ class SaleService {
         discount: Number(sale.discount),
         tax: Number(sale.tax),
         total: Number(sale.total),
+        deliveryCharges: Number((sale as any).deliveryCharges || 0),
         remainingBalance: Number(sale.remainingBalance),
         discountType: sale.discountType || "percent",
         taxType: sale.taxType || "percent",
@@ -259,7 +261,28 @@ class SaleService {
           throw new Error("Sale not found");
         }
 
-        return sale;
+        // Convert Decimals to numbers for easier frontend handling
+        return {
+          ...sale,
+          subtotal: Number(sale.subtotal),
+          discount: Number(sale.discount),
+          tax: Number(sale.tax),
+          total: Number(sale.total),
+          deliveryCharges: Number((sale as any).deliveryCharges || 0),
+          remainingBalance: Number(sale.remainingBalance),
+          discountType: sale.discountType || "percent",
+          taxType: sale.taxType || "percent",
+          items: (sale as any).items.map((item: any) => ({
+            ...item,
+            unitPrice: Number(item.unitPrice),
+            customPrice: item.customPrice ? Number(item.customPrice) : null,
+            discount: Number(item.discount),
+            tax: Number(item.tax),
+            total: Number(item.total),
+            discountType: item.discountType || "percent",
+            taxType: item.taxType || "percent",
+          })),
+        };
       }
       throw error;
     }
@@ -292,6 +315,7 @@ class SaleService {
         discount: Number(sale.discount),
         tax: Number(sale.tax),
         total: Number(sale.total),
+        deliveryCharges: Number((sale as any).deliveryCharges || 0),
         remainingBalance: Number(sale.remainingBalance),
         discountType: sale.discountType || "percent",
         taxType: sale.taxType || "percent",
@@ -325,7 +349,28 @@ class SaleService {
           throw new Error("Sale not found");
         }
 
-        return sale;
+        // Convert Decimals to numbers for easier frontend handling
+        return {
+          ...sale,
+          subtotal: Number(sale.subtotal),
+          discount: Number(sale.discount),
+          tax: Number(sale.tax),
+          total: Number(sale.total),
+          deliveryCharges: Number((sale as any).deliveryCharges || 0),
+          remainingBalance: Number(sale.remainingBalance),
+          discountType: sale.discountType || "percent",
+          taxType: sale.taxType || "percent",
+          items: (sale as any).items.map((item: any) => ({
+            ...item,
+            unitPrice: Number(item.unitPrice),
+            customPrice: item.customPrice ? Number(item.customPrice) : null,
+            discount: Number(item.discount),
+            tax: Number(item.tax),
+            total: Number(item.total),
+            discountType: item.discountType || "percent",
+            taxType: item.taxType || "percent",
+          })),
+        };
       }
       throw error;
     }
@@ -493,23 +538,23 @@ class SaleService {
       // Don't round price early - round only the final result to avoid precision loss
       const effectivePrice = item.customPrice ?? priceSingle ?? 0;
       // Round unitPrice for storage consistency, but use unrounded effectivePrice for calculations
-      const unitPrice = product.salePrice ? limitDecimalPlaces(Number(product.salePrice)) : 0;
+      const unitPrice = product.salePrice ? Math.round(Number(product.salePrice)) : 0;
       // Multiply first, then round to avoid precision loss (e.g., 0.0833... * 24 = 2.0, not 0.08 * 24 = 1.92)
-      const itemSubtotal = limitDecimalPlaces(effectivePrice * totalQuantity);
+      const itemSubtotal = Math.round(effectivePrice * totalQuantity);
 
       // Calculate discount based on type
       let itemDiscount = 0;
       if (item.discount && item.discount > 0) {
         if (item.discountType === "value") {
-          itemDiscount = limitDecimalPlaces(item.discount);
+          itemDiscount = Math.round(item.discount);
         } else {
-          itemDiscount = limitDecimalPlaces((itemSubtotal * item.discount) / 100);
+          itemDiscount = Math.round((itemSubtotal * item.discount) / 100);
         }
       }
 
-      const itemTotal = limitDecimalPlaces(itemSubtotal - itemDiscount);
+      const itemTotal = Math.round(itemSubtotal - itemDiscount);
 
-      subtotal = limitDecimalPlaces(subtotal + itemTotal);
+      subtotal = Math.round(subtotal + itemTotal);
 
       const shopAvailable = product.shopQuantity ?? (product as any).quantity ?? 0;
       const warehouseAvailable = product.warehouseQuantity ?? 0;
@@ -996,12 +1041,12 @@ class SaleService {
               throw new Error(`Cannot delete old products. Product "${oldItem.productName || productId}" cannot be removed.`);
             }
 
-            // Prevent editing old product price (compare with small tolerance for floating point)
-            const oldPrice = Number(oldItem.customPrice ?? oldItem.unitPrice ?? 0);
-            const newPrice = Number((newItem as any).customPrice ?? (newItem as any).unitPrice ?? 0);
+            // Prevent editing old product price (compare rounded values since frontend rounds to whole numbers)
+            const oldPrice = Math.round(Number(oldItem.customPrice ?? oldItem.unitPrice ?? 0));
+            const newPrice = Math.round(Number((newItem as any).customPrice ?? (newItem as any).unitPrice ?? 0));
             const priceDiff = Math.abs(oldPrice - newPrice);
 
-            if (priceDiff > 0.01) { // Tolerance of 0.01 for floating point comparison
+            if (priceDiff > 0) { // No tolerance needed since we're comparing whole numbers
               throw new Error(`Cannot update price for old products. Product "${oldItem.productName || productId}" price cannot be changed from ${oldPrice} to ${newPrice}.`);
             }
 
@@ -1071,9 +1116,12 @@ class SaleService {
     // Validate that the new total will support the payments BEFORE deleting old data/updating DB.
 
     // 1. Calculate Expected Subtotal
-    let expectedSubtotal = Number(sale.subtotal?.toString() || 0);
+    // If items are provided, recalculate subtotal from items
+    // Otherwise use the existing subtotal from database
+    let expectedSubtotal = Math.round(Number(sale.subtotal?.toString() || 0));
 
     if (data.items) {
+      // Recalculate from items when items are being updated
       let calculatedItemsSubtotal = 0;
       for (const item of data.items) {
         const product = await prisma.product.findUnique({ where: { id: item.productId } });
@@ -1088,7 +1136,6 @@ class SaleService {
           warehouseQuantity: item.warehouseQuantity !== undefined ? Number(item.warehouseQuantity) * qtyMultiplier : undefined,
         };
 
-        // Utilize the same helper function as the main logic
         const { totalQuantity } = splitSaleQuantities(itemForSplit);
 
         const priceType = (item.priceType as any) || "single";
@@ -1098,17 +1145,18 @@ class SaleService {
         let priceSingle = item.priceSingle !== undefined && item.priceSingle !== null ? Number(item.priceSingle) : Number(effectiveUnitPrice);
         let effectivePrice = item.customPrice ?? priceSingle ?? 0;
 
-        const itemSub = limitDecimalPlaces(effectivePrice * totalQuantity);
+        const itemSub = Math.round(effectivePrice * totalQuantity);
 
         let itemDisc = 0;
         if (item.discount && item.discount > 0) {
-          itemDisc = item.discountType === "value" ? limitDecimalPlaces(item.discount) : limitDecimalPlaces((itemSub * item.discount) / 100);
+          itemDisc = item.discountType === "value" ? Math.round(item.discount) : Math.round((itemSub * item.discount) / 100);
         }
-        calculatedItemsSubtotal += limitDecimalPlaces(itemSub - itemDisc);
+        calculatedItemsSubtotal += Math.round(itemSub - itemDisc);
       }
-      expectedSubtotal = limitDecimalPlaces(calculatedItemsSubtotal);
+
+      expectedSubtotal = Math.round(calculatedItemsSubtotal);
     } else if (data.subtotal !== undefined) {
-      expectedSubtotal = Number(data.subtotal);
+      expectedSubtotal = Math.round(Number(data.subtotal));
     }
 
     // 2. Calculate Expected Total
@@ -1152,7 +1200,7 @@ class SaleService {
       expTaxAmount = expectedTaxType === "value" ? limitDecimalPlaces(expectedTax) : limitDecimalPlaces((after * expectedTax) / 100);
     }
 
-    const expectedTotal = limitDecimalPlaces(expectedSubtotal - expDiscAmount + expTaxAmount + limitDecimalPlaces(expectedDelivery));
+    const expectedTotal = limitDecimalPlaces(Math.round(expectedSubtotal - expDiscAmount + expTaxAmount + limitDecimalPlaces(expectedDelivery)));
 
     if (expectedTotal < 0) throw new Error("Total amount cannot be negative. Please check your discounts.");
 
@@ -1170,9 +1218,10 @@ class SaleService {
 
     if (preValidNewPaid === 0 && preValidOldPaid > 0) preValidUpdatedPayments = preValidOldPayments;
 
-    const expectedPaid = preValidUpdatedPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    const expectedPaid = Math.round(preValidUpdatedPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0));
 
-    // CRITICAL VALIDATION
+
+    // CRITICAL VALIDATION (compare rounded values)
     if (expectedPaid > expectedTotal) {
       throw new Error("Total paid amount cannot exceed total amount. Please ensure payments do not exceed the remaining balance.");
     }
@@ -1261,21 +1310,21 @@ class SaleService {
           priceDozen = priceDozen || priceSingle * 12;
         }
 
-        const unitPrice = product.salePrice ? limitDecimalPlaces(Number(product.salePrice)) : 0;
+        const unitPrice = product.salePrice ? Math.round(Number(product.salePrice)) : 0;
         const effectivePrice = item.customPrice ?? priceSingle ?? 0;
-        const itemSubtotal = limitDecimalPlaces(effectivePrice * totalQuantity);
+        const itemSubtotal = Math.round(effectivePrice * totalQuantity);
 
         // Calculate discount based on type
         let itemDiscount = 0;
         if (item.discount && item.discount > 0) {
           if (item.discountType === "value") {
-            itemDiscount = limitDecimalPlaces(item.discount);
+            itemDiscount = Math.round(item.discount);
           } else {
-            itemDiscount = limitDecimalPlaces((itemSubtotal * item.discount) / 100);
+            itemDiscount = Math.round((itemSubtotal * item.discount) / 100);
           }
         }
 
-        const itemTotal = limitDecimalPlaces(itemSubtotal - itemDiscount);
+        const itemTotal = Math.round(itemSubtotal - itemDiscount);
 
         saleItems.push({
           productId: product.id,
@@ -1314,14 +1363,15 @@ class SaleService {
         create: saleItems,
       };
 
-      // Calculate subtotal from items
-      const calculatedSubtotal = saleItems.reduce((sum, item) => sum + Number(item.total || 0), 0);
-      updateData.subtotal = limitDecimalPlaces(calculatedSubtotal);
+      // Recalculate subtotal from new items when items are updated
+      const calculatedSubtotal = saleItems.reduce((sum, item) => sum + Math.round(Number(item.total || 0)), 0);
+      updateData.subtotal = Math.round(calculatedSubtotal);
     }
 
     // Calculate total with discount and tax
     // Handle Prisma Decimal types by converting to string first to avoid NaN
-    const subtotal = updateData.subtotal !== undefined ? updateData.subtotal : Number(sale.subtotal?.toString() || 0);
+    // Use the updated subtotal if items were changed, otherwise use database subtotal
+    const subtotal = updateData.subtotal !== undefined ? updateData.subtotal : Math.round(Number(sale.subtotal?.toString() || 0));
 
     let discount = data.discount !== undefined ? Number(data.discount || 0) : Number(sale.discount?.toString() || 0);
     let discountType = data.discountType || sale.discountType || "percent";
@@ -1385,14 +1435,14 @@ class SaleService {
       }
     }
 
-    const calculatedTotal = limitDecimalPlaces(subtotal - discountAmount + taxAmount + limitDecimalPlaces(deliveryCharges));
+    const calculatedTotal = Math.round(subtotal - discountAmount + taxAmount + limitDecimalPlaces(deliveryCharges));
 
     if (calculatedTotal < 0) {
       throw new Error("Total amount cannot be negative. Please check your discounts.");
     }
 
     // Update totals with calculated values
-    updateData.subtotal = limitDecimalPlaces(subtotal);
+    updateData.subtotal = Math.round(subtotal);
     updateData.discount = limitDecimalPlaces(discount); // Store rounded value for DB consistency
     updateData.discountType = discountType;
     updateData.tax = tax;
@@ -1421,11 +1471,10 @@ class SaleService {
       updatedPayments = oldPayments;
     }
 
-    const totalPaid = updatedPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    const totalPaid = Math.round(updatedPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0));
 
     // CRITICAL: Ensure remaining balance is accurate based on new total and current/new payments
-    updateData.remainingBalance = limitDecimalPlaces(calculatedTotal - totalPaid);
-
+    updateData.remainingBalance = Math.round(calculatedTotal - totalPaid);
     // Only update payments field if we have valid updated payments
     // If we reverted to old payments, strictly ensuring we don't write empty data
     if (data.payments || updatedPayments === oldPayments) {
