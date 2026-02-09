@@ -623,6 +623,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (saleData.total !== undefined) apiData.total = saleData.total;
       if ((saleData as any).additionalDiscount !== undefined) apiData.additionalDiscount = (saleData as any).additionalDiscount;
       if ((saleData as any).additionalDiscountType !== undefined) apiData.additionalDiscountType = (saleData as any).additionalDiscountType;
+      if ((saleData as any).additionalDeliveryCharges !== undefined) apiData.additionalDeliveryCharges = (saleData as any).additionalDeliveryCharges;
 
       if (saleData.payments !== undefined && Array.isArray(saleData.payments)) {
         apiData.payments = saleData.payments;

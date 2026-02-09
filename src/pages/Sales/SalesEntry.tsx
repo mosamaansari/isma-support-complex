@@ -58,6 +58,7 @@ export default function SalesEntry() {
   const [globalTaxType, setGlobalTaxType] = useState<"percent" | "value">("percent");
   const [existingDiscount, setExistingDiscount] = useState<number | null>(null);
   const [existingDiscountType, setExistingDiscountType] = useState<"percent" | "value">("value");
+  const [existingDeliveryCharges, setExistingDeliveryCharges] = useState<number | null>(0);
   const [deliveryCharges, setDeliveryCharges] = useState<number | null>(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [backendErrors, setBackendErrors] = useState<Record<string, string>>({});
@@ -140,13 +141,14 @@ export default function SalesEntry() {
           setGlobalTax(sale.tax ? Number(sale.tax) : null);
           setExistingDiscountType((sale.discountType as "percent" | "value") || "value");
           setExistingDiscount(sale.discount !== undefined && sale.discount !== null ? Number(sale.discount) : 0);
-          setGlobalDiscount(null);
-          setGlobalDiscountType((sale.discountType as "percent" | "value") || "value");
-          setDeliveryCharges(
+          setExistingDeliveryCharges(
             sale.deliveryCharges !== undefined && sale.deliveryCharges !== null
               ? Number(sale.deliveryCharges)
               : 0
           );
+          setGlobalDiscount(null);
+          setGlobalDiscountType((sale.discountType as "percent" | "value") || "value");
+          setDeliveryCharges(null);
           setPayments((sale.payments || []) as SalePayment[]);
           setOriginalPaymentsLength((sale.payments || []).length);
 
@@ -745,10 +747,12 @@ export default function SalesEntry() {
     }
 
     // 4. Delivery Charges
-    const deliveryAmount = Math.round(Math.max(0, deliveryCharges || 0) * 100) / 100;
+    const oldDeliveryAmount = Math.round(Math.max(0, existingDeliveryCharges || 0) * 100) / 100;
+    const newDeliveryAmount = Math.round(Math.max(0, deliveryCharges || 0) * 100) / 100;
+    const totalDeliveryAmount = Math.round((oldDeliveryAmount + newDeliveryAmount) * 100) / 100;
 
     // 5. Final Total: Subtotal - Global Discounts + Tax + Delivery
-    const total = Math.round(Math.max(0, subtotal - totalDiscountAmount + globalTaxAmount + deliveryAmount) * 100) / 100;
+    const total = Math.round(Math.max(0, subtotal - totalDiscountAmount + globalTaxAmount + totalDeliveryAmount) * 100) / 100;
 
     return {
       subtotal,
@@ -756,7 +760,9 @@ export default function SalesEntry() {
       oldDiscountAmount,
       newDiscountAmount,
       taxAmount: globalTaxAmount,
-      deliveryAmount,
+      deliveryAmount: totalDeliveryAmount,
+      oldDeliveryAmount,
+      newDeliveryAmount,
       total
     };
   };
@@ -815,7 +821,7 @@ export default function SalesEntry() {
         }
       }
     }
-    const { subtotal, total, oldDiscountAmount, newDiscountAmount, taxAmount, deliveryAmount } = calculateTotals();
+    const { subtotal, total, oldDiscountAmount, newDiscountAmount, taxAmount } = calculateTotals();
     const totalPaid = payments.reduce((sum, payment) => sum + (payment.amount ?? 0), 0);
 
     if (isEdit && globalDiscount && globalDiscount !== 0) {
@@ -953,7 +959,7 @@ export default function SalesEntry() {
           additionalDiscountType: globalDiscountType,
           tax: globalTax || 0,
           taxType: globalTaxType,
-          deliveryCharges: deliveryCharges || 0,
+          additionalDeliveryCharges: deliveryCharges || 0,
           payments: validPayments.length > 0 ? validPayments : [],
           customerName: data.customerName.trim(),
           customerPhone: data.customerPhone || undefined,
@@ -990,7 +996,7 @@ export default function SalesEntry() {
     }
   };
 
-  const { subtotal, total, oldDiscountAmount, newDiscountAmount, discountAmount, taxAmount, deliveryAmount } = calculateTotals();
+  const { subtotal, total, oldDiscountAmount, newDiscountAmount, discountAmount, taxAmount, deliveryAmount, oldDeliveryAmount, newDeliveryAmount } = calculateTotals();
   const totalPaid = payments.reduce((sum, payment) => sum + (payment.amount ?? 0), 0);
   const remainingBalance = total - totalPaid;
 
@@ -1551,8 +1557,18 @@ export default function SalesEntry() {
                     />
                   </div>
                 </div>
+                {isEdit && existingDeliveryCharges !== null && existingDeliveryCharges !== 0 && (
+                  <div className="flex justify-between mb-1 items-center">
+                    <span className="text-xs text-gray-500 dark:text-gray-400">Previous Charges:</span>
+                    <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">
+                      + Rs. {oldDeliveryAmount.toFixed(2)}
+                    </span>
+                  </div>
+                )}
                 <div className="flex items-center justify-between gap-4">
-                  <Label className="mb-0 whitespace-nowrap text-sm">Delivery Charges:</Label>
+                  <Label className="mb-0 whitespace-nowrap text-sm">
+                    {isEdit ? "Add. Charges:" : "Delivery Charges:"}
+                  </Label>
                   <div className="flex-1 max-w-[200px]">
                     <Input
                       type="number"
@@ -1573,10 +1589,28 @@ export default function SalesEntry() {
                         }
                         setDeliveryCharges(parsed);
                       }}
-                      disabled={isEdit}
+                      disabled={false}
                     />
                   </div>
                 </div>
+                {isEdit && deliveryCharges && deliveryCharges !== 0 && (
+                  <div className="flex justify-between mt-1 items-center">
+                    <span className="text-xs text-brand-600 dark:text-brand-400">Additional Appli.:</span>
+                    <span className="text-xs font-semibold text-brand-600 dark:text-brand-400">
+                      + Rs. {newDeliveryAmount.toFixed(2)}
+                    </span>
+                  </div>
+                )}
+                {deliveryAmount !== 0 && (
+                  <div className="flex flex-col pt-1 mt-1 border-t border-dashed border-gray-200 dark:border-gray-700">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-medium text-gray-700 dark:text-gray-200">Total Charges:</span>
+                      <span className="text-sm font-bold text-gray-900 dark:text-white">
+                        + Rs. {deliveryAmount.toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                )}
                 <div className="flex justify-between pt-3 border-t border-gray-200 dark:border-gray-700">
                   <span className="text-base font-semibold text-gray-800 dark:text-white">
                     Total:

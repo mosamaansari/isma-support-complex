@@ -180,7 +180,14 @@ class SaleService {
       };
     } catch (error: any) {
       // If card relation doesn't exist, try without it
-      if (error.message?.includes('card') || error.message?.includes('Card') || error.code === 'P2025') {
+      if (
+        error.message?.includes('card') ||
+        error.message?.includes('Card') ||
+        error.message?.includes('bankAccount') ||
+        error.message?.includes('account') ||
+        error.message?.includes('(not available)') ||
+        error.code === 'P2025'
+      ) {
         const sales = await prisma.sale.findMany({
           where,
           include: {
@@ -193,7 +200,28 @@ class SaleService {
           },
           orderBy: { createdAt: "desc" },
         });
-        return sales;
+
+        return sales.map(sale => ({
+          ...sale,
+          subtotal: Number(sale.subtotal),
+          discount: Number(sale.discount),
+          tax: Number(sale.tax),
+          total: Number(sale.total),
+          deliveryCharges: Number((sale as any).deliveryCharges || 0),
+          remainingBalance: Number(sale.remainingBalance),
+          discountType: sale.discountType || "percent",
+          taxType: sale.taxType || "percent",
+          items: sale.items.map(item => ({
+            ...item,
+            unitPrice: Number(item.unitPrice),
+            discount: Number(item.discount),
+            tax: Number(item.tax),
+            total: Number(item.total),
+            customPrice: item.customPrice ? Number(item.customPrice) : undefined,
+            priceSingle: item.priceSingle ? Number(item.priceSingle) : undefined,
+            priceDozen: item.priceDozen ? Number(item.priceDozen) : undefined,
+          })),
+        }));
       }
       throw error;
     }
@@ -970,6 +998,7 @@ class SaleService {
       }>;
       additionalDiscount?: number;
       additionalDiscountType?: "percent" | "value";
+      additionalDeliveryCharges?: number;
     },
     userId: string
   ) {
@@ -1187,7 +1216,12 @@ class SaleService {
 
     const expectedTax = data.tax !== undefined ? Number(data.tax || 0) : Number(sale.tax?.toString() || 0);
     const expectedTaxType = data.taxType || sale.taxType || "percent";
-    const expectedDelivery = data.deliveryCharges !== undefined ? Number(data.deliveryCharges || 0) : Number((sale as any).deliveryCharges?.toString() || 0);
+    let expectedDelivery = data.deliveryCharges !== undefined ? Number(data.deliveryCharges || 0) : Number((sale as any).deliveryCharges?.toString() || 0);
+
+    if (data.additionalDeliveryCharges !== undefined) {
+      const oldDelivery = Number((sale as any).deliveryCharges?.toString() || 0);
+      expectedDelivery = oldDelivery + Number(data.additionalDeliveryCharges);
+    }
 
     let expDiscAmount = 0;
     if (expectedDiscount > 0) {
@@ -1411,7 +1445,13 @@ class SaleService {
 
     const tax = data.tax !== undefined ? Number(data.tax || 0) : Number(sale.tax?.toString() || 0);
     const taxType = data.taxType || sale.taxType || "percent";
-    const deliveryCharges = data.deliveryCharges !== undefined ? Number(data.deliveryCharges || 0) : Number((sale as any).deliveryCharges?.toString() || 0);
+    let deliveryCharges = data.deliveryCharges !== undefined ? Number(data.deliveryCharges || 0) : Number((sale as any).deliveryCharges?.toString() || 0);
+
+    // Handle additional delivery charges
+    if (data.additionalDeliveryCharges !== undefined) {
+      const oldDeliveryValue = Number((sale as any).deliveryCharges?.toString() || 0);
+      deliveryCharges = oldDeliveryValue + Number(data.additionalDeliveryCharges);
+    }
 
     // Calculate discount amount for total calculation
     let discountAmount = 0;

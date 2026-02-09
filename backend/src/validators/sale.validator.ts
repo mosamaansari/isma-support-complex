@@ -318,6 +318,14 @@ export const createSaleSchema = Joi.object({
     .messages({
       "any.only": "Additional discount type must be either 'percent' or 'value'",
     }),
+  additionalDeliveryCharges: Joi.number()
+    .optional()
+    .min(0)
+    .allow(null)
+    .messages({
+      "number.base": "Additional delivery charges must be a number",
+      "number.min": "Additional delivery charges cannot be negative",
+    }),
 });
 
 export const getSalesQuerySchema = Joi.object({
