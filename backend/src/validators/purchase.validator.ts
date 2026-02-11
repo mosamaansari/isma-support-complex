@@ -496,6 +496,19 @@ export const getPurchasesQuerySchema = Joi.object({
     .messages({
       "string.base": "Supplier ID must be a string",
     }),
+  search: Joi.string()
+    .optional()
+    .allow("", null)
+    .messages({
+      "string.base": "Search query must be a string",
+    }),
+  status: Joi.string()
+    .optional()
+    .valid("all", "completed", "pending", "cancelled")
+    .allow("", null)
+    .messages({
+      "any.only": "Status must be either 'all', 'completed', 'pending', or 'cancelled'",
+    }),
   page: Joi.number()
     .integer()
     .min(1)

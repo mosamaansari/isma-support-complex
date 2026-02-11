@@ -24,6 +24,8 @@ export default function PurchaseList() {
   const { purchases, purchasesPagination, refreshPurchases, bankAccounts, refreshBankAccounts, cards, refreshCards, cancelPurchase, addPaymentToPurchase, currentUser, loading, error } = useData();
   const { showSuccess, showError } = useAlert();
   const [searchTerm, setSearchTerm] = useState("");
+  const [tempSearchTerm, setTempSearchTerm] = useState("");
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [filterStatus, setFilterStatus] = useState<"all" | "completed" | "pending" | "cancelled">("all");
   const [selectedPurchase, setSelectedPurchase] = useState<Purchase | null>(null);
   const [showAddPaymentModal, setShowAddPaymentModal] = useState(false);
@@ -45,6 +47,7 @@ export default function PurchaseList() {
   const [checkingBalance, setCheckingBalance] = useState(false);
   const bankAccountsLoadedRef = useRef(false);
   const purchasesLoadedRef = useRef(false);
+  const [loadingPurchases, setLoadingPurchases] = useState(false);
 
   // Load bank accounts and cards only once on mount
   useEffect(() => {
@@ -62,23 +65,65 @@ export default function PurchaseList() {
 
   // Load purchases only once on mount
   useEffect(() => {
-    if (!purchasesLoadedRef.current) {
-      purchasesLoadedRef.current = true;
-      if (!loading && (!purchases || purchases.length === 0)) {
-        refreshPurchases(purchasesPagination?.page || 1, purchasesPagination?.pageSize || 10).catch(err => {
-          console.error("PurchaseList - Error refreshing purchases:", err);
-        });
+    const loadInitial = async () => {
+      if (!purchasesLoadedRef.current) {
+        purchasesLoadedRef.current = true;
+        if (!purchases || purchases.length === 0) {
+          setLoadingPurchases(true);
+          try {
+            await refreshPurchases(purchasesPagination?.page || 1, purchasesPagination?.pageSize || 10);
+          } catch (err) {
+            console.error("PurchaseList - Error refreshing purchases:", err);
+          } finally {
+            setLoadingPurchases(false);
+          }
+        }
       }
-    }
+    };
+    loadInitial();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Sync temp search with debounced search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearchTerm(tempSearchTerm);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [tempSearchTerm]);
+
+  // Update purchases when search or status filter changes
+  useEffect(() => {
+    const loadFiltered = async () => {
+      try {
+        await refreshPurchases(1, purchasesPagination?.pageSize || 10, {
+          search: searchTerm,
+          status: filterStatus
+        });
+      } catch (err) {
+        console.error("PurchaseList - Error refreshing purchases with filters:", err);
+      }
+    };
+
+    // Only refresh if search term changed (debounced) or status changed
+    if (purchasesLoadedRef.current) {
+      loadFiltered();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm, filterStatus]);
+
   const handlePageChange = (page: number) => {
-    refreshPurchases(page, purchasesPagination?.pageSize || 10);
+    refreshPurchases(page, purchasesPagination?.pageSize || 10, {
+      search: searchTerm,
+      status: filterStatus
+    });
   };
 
   const handlePageSizeChange = (pageSize: number) => {
-    refreshPurchases(1, pageSize);
+    refreshPurchases(1, pageSize, {
+      search: searchTerm,
+      status: filterStatus
+    });
   };
 
   // Since we're now using backend filtering, just use the purchases data as is
@@ -262,7 +307,10 @@ export default function PurchaseList() {
       };
       await cancelPurchase(purchaseToCancel.id, refundData);
       showSuccess(`Purchase cancelled successfully! Refund processed via ${refundMethod === "cash" ? "cash" : refundMethod === "bank_transfer" ? "bank transfer" : "card"}.`);
-      refreshPurchases(purchasesPagination?.page || 1, purchasesPagination?.pageSize || 10);
+      refreshPurchases(purchasesPagination?.page || 1, purchasesPagination?.pageSize || 10, {
+        search: searchTerm,
+        status: filterStatus
+      });
       setCancelModalOpen(false);
       setPurchaseToCancel(null);
       setRefundMethod("cash");
@@ -315,7 +363,10 @@ export default function PurchaseList() {
       setSelectedPurchase(null);
       setBackendErrors({});
       setPaymentData({ type: "cash", amount: 0, date: getTodayDate() });
-      await refreshPurchases(purchasesPagination?.page || 1, purchasesPagination?.pageSize || 10);
+      await refreshPurchases(purchasesPagination?.page || 1, purchasesPagination?.pageSize || 10, {
+        search: searchTerm,
+        status: filterStatus
+      });
     } catch (error: any) {
       // Handle backend validation errors
       const validationErrors = extractValidationErrors(error);
@@ -406,11 +457,28 @@ export default function PurchaseList() {
         </div>
 
         <div className="grid grid-cols-1 gap-4 mb-6 md:grid-cols-2">
-          <Input
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search by supplier name or phone..."
-          />
+          <div className="relative">
+            <Input
+              ref={searchInputRef}
+              value={tempSearchTerm}
+              onChange={(e) => setTempSearchTerm(e.target.value)}
+              placeholder="Search by supplier name or phone..."
+              className="pr-10"
+            />
+            {tempSearchTerm && (
+              <button
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 z-10 p-1"
+                onClick={() => {
+                  setTempSearchTerm("");
+                  setSearchTerm("");
+                  searchInputRef.current?.focus();
+                }}
+                type="button"
+              >
+                ×
+              </button>
+            )}
+          </div>
           <select
             value={filterStatus}
             onChange={(e) =>
@@ -426,15 +494,16 @@ export default function PurchaseList() {
         </div>
       </div >
 
-      {loading && (
+      {loadingPurchases && (
         <div className="p-8 text-center text-gray-500">
-          Loading purchases...
+          <div className="inline-block w-8 h-8 border-4 border-brand-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+          <p>Loading purchases...</p>
         </div>
       )
       }
 
       {
-        error && (
+        !loadingPurchases && error && (
           <div className="p-4 mb-4 text-red-600 bg-red-50 rounded-lg dark:bg-red-900/20 dark:text-red-400">
             {error}
           </div>
@@ -442,7 +511,7 @@ export default function PurchaseList() {
       }
 
       {
-        !loading && (!purchases || purchases.length === 0) && (
+        !loadingPurchases && (!purchases || purchases.length === 0) && (
           <div className="p-8 text-center text-gray-500 bg-white rounded-lg shadow-sm dark:bg-gray-800">
             <p className="mb-4">No purchases found. Create your first purchase!</p>
             <Link to="/inventory/purchase">
@@ -453,7 +522,7 @@ export default function PurchaseList() {
       }
 
       {
-        !loading && purchases && purchases.length > 0 && (
+        !loadingPurchases && purchases && purchases.length > 0 && (
           <div className="table-container bg-white rounded-lg shadow-sm dark:bg-gray-800">
             <table className="responsive-table">
               <thead>
@@ -573,6 +642,15 @@ export default function PurchaseList() {
                                 title="View Purchase"
                               >
                                 <FaEye className="w-3 h-3 sm:w-4 sm:h-4 text-blue-500" />
+                              </button>
+                            </Link>
+                            {/* Print Slip Button */}
+                            <Link to={`/inventory/purchase/bill/${purchase.id}`}>
+                              <button
+                                className="p-1.5 sm:p-2 text-gray-600 hover:bg-gray-50 rounded dark:hover:bg-gray-900/20 border border-gray-300 dark:border-gray-600 flex-shrink-0"
+                                title="Print Slip"
+                              >
+                                <DownloadIcon className="w-3 h-3 sm:w-4 sm:h-4 text-green-600" />
                               </button>
                             </Link>
                             {/* View Payments Button */}

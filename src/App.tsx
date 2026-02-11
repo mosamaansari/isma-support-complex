@@ -22,6 +22,7 @@ import ProductForm from "./pages/Inventory/ProductForm";
 import PurchaseEntry from "./pages/Inventory/PurchaseEntry";
 import PurchaseList from "./pages/Inventory/PurchaseList";
 import PurchaseView from "./pages/Inventory/PurchaseView";
+import PurchaseBillPrint from "./pages/Inventory/PurchaseBillPrint";
 import PurchasePaymentPrint from "./pages/Inventory/PurchasePaymentPrint";
 import PurchasePaymentsCombinedPrint from "./pages/Inventory/PurchasePaymentsCombinedPrint";
 
@@ -76,6 +77,7 @@ export default function App() {
             <Route path="/inventory/purchases" element={<PurchaseList />} />
             <Route path="/inventory/purchase/view/:id" element={<PurchaseView />} />
             <Route path="/inventory/purchase/edit/:id" element={<PurchaseEntry />} />
+            <Route path="/inventory/purchase/bill/:id" element={<PurchaseBillPrint />} />
             <Route path="/inventory/purchase/payment/:purchaseId/:paymentIndex" element={<PurchasePaymentPrint />} />
             <Route path="/inventory/purchase/payments/:purchaseId" element={<PurchasePaymentsCombinedPrint />} />
 

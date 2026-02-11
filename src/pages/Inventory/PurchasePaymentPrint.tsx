@@ -7,6 +7,15 @@ import { ChevronLeftIcon, DownloadIcon } from "../../icons";
 import api from "../../services/api";
 import { Purchase, PurchasePayment } from "../../types";
 
+// Printing helper: show whole numbers only (no decimals) on printed bills
+const formatPrintAmount = (value: number | string | null | undefined): string => {
+  const num = Number(value);
+  if (!Number.isFinite(num)) {
+    return "0";
+  }
+  return Math.round(num).toString();
+};
+
 // Parse date string directly to extract components without UTC conversion
 const parseDateString = (dateStr: string | Date | undefined): { dateStr: string; timeStr: string; dateTimeStr: string } => {
   if (!dateStr) {
@@ -29,10 +38,10 @@ const parseDateString = (dateStr: string | Date | undefined): { dateStr: string;
       const hours = dateTimeMatch[4];
       const minutes = dateTimeMatch[5];
       const seconds = dateTimeMatch[6];
-      
+
       // Format date: MM/DD/YYYY
       const dateStr = `${month}/${day}/${year}`;
-      
+
       // Format time in 12-hour format
       const hoursNum = parseInt(hours, 10);
       const isPM = hoursNum >= 12;
@@ -40,7 +49,7 @@ const parseDateString = (dateStr: string | Date | undefined): { dateStr: string;
       const hoursStr = String(displayHours).padStart(2, "0");
       const ampm = isPM ? "PM" : "AM";
       const timeStr = `${hoursStr}:${minutes}:${seconds} ${ampm}`;
-      
+
       return {
         dateStr,
         timeStr,
@@ -48,7 +57,7 @@ const parseDateString = (dateStr: string | Date | undefined): { dateStr: string;
       };
     }
   }
-  
+
   // Fallback: use Date object
   const date = typeof dateStr === 'string' ? new Date(dateStr) : dateStr;
   return {
@@ -77,12 +86,12 @@ export default function PurchasePaymentPrint() {
 
       setLoading(true);
       setError(null);
-      
+
       try {
         const fetchedPurchase = await api.getPurchase(purchaseId);
         if (fetchedPurchase) {
           setPurchase(fetchedPurchase);
-          
+
           // Get specific payment if paymentIndex is provided
           if (paymentIndex !== undefined && fetchedPurchase.payments) {
             const index = parseInt(paymentIndex);
@@ -265,17 +274,172 @@ export default function PurchasePaymentPrint() {
         </div>
       </div>
 
+      {/* Thermal-style print view (shown only when printing) */}
+      <div
+        className="print-receipt"
+        style={{ display: "none" }}
+      >
+        <div className="shop-header">
+          <div className="shop-name">{settings.shopName}</div>
+          <div className="shop-details">
+            Address: {settings.address}<br />
+            Telp. {settings.contactNumber}
+          </div>
+        </div>
+        <div className="separator">********************************</div>
+        <div className="section-title">PAYMENT RECEIPT</div>
+        <div className="separator">********************************</div>
+
+        <div className="customer-info">
+          <div><strong>Supplier:</strong> {purchase.supplierName}</div>
+          {purchase.supplierPhone && (
+            <div><strong>Phone:</strong> {purchase.supplierPhone}</div>
+          )}
+        </div>
+
+        <div className="separator">********************************</div>
+
+        <div className="totals">
+          <div className="totals-row">
+            <span>Purchase #:</span>
+            <span>{purchaseId.slice(-8).toUpperCase()}</span>
+          </div>
+          <div className="totals-row">
+            <span>Receipt #:</span>
+            <span>PAY-{paymentNumber.toString().padStart(3, '0')}</span>
+          </div>
+          <div className="totals-row">
+            <span>Date:</span>
+            <span>{paymentDateInfo.dateStr}</span>
+          </div>
+          <div className="totals-row">
+            <span>Time:</span>
+            <span>{paymentDateInfo.timeStr}</span>
+          </div>
+          <div className="totals-row">
+            <span>Payment Type:</span>
+            <span className="uppercase">{payment.type}</span>
+          </div>
+          <div className="totals-row total-row">
+            <span>Amount Paid:</span>
+            <span>{formatPrintAmount(payment.amount)}</span>
+          </div>
+        </div>
+
+        <div className="separator">********************************</div>
+
+        <div className="totals" style={{ fontSize: "10px" }}>
+          <div className="totals-row">
+            <span>Purchase Total:</span>
+            <span>{formatPrintAmount(purchase.total)}</span>
+          </div>
+          <div className="totals-row">
+            <span>Total Paid (All):</span>
+            <span>{formatPrintAmount(totalPaid)}</span>
+          </div>
+          <div className="totals-row">
+            <span>Remaining:</span>
+            <span>{formatPrintAmount(purchase.remainingBalance)}</span>
+          </div>
+        </div>
+
+        <div className="separator">********************************</div>
+        <div className="footer">
+          <div className="thank-you">THANK YOU!</div>
+          <div>Purchase ID: {purchaseId}</div>
+          <div>Date: {new Date().toLocaleString()}</div>
+        </div>
+      </div>
+
       <style>{`
         @media print {
           .no-print {
             display: none !important;
           }
           .print-container {
-            max-width: 100%;
-            padding: 0;
+            display: none !important;
           }
-          body {
-            background: white;
+          body * {
+            visibility: hidden;
+          }
+          .print-receipt, .print-receipt * {
+            visibility: visible;
+          }
+          .print-receipt {
+            display: block !important;
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            top: 0;
+            width: 80mm;
+            max-width: 80mm;
+            margin: 0;
+            font-size: 12px;
+            color: #000;
+            background: #fff;
+          }
+          .print-receipt .shop-header {
+            text-align: center;
+            margin-bottom: 8px;
+            border-bottom: 1px dashed #000;
+            padding-bottom: 8px;
+          }
+          .print-receipt .shop-name {
+            font-weight: bold;
+            font-size: 14px;
+            margin-bottom: 4px;
+            text-transform: uppercase;
+          }
+          .print-receipt .shop-details {
+            font-size: 10px;
+            line-height: 1.4;
+          }
+          .print-receipt .separator {
+            text-align: center;
+            margin: 6px 0;
+            font-size: 10px;
+          }
+          .print-receipt .section-title {
+            text-align: center;
+            font-weight: bold;
+            font-size: 12px;
+            margin: 8px 0;
+            text-transform: uppercase;
+          }
+          .print-receipt .customer-info {
+            margin: 8px 0;
+            font-size: 11px;
+            line-height: 1.5;
+          }
+          .print-receipt .customer-info div {
+            margin: 2px 0;
+          }
+          .print-receipt .totals {
+            margin: 8px 0;
+            font-size: 11px;
+          }
+          .print-receipt .totals-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 3px 0;
+          }
+          .print-receipt .total-row {
+            font-weight: bold;
+            font-size: 12px;
+            border-top: 1px dashed #000;
+            border-bottom: 1px dashed #000;
+            padding: 4px 0;
+            margin: 6px 0;
+          }
+          .print-receipt .footer {
+            text-align: center;
+            margin-top: 12px;
+            font-size: 10px;
+          }
+          .print-receipt .thank-you {
+            font-weight: bold;
+            font-size: 12px;
+            margin: 8px 0;
           }
         }
       `}</style>

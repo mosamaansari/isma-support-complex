@@ -6,11 +6,13 @@ import { AuthRequest } from "../middleware/auth";
 class PurchaseController {
   async getPurchases(req: AuthRequest, res: Response) {
     try {
-      const { startDate, endDate, supplierId, page, pageSize } = req.query;
+      const { startDate, endDate, supplierId, page, pageSize, search, status } = req.query;
       const filters = {
         startDate: startDate as string | undefined,
         endDate: endDate as string | undefined,
         supplierId: supplierId as string | undefined,
+        search: search as string | undefined,
+        status: status as string | undefined,
         page: page ? parseInt(page as string) : undefined,
         pageSize: pageSize ? parseInt(pageSize as string) : undefined,
       };
@@ -127,7 +129,7 @@ class PurchaseController {
     try {
       const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
       const { refundMethod, bankAccountId, cardId } = req.body;
-      
+
       const refundData = refundMethod ? {
         refundMethod: refundMethod as "cash" | "bank_transfer" | "card",
         bankAccountId: bankAccountId,
@@ -140,7 +142,7 @@ class PurchaseController {
         req.user!.id,
         req.user!.username || req.user!.name || "Unknown"
       );
-      
+
       return res.status(200).json({
         message: "Purchase cancelled successfully",
         response: {
@@ -152,7 +154,7 @@ class PurchaseController {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
       logger.error("Cancel purchase error:", error);
-      
+
       if (error instanceof Error) {
         if (error.message === "Purchase not found") {
           return res.status(404).json({
@@ -183,7 +185,7 @@ class PurchaseController {
           });
         }
       }
-      
+
       return res.status(500).json({
         message: errorMessage,
         response: null,

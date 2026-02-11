@@ -366,6 +366,8 @@ class ApiClient {
     startDate?: string;
     endDate?: string;
     supplierId?: string;
+    search?: string;
+    status?: string;
     page?: number;
     pageSize?: number;
   }) {
