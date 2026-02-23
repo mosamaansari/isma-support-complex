@@ -44,7 +44,7 @@ export const normalizeSale = (sale: any) => {
       payments = null;
     }
   }
-  
+
   return {
     ...sale,
     subtotal: decimalToNumber(sale.subtotal),
@@ -52,8 +52,8 @@ export const normalizeSale = (sale: any) => {
     tax: decimalToNumber(sale.tax || 0),
     deliveryCharges: decimalToNumber(sale.deliveryCharges || 0),
     total: decimalToNumber(sale.total),
-    remainingBalance: sale.remainingBalance !== undefined && sale.remainingBalance !== null 
-      ? decimalToNumber(sale.remainingBalance) 
+    remainingBalance: sale.remainingBalance !== undefined && sale.remainingBalance !== null
+      ? decimalToNumber(sale.remainingBalance)
       : undefined,
     payments: payments || [],
     date: sale.date ? (typeof sale.date === 'string' ? sale.date : new Date(sale.date).toISOString()) : sale.createdAt,
@@ -62,24 +62,24 @@ export const normalizeSale = (sale: any) => {
     items: sale.items?.map((item: any) => ({
       ...item,
       unitPrice: decimalToNumber(item.unitPrice),
-      customPrice: item.customPrice !== undefined && item.customPrice !== null 
-        ? decimalToNumber(item.customPrice) 
+      customPrice: item.customPrice !== undefined && item.customPrice !== null
+        ? decimalToNumber(item.customPrice)
         : undefined,
       priceType: item.priceType || "single",
       priceSingle:
         item.priceSingle !== undefined && item.priceSingle !== null
           ? decimalToNumber(item.priceSingle)
           : (item.customPrice !== undefined && item.customPrice !== null
-              ? decimalToNumber(item.customPrice)
-              : decimalToNumber(item.unitPrice)),
+            ? decimalToNumber(item.customPrice)
+            : decimalToNumber(item.unitPrice)),
       priceDozen:
         item.priceDozen !== undefined && item.priceDozen !== null
           ? decimalToNumber(item.priceDozen)
           : ((item.priceSingle !== undefined && item.priceSingle !== null)
-              ? decimalToNumber(item.priceSingle) * 12
-              : (item.customPrice !== undefined && item.customPrice !== null
-                  ? decimalToNumber(item.customPrice) * 12
-                  : decimalToNumber(item.unitPrice) * 12)),
+            ? decimalToNumber(item.priceSingle) * 12
+            : (item.customPrice !== undefined && item.customPrice !== null
+              ? decimalToNumber(item.customPrice) * 12
+              : decimalToNumber(item.unitPrice) * 12)),
       discount: decimalToNumber(item.discount || 0),
       tax: decimalToNumber(item.tax || 0),
       total: decimalToNumber(item.total),
@@ -114,14 +114,18 @@ export const normalizePurchase = (purchase: any) => {
       payments = null;
     }
   }
-  
+
   return {
     ...purchase,
     subtotal: decimalToNumber(purchase.subtotal),
+    discount: decimalToNumber(purchase.discount || 0),
+    discountType: purchase.discountType || 'percent',
     tax: decimalToNumber(purchase.tax || 0),
+    taxType: purchase.taxType || 'percent',
+    deliveryCharges: decimalToNumber(purchase.deliveryCharges || 0),
     total: decimalToNumber(purchase.total),
-    remainingBalance: purchase.remainingBalance !== undefined && purchase.remainingBalance !== null 
-      ? decimalToNumber(purchase.remainingBalance) 
+    remainingBalance: purchase.remainingBalance !== undefined && purchase.remainingBalance !== null
+      ? decimalToNumber(purchase.remainingBalance)
       : 0,
     payments: payments || [],
     status: purchase.status || 'completed',
@@ -139,8 +143,8 @@ export const normalizePurchase = (purchase: any) => {
         item.costDozen !== undefined && item.costDozen !== null
           ? decimalToNumber(item.costDozen)
           : (item.costSingle !== undefined && item.costSingle !== null
-              ? decimalToNumber(item.costSingle) * 12
-              : decimalToNumber(item.cost) * 12),
+            ? decimalToNumber(item.costSingle) * 12
+            : decimalToNumber(item.cost) * 12),
       discount: decimalToNumber(item.discount || 0),
       total: decimalToNumber(item.total),
       shopQuantity: item.shopQuantity ?? (item.toWarehouse === false ? item.quantity : 0),

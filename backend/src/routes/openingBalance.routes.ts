@@ -123,4 +123,61 @@ router.post(
   openingBalanceController.addToOpeningBalance.bind(openingBalanceController)
 );
 
+const transferOpeningBalanceSchema = Joi.object({
+  date: Joi.string().required().isoDate().messages({
+    "string.isoDate": "Date must be a valid ISO date",
+    "any.required": "Date is required",
+  }),
+  amount: Joi.number().required().positive().messages({
+    "number.positive": "Amount must be greater than 0",
+    "any.required": "Amount is required",
+  }),
+  fromType: Joi.string().required().valid("cash", "bank", "card").messages({
+    "any.only": "Source type must be either 'cash', 'bank', or 'card'",
+    "any.required": "Source type is required",
+  }),
+  toType: Joi.string().required().valid("cash", "bank", "card").messages({
+    "any.only": "Destination type must be either 'cash', 'bank', or 'card'",
+    "any.required": "Destination type is required",
+  }),
+  fromBankAccountId: Joi.string().when("fromType", {
+    is: "bank",
+    then: Joi.required().messages({
+      "any.required": "Source bank account ID is required when source type is 'bank'",
+    }),
+    otherwise: Joi.optional(),
+  }),
+  toBankAccountId: Joi.string().when("toType", {
+    is: "bank",
+    then: Joi.required().messages({
+      "any.required": "Destination bank account ID is required when destination type is 'bank'",
+    }),
+    otherwise: Joi.optional(),
+  }),
+  fromCardId: Joi.string().when("fromType", {
+    is: "card",
+    then: Joi.required().messages({
+      "any.required": "Source card ID is required when source type is 'card'",
+    }),
+    otherwise: Joi.optional(),
+  }),
+  toCardId: Joi.string().when("toType", {
+    is: "card",
+    then: Joi.required().messages({
+      "any.required": "Destination card ID is required when destination type is 'card'",
+    }),
+    otherwise: Joi.optional(),
+  }),
+  description: Joi.string().optional().allow("", null),
+});
+
+// Transfer balance
+router.post(
+  "/transfer",
+  authenticate,
+  requirePermission(PERMISSIONS.OPENING_BALANCE_CREATE),
+  bodyValidator(transferOpeningBalanceSchema),
+  openingBalanceController.transferBalance.bind(openingBalanceController)
+);
+
 export default router;

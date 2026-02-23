@@ -1014,8 +1014,22 @@ class ApiClient {
     const response = await this.client.get("/balance-transactions", { params });
     return response.data?.response?.data || response.data;
   }
+
+  async transferOpeningBalance(data: {
+    date: string;
+    amount: number;
+    fromType: "cash" | "bank" | "card";
+    toType: "cash" | "bank" | "card";
+    fromBankAccountId?: string;
+    toBankAccountId?: string;
+    fromCardId?: string;
+    toCardId?: string;
+    description?: string;
+  }) {
+    const response = await this.client.post("/opening-balances/transfer", data);
+    return response.data;
+  }
 }
 
 export const api = new ApiClient();
 export default api;
-

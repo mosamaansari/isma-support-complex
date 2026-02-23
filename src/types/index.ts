@@ -140,7 +140,11 @@ export interface Purchase {
   supplierPhone?: string;
   items: PurchaseItem[];
   subtotal: number;
+  discount: number;
+  discountType?: "percent" | "value";
   tax: number;
+  taxType?: "percent" | "value";
+  deliveryCharges?: number;
   total: number;
   payments: PurchasePayment[];
   remainingBalance: number;

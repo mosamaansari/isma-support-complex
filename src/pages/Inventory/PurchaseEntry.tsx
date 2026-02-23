@@ -19,6 +19,7 @@ import { hasPermission } from "../../utils/permissions";
 import { AVAILABLE_PERMISSIONS } from "../../utils/availablePermissions";
 import { extractErrorMessage } from "../../utils/errorHandler";
 import { getTodayDate, formatDateToLocalISO } from "../../utils/dateHelpers";
+import { restrictDecimalInput } from "../../utils/numberHelpers";
 
 const purchaseEntrySchema = yup.object().shape({
   supplierName: yup
@@ -55,6 +56,12 @@ export default function PurchaseEntry() {
   const [date, setDate] = useState(getTodayDate());
   const [tax, setTax] = useState<number | null>(null);
   const [taxType, setTaxType] = useState<"percent" | "value">("percent");
+  const [globalDiscount, setGlobalDiscount] = useState<number | null>(null);
+  const [globalDiscountType, setGlobalDiscountType] = useState<"percent" | "value">("value");
+  const [existingDiscount, setExistingDiscount] = useState<number | null>(null);
+  const [existingDiscountType, setExistingDiscountType] = useState<"percent" | "value">("value");
+  const [existingDeliveryCharges, setExistingDeliveryCharges] = useState<number | null>(0);
+  const [deliveryCharges, setDeliveryCharges] = useState<number | null>(0);
   const [payments, setPayments] = useState<PurchasePayment[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -111,8 +118,8 @@ export default function PurchaseEntry() {
       setLoading(true);
       api.getPurchase(id)
         .then((purchase: any) => {
-          // Store purchase status
-          setPurchaseStatus(purchase.status || "pending");
+          // Store purchase status (default to completed if missing)
+          setPurchaseStatus(purchase.status || "completed");
 
           setValue("supplierName", purchase.supplierName);
           setValue("supplierPhone", purchase.supplierPhone || "");
@@ -122,6 +129,16 @@ export default function PurchaseEntry() {
           setValue("date", purchaseDate);
           setTaxType((purchase.taxType as "percent" | "value") || "percent");
           setTax(purchase.tax ? Number(purchase.tax) : null);
+          setExistingDiscountType((purchase.discountType as "percent" | "value") || "value");
+          setExistingDiscount(purchase.discount !== undefined && purchase.discount !== null ? Number(purchase.discount) : 0);
+          setExistingDeliveryCharges(
+            purchase.deliveryCharges !== undefined && purchase.deliveryCharges !== null
+              ? Number(purchase.deliveryCharges)
+              : 0
+          );
+          setGlobalDiscount(null);
+          setGlobalDiscountType((purchase.discountType as "percent" | "value") || "value");
+          setDeliveryCharges(null);
           setPayments((purchase.payments || []) as PurchasePayment[]);
 
           // Store original row IDs for pending purchases (to prevent editing/deleting)
@@ -290,15 +307,13 @@ export default function PurchaseEntry() {
     const warehouseUnits = priceType === "dozen" ? enteredWarehouseQty * 12 : enteredWarehouseQty;
     const totalUnits = shopUnits + warehouseUnits;
 
-    const total = Math.round(unitCost * totalUnits); // Round to nearest integer
-
     return {
       ...updated,
       // quantity is always units
       quantity: totalUnits,
       priceType,
       cost: unitCost,
-      total,
+      total: unitCost * totalUnits,
     };
   };
 
@@ -418,18 +433,65 @@ export default function PurchaseEntry() {
   };
 
   const subtotal = selectedProducts.reduce((sum, item) => sum + (item.total || 0), 0);
-  // Calculate tax based on type
-  let taxAmount = 0;
-  if (tax !== null && tax !== undefined) {
-    if (taxType === "value") {
-      taxAmount = Math.round(tax * 100) / 100;
-    } else {
-      taxAmount = Math.round(((subtotal * tax) / 100) * 100) / 100;
+  // Calculate totals including discounts, tax and delivery (mirror SalesEntry behavior)
+  const calculateTotals = () => {
+    // 1. Subtotal: Sum of all item totals (item.total already includes item-level discount)
+    // 2. Global old discount (existing on edit) and new additional discount
+    let oldDiscountAmount = 0;
+    if (existingDiscount !== null && existingDiscount !== undefined && existingDiscount !== 0) {
+      if (existingDiscountType === "value") {
+        oldDiscountAmount = Math.round(existingDiscount * 100) / 100;
+      } else {
+        oldDiscountAmount = Math.round((subtotal * existingDiscount / 100) * 100) / 100;
+      }
     }
-  }
-  const total = Math.round((subtotal + taxAmount) * 100) / 100;
+
+    let newDiscountAmount = 0;
+    if (globalDiscount !== null && globalDiscount !== undefined && globalDiscount !== 0) {
+      if (globalDiscountType === "value") {
+        newDiscountAmount = Math.round(globalDiscount * 100) / 100;
+      } else {
+        newDiscountAmount = Math.round((subtotal * globalDiscount / 100) * 100) / 100;
+      }
+    }
+
+    const totalDiscountAmount = Math.round((oldDiscountAmount + newDiscountAmount) * 100) / 100;
+
+    // Tax: Calculated on subtotal after ALL global discounts
+    let globalTaxAmount = 0;
+    if (tax !== null && tax !== undefined && tax !== 0) {
+      const amountAfterDiscount = Math.max(0, subtotal - totalDiscountAmount);
+      if (taxType === "value") {
+        globalTaxAmount = Math.round(tax * 100) / 100;
+      } else {
+        globalTaxAmount = Math.round((amountAfterDiscount * tax / 100) * 100) / 100;
+      }
+    }
+
+    // Delivery charges
+    const oldDeliveryAmount = Math.round(Math.max(0, existingDeliveryCharges || 0) * 100) / 100;
+    const newDeliveryAmount = Math.round(Math.max(0, deliveryCharges || 0) * 100) / 100;
+    const totalDeliveryAmount = Math.round((oldDeliveryAmount + newDeliveryAmount) * 100) / 100;
+
+    // Final total: Subtotal - Global Discounts + Tax + Delivery
+    const finalTotal = Math.round(Math.max(0, subtotal - totalDiscountAmount + globalTaxAmount + totalDeliveryAmount) * 100) / 100;
+
+    return {
+      subtotal,
+      total: finalTotal,
+      oldDiscountAmount,
+      newDiscountAmount,
+      discountAmount: totalDiscountAmount,
+      taxAmount: globalTaxAmount,
+      deliveryAmount: totalDeliveryAmount,
+      oldDeliveryAmount,
+      newDeliveryAmount,
+    };
+  };
+
+  const { subtotal: _subtotal, total, oldDiscountAmount, newDiscountAmount, discountAmount, taxAmount, deliveryAmount, oldDeliveryAmount, newDeliveryAmount } = calculateTotals();
   const totalPaid = payments.reduce((sum, payment) => sum + (payment.amount || 0), 0);
-  const remainingBalance = Math.round((total - totalPaid) * 100) / 100;
+  const remainingBalance = total - totalPaid;
 
   const addPayment = () => {
     setPayments([
@@ -472,13 +534,8 @@ export default function PurchaseEntry() {
   };
 
   const onSubmit = async (data: any) => {
-    if (!currentUser) {
-      showError("You must be logged in to perform this action.");
-      return;
-    }
-
     // Check permission for creating purchase (only for new purchases, not edits)
-    if (!isEdit) {
+    if (!isEdit && currentUser) {
       const canCreate = currentUser.role === "superadmin" ||
         currentUser.role === "admin" ||
         hasPermission(
@@ -491,7 +548,6 @@ export default function PurchaseEntry() {
         showError("You don't have permission to create purchases. Please contact your administrator.");
         return;
       }
-
     }
 
     if (selectedProducts.length === 0) {
@@ -549,6 +605,15 @@ export default function PurchaseEntry() {
       // Allow 0 as valid cost
     }
 
+    // If editing and user provided an additional discount, ensure it doesn't exceed remaining capacity
+    if (isEdit && globalDiscount && globalDiscount !== 0) {
+      const totalCapacityBeforeNewDiscount = subtotal - oldDiscountAmount + taxAmount + deliveryAmount;
+      if (newDiscountAmount > totalCapacityBeforeNewDiscount) {
+        showError(`Additional discount (Rs. ${newDiscountAmount.toFixed(2)}) exceeds remaining total (Rs. ${totalCapacityBeforeNewDiscount.toFixed(2)}). Please enter a lower amount.`);
+        return;
+      }
+    }
+
     setIsSubmitting(true);
     try {
       const purchaseItems: PurchaseItem[] = selectedProducts.map((item) => {
@@ -570,7 +635,7 @@ export default function PurchaseEntry() {
           costSingle: (item as any).costSingle ?? item.cost,
           costDozen: (item as any).costDozen ?? ((item.cost || 0) * 12),
           discount: item.discount || 0,
-          total: Math.round(item.total || 0), // Ensure total is rounded
+          total: item.total || 0,
           toWarehouse: warehouseQtyUnits > 0 && shopQtyUnits === 0 ? true : (shopQtyUnits > 0 && warehouseQtyUnits === 0 ? false : (item.toWarehouse !== undefined ? item.toWarehouse : true)),
         };
       });
@@ -592,8 +657,11 @@ export default function PurchaseEntry() {
         supplierPhone: data.supplierPhone || undefined,
         items: purchaseItems,
         subtotal,
+        discount: globalDiscount || 0,
+        discountType: globalDiscountType,
         tax: tax || 0,
         taxType: taxType,
+        deliveryCharges: deliveryCharges || 0,
         total,
         payments: payments.map(p => ({
           ...p,
@@ -607,7 +675,19 @@ export default function PurchaseEntry() {
       };
 
       if (isEdit && id) {
-        await updatePurchase(id, purchaseData);
+        // For edits send only changed fields similar to sales update
+        const updateData: any = {
+          items: purchaseItems,
+          additionalDiscount: globalDiscount || 0,
+          additionalDiscountType: globalDiscountType,
+          tax: tax || 0,
+          taxType: taxType,
+          additionalDeliveryCharges: deliveryCharges || 0,
+          payments: payments.map(p => ({ ...p, date: dateIsoString })) || [],
+          supplierName: data.supplierName.trim(),
+          supplierPhone: data.supplierPhone || undefined,
+        };
+        await updatePurchase(id, updateData);
         showSuccess("Purchase updated successfully!");
       } else {
         await addPurchase(purchaseData);
@@ -1136,7 +1216,7 @@ export default function PurchaseEntry() {
                   onClick={() => setIsSummaryOpen(!isSummaryOpen)}
                   className="flex items-center justify-between w-full mb-4 text-base font-semibold text-gray-800 dark:text-white hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
                 >
-                  <span>Summary</span>
+                  <span>Bill Summary</span>
                   {isSummaryOpen ? (
                     <ChevronUpIcon className="w-4 h-4" />
                   ) : (
@@ -1147,41 +1227,161 @@ export default function PurchaseEntry() {
                   <div className="space-y-3">
                     <div className="flex justify-between">
                       <span className="text-sm text-gray-600 dark:text-gray-400">Subtotal:</span>
-                      <span className="text-sm text-gray-800 dark:text-white">Rs. {subtotal.toFixed(2)}</span>
+                      <span className="font-medium text-sm text-gray-800 dark:text-white">
+                        Rs. {subtotal.toFixed(2)}
+                      </span>
                     </div>
-                    <div className="flex justify-between">
-                      <Label className="mb-0 text-sm">Tax:</Label>
-                      <div className="flex items-center gap-2">
+                    {isEdit && existingDiscount !== null && existingDiscount !== 0 && (
+                      <div className="flex justify-between mb-1 items-center">
+                        <span className="text-xs text-gray-500 dark:text-gray-400">Previous Discount:</span>
+                        <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">
+                          - Rs. {oldDiscountAmount.toFixed(2)} ({existingDiscountType === "percent" ? `${existingDiscount}%` : `Rs. ${existingDiscount}`})
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between gap-4">
+                      <Label className="mb-0 whitespace-nowrap text-sm">
+                        {isEdit ? "Add. Discount:" : "Discount:"}
+                      </Label>
+                      <div className="flex-1 max-w-[200px]">
+                        <TaxDiscountInput
+                          value={globalDiscount}
+                          type={globalDiscountType}
+                          onValueChange={(value) => setGlobalDiscount(value ?? null)}
+                          onTypeChange={(type) => setGlobalDiscountType(type)}
+                          placeholder="0"
+                          min={0}
+                          step={0.01}
+                          disabled={false}
+                        />
+                        {globalDiscount !== null && globalDiscount !== 0 && (
+                          (() => {
+                            const totalBeforeThisDiscount = isEdit
+                              ? Math.max(0, subtotal - oldDiscountAmount + taxAmount + deliveryAmount)
+                              : Math.max(0, subtotal + taxAmount + deliveryAmount);
+
+                            if (newDiscountAmount > totalBeforeThisDiscount) {
+                              return (
+                                <p className="mt-1 text-[10px] text-error-500 font-medium anim-shake">
+                                  {isEdit ? "Add. discount" : "Discount"} exceeds remaining total (Rs. {totalBeforeThisDiscount.toFixed(2)})
+                                </p>
+                              );
+                            }
+                            return null;
+                          })()
+                        )}
+                      </div>
+                    </div>
+                    {isEdit && globalDiscount && globalDiscount !== 0 && (
+                      <div className="flex justify-between mt-1 items-center">
+                        <span className="text-xs text-brand-600 dark:text-brand-400">Additional Appli.:</span>
+                        <span className="text-xs font-semibold text-brand-600 dark:text-brand-400">
+                          - Rs. {newDiscountAmount.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+                    {discountAmount !== 0 && (
+                      <div className="flex flex-col pt-1 mt-1 border-t border-dashed border-gray-200 dark:border-gray-700">
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs font-medium text-gray-700 dark:text-gray-200">Total Discount:</span>
+                          <span className="text-sm font-bold text-gray-900 dark:text-white">
+                            - Rs. {discountAmount.toFixed(2)}
+                          </span>
+                        </div>
+                        {total < 0 && (
+                          <p className="text-[10px] text-error-500 font-medium text-right mt-0.5">
+                            Discount makes total negative
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between gap-4">
+                      <Label className="mb-0 whitespace-nowrap text-sm">Tax:</Label>
+                      <div className="flex-1 max-w-[200px]">
                         <TaxDiscountInput
                           value={tax}
                           type={taxType}
-                          onValueChange={(value) => {
-                            if (isEdit && purchaseStatus === "pending") {
-                              showError("Tax cannot be edited for pending purchases.");
-                              return;
-                            }
-                            setTax(value || null);
-                            setValue("tax", value || null);
-                          }}
-                          onTypeChange={(type) => {
-                            if (isEdit && purchaseStatus === "pending") {
-                              showError("Tax cannot be edited for pending purchases.");
-                              return;
-                            }
-                            setTaxType(type);
-                          }}
-                          disabled={isEdit && purchaseStatus === "pending"}
+                          onValueChange={(value) => setTax(value ?? null)}
+                          onTypeChange={(type) => setTaxType(type)}
                           placeholder="0"
-                          className="w-32"
+                          min={0}
+                          step={0.01}
+                          disabled={isEdit}
                         />
                       </div>
                     </div>
+                    {isEdit && existingDeliveryCharges !== null && existingDeliveryCharges !== 0 && (
+                      <div className="flex justify-between mb-1 items-center">
+                        <span className="text-xs text-gray-500 dark:text-gray-400">Previous Charges:</span>
+                        <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">
+                          + Rs. {oldDeliveryAmount.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between gap-4">
+                      <Label className="mb-0 whitespace-nowrap text-sm">
+                        {isEdit ? "Add. Charges:" : "Delivery Charges:"}
+                      </Label>
+                      <div className="flex-1 max-w-[200px]">
+                        <Input
+                          type="number"
+                          min={0}
+                          step={0.01}
+                          placeholder="0"
+                          value={deliveryCharges ?? ""}
+                          onInput={restrictDecimalInput}
+                          onChange={(e) => {
+                            if (e.target.value === "") {
+                              setDeliveryCharges(null);
+                              return;
+                            }
+                            const parsed = parseFloat(e.target.value);
+                            if (isNaN(parsed) || parsed < 0) {
+                              setDeliveryCharges(0);
+                              return;
+                            }
+                            setDeliveryCharges(parsed);
+                          }}
+                          disabled={false}
+                        />
+                      </div>
+                    </div>
+                    {isEdit && deliveryCharges && deliveryCharges !== 0 && (
+                      <div className="flex justify-between mt-1 items-center">
+                        <span className="text-xs text-brand-600 dark:text-brand-400">Additional Appli.:</span>
+                        <span className="text-xs font-semibold text-brand-600 dark:text-brand-400">
+                          + Rs. {newDeliveryAmount.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+                    {deliveryAmount !== 0 && (
+                      <div className="flex flex-col pt-1 mt-1 border-t border-dashed border-gray-200 dark:border-gray-700">
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs font-medium text-gray-700 dark:text-gray-200">Total Charges:</span>
+                          <span className="text-sm font-bold text-gray-900 dark:text-white">
+                            + Rs. {deliveryAmount.toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+                    )}
                     <div className="flex justify-between pt-3 border-t border-gray-200 dark:border-gray-700">
                       <span className="text-base font-semibold text-gray-800 dark:text-white">
                         Total:
                       </span>
                       <span className="text-base font-bold text-brand-600 dark:text-brand-400">
                         Rs. {total.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-gray-600 dark:text-gray-400">Total Paid:</span>
+                      <span className="font-medium text-sm text-gray-800 dark:text-white">
+                        Rs. {totalPaid.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-gray-600 dark:text-gray-400">Remaining:</span>
+                      <span className={`font-medium text-sm ${remainingBalance > 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}>
+                        Rs. {remainingBalance.toFixed(2)}
                       </span>
                     </div>
                     <Button

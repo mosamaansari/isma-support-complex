@@ -34,9 +34,9 @@ class BalanceManagementService {
 
     // Determine the cutoff time: if viewing today, use current time; otherwise use end of that day
     const now = new Date();
-    const isToday = now.getFullYear() === year && 
-                    now.getMonth() === localDate.getMonth() && 
-                    now.getDate() === localDate.getDate();
+    const isToday = now.getFullYear() === year &&
+      now.getMonth() === localDate.getMonth() &&
+      now.getDate() === localDate.getDate();
     const cutoffTime = isToday ? now : endDate;
 
     // First, try to get the latest transaction up to the cutoff time
@@ -102,9 +102,9 @@ class BalanceManagementService {
 
     // Determine the cutoff time: if viewing today, use current time; otherwise use end of that day
     const now = new Date();
-    const isToday = now.getFullYear() === year && 
-                    now.getMonth() === localDate.getMonth() && 
-                    now.getDate() === localDate.getDate();
+    const isToday = now.getFullYear() === year &&
+      now.getMonth() === localDate.getMonth() &&
+      now.getDate() === localDate.getDate();
     const cutoffTime = isToday ? now : endDate;
 
     // First, try to get the latest transaction up to the cutoff time
@@ -189,37 +189,54 @@ class BalanceManagementService {
       // Get beforeBalance from daily closing balance for today's date (using date field: 2026-01-24)
       const [yearForDate, monthForDate, dayForDate] = dateStr.split("-").map(v => parseInt(v, 10));
       const dateObjForClosing = new Date(yearForDate, monthForDate - 1, dayForDate, 12, 0, 0, 0);
-      
-      logger.info(`Getting beforeBalance from daily closing balance for date: ${dateStr} (cash)`);
+
+      logger.info(`Getting beforeBalance for date: ${dateStr} (cash)`);
       let beforeBalance = 0;
-      const todayClosing = await tx.dailyClosingBalance.findUnique({
-        where: { date: dateObjForClosing },
+
+      // 1. First, check for the latest transaction for this date (using current transaction context)
+      // This is crucial for handling multiple transactions on the same day correctly
+      const latestTx = await tx.balanceTransaction.findFirst({
+        where: {
+          paymentType: "cash",
+          date: dateObjForClosing,
+        },
+        orderBy: { createdAt: "desc" },
       });
-      
-      if (todayClosing) {
-        beforeBalance = Number(todayClosing.cashBalance) || 0;
-        logger.info(`Found closing balance for ${dateStr}: cashBalance=${beforeBalance}`);
+
+      if (latestTx && latestTx.afterBalance !== null) {
+        beforeBalance = Number(latestTx.afterBalance);
+        logger.info(`Found latest transaction for ${dateStr}: cash afterBalance=${beforeBalance}`);
       } else {
-        logger.info(`No closing balance found for ${dateStr}, checking opening balance...`);
-        // If no closing balance exists for today, get from opening balance or previous day's closing
-        const openingBalance = await tx.dailyOpeningBalance.findUnique({
+        // 2. If no transactions today, check daily closing balance for today (might have been created by another process)
+        const todayClosing = await tx.dailyClosingBalance.findUnique({
           where: { date: dateObjForClosing },
         });
-        if (openingBalance) {
-          beforeBalance = Number(openingBalance.cashBalance) || 0;
-          logger.info(`Using opening balance for ${dateStr}: cashBalance=${beforeBalance}`);
+
+        if (todayClosing) {
+          beforeBalance = Number(todayClosing.cashBalance) || 0;
+          logger.info(`Found closing balance for ${dateStr}: cashBalance=${beforeBalance}`);
         } else {
-          // Get previous day's closing balance
-          const previousDate = new Date(dateObjForClosing);
-          previousDate.setDate(previousDate.getDate() - 1);
-          const prevClosing = await tx.dailyClosingBalance.findUnique({
-            where: { date: previousDate },
+          logger.info(`No transactions or closing balance found for ${dateStr}, checking opening balance...`);
+          // 3. If no closing balance exists for today, get from opening balance
+          const openingBalance = await tx.dailyOpeningBalance.findUnique({
+            where: { date: dateObjForClosing },
           });
-          if (prevClosing) {
-            beforeBalance = Number(prevClosing.cashBalance) || 0;
-            logger.info(`Using previous day's closing balance: cashBalance=${beforeBalance}`);
+          if (openingBalance) {
+            beforeBalance = Number(openingBalance.cashBalance) || 0;
+            logger.info(`Using opening balance for ${dateStr}: cashBalance=${beforeBalance}`);
           } else {
-            logger.info(`No balance found, using 0 as beforeBalance`);
+            // 4. Get previous day's closing balance
+            const previousDate = new Date(dateObjForClosing);
+            previousDate.setDate(previousDate.getDate() - 1);
+            const prevClosing = await tx.dailyClosingBalance.findUnique({
+              where: { date: previousDate },
+            });
+            if (prevClosing) {
+              beforeBalance = Number(prevClosing.cashBalance) || 0;
+              logger.info(`Using previous day's closing balance: cashBalance=${beforeBalance}`);
+            } else {
+              logger.info(`No balance found, using 0 as beforeBalance`);
+            }
           }
         }
       }
@@ -285,7 +302,7 @@ class BalanceManagementService {
         // Parse dateStr (YYYY-MM-DD) and create date at noon
         const [year, month, day] = dateStr.split("-").map(v => parseInt(v, 10));
         const dateObjForDB = new Date(year, month - 1, day, 12, 0, 0, 0);
-        
+
         await tx.dailyOpeningBalance.create({
           data: {
             date: dateObjForDB,
@@ -384,48 +401,65 @@ class BalanceManagementService {
       // Get beforeBalance from daily closing balance for today's date (using date field: 2026-01-24)
       const [yearForDate, monthForDate, dayForDate] = dateStr.split("-").map(v => parseInt(v, 10));
       const dateObjForClosing = new Date(yearForDate, monthForDate - 1, dayForDate, 12, 0, 0, 0);
-      
-      logger.info(`Getting beforeBalance from daily closing balance for date: ${dateStr}, bankAccountId: ${bankAccountId}`);
+
+      logger.info(`Getting beforeBalance for date: ${dateStr}, bankAccountId: ${bankAccountId}`);
       let beforeBalance = 0;
-      const todayClosing = await tx.dailyClosingBalance.findUnique({
-        where: { date: dateObjForClosing },
+
+      // 1. First, check for the latest transaction for this bank account and date
+      const latestTx = await tx.balanceTransaction.findFirst({
+        where: {
+          paymentType: "bank_transfer",
+          bankAccountId: bankAccountId,
+          date: dateObjForClosing,
+        },
+        orderBy: { createdAt: "desc" },
       });
-      
-      if (todayClosing) {
-        const bankBalances = (todayClosing.bankBalances as Array<{ bankAccountId: string; balance: number }>) || [];
-        const bankBalance = bankBalances.find((b) => b.bankAccountId === bankAccountId);
-        if (bankBalance) {
-          beforeBalance = Number(bankBalance.balance) || 0;
-          logger.info(`Found closing balance for ${dateStr}, bank ${bankAccountId}: balance=${beforeBalance}`);
-        } else {
-          logger.info(`Bank ${bankAccountId} not found in closing balance for ${dateStr}, using 0`);
-        }
+
+      if (latestTx && latestTx.afterBalance !== null) {
+        beforeBalance = Number(latestTx.afterBalance);
+        logger.info(`Found latest bank transaction for ${dateStr}, bank ${bankAccountId}: afterBalance=${beforeBalance}`);
       } else {
-        logger.info(`No closing balance found for ${dateStr}, checking opening balance...`);
-        // If no closing balance exists for today, get from opening balance or previous day's closing
-        const openingBalance = await tx.dailyOpeningBalance.findUnique({
+        // 2. Check today's closing balance
+        const todayClosing = await tx.dailyClosingBalance.findUnique({
           where: { date: dateObjForClosing },
         });
-        if (openingBalance) {
-          const bankBalances = (openingBalance.bankBalances as Array<{ bankAccountId: string; balance: number }>) || [];
+
+        if (todayClosing) {
+          const bankBalances = (todayClosing.bankBalances as Array<{ bankAccountId: string; balance: number }>) || [];
           const bankBalance = bankBalances.find((b) => b.bankAccountId === bankAccountId);
           if (bankBalance) {
             beforeBalance = Number(bankBalance.balance) || 0;
-            logger.info(`Using opening balance for ${dateStr}, bank ${bankAccountId}: balance=${beforeBalance}`);
+            logger.info(`Found closing balance for ${dateStr}, bank ${bankAccountId}: balance=${beforeBalance}`);
+          } else {
+            logger.info(`Bank ${bankAccountId} not found in closing balance for ${dateStr}, using 0`);
           }
         } else {
-          // Get previous day's closing balance
-          const previousDate = new Date(dateObjForClosing);
-          previousDate.setDate(previousDate.getDate() - 1);
-          const prevClosing = await tx.dailyClosingBalance.findUnique({
-            where: { date: previousDate },
+          logger.info(`No transactions or closing balance found for ${dateStr}, checking opening balance...`);
+          // 3. Check today's opening balance
+          const openingBalance = await tx.dailyOpeningBalance.findUnique({
+            where: { date: dateObjForClosing },
           });
-          if (prevClosing) {
-            const bankBalances = (prevClosing.bankBalances as Array<{ bankAccountId: string; balance: number }>) || [];
+          if (openingBalance) {
+            const bankBalances = (openingBalance.bankBalances as Array<{ bankAccountId: string; balance: number }>) || [];
             const bankBalance = bankBalances.find((b) => b.bankAccountId === bankAccountId);
             if (bankBalance) {
               beforeBalance = Number(bankBalance.balance) || 0;
-              logger.info(`Using previous day's closing balance, bank ${bankAccountId}: balance=${beforeBalance}`);
+              logger.info(`Using opening balance for ${dateStr}, bank ${bankAccountId}: balance=${beforeBalance}`);
+            }
+          } else {
+            // 4. Check previous day's closing balance
+            const previousDate = new Date(dateObjForClosing);
+            previousDate.setDate(previousDate.getDate() - 1);
+            const prevClosing = await tx.dailyClosingBalance.findUnique({
+              where: { date: previousDate },
+            });
+            if (prevClosing) {
+              const bankBalances = (prevClosing.bankBalances as Array<{ bankAccountId: string; balance: number }>) || [];
+              const bankBalance = bankBalances.find((b) => b.bankAccountId === bankAccountId);
+              if (bankBalance) {
+                beforeBalance = Number(bankBalance.balance) || 0;
+                logger.info(`Using previous day's closing balance, bank ${bankAccountId}: balance=${beforeBalance}`);
+              }
             }
           }
         }
@@ -510,7 +544,7 @@ class BalanceManagementService {
         // Parse dateStr (YYYY-MM-DD) and create date at noon
         const [year, month, day] = dateStr.split("-").map(v => parseInt(v, 10));
         const dateObjForDB = new Date(year, month - 1, day, 12, 0, 0, 0);
-        
+
         await tx.dailyOpeningBalance.create({
           data: {
             date: dateObjForDB,
@@ -693,48 +727,65 @@ class BalanceManagementService {
       // Get beforeBalance from daily closing balance for today's date (using date field: 2026-01-24)
       const [yearForDate, monthForDate, dayForDate] = dateStr.split("-").map(v => parseInt(v, 10));
       const dateObjForClosing = new Date(yearForDate, monthForDate - 1, dayForDate, 12, 0, 0, 0);
-      
-      logger.info(`Getting beforeBalance from daily closing balance for date: ${dateStr}, cardId: ${cardId}`);
+
+      logger.info(`Getting beforeBalance for date: ${dateStr}, cardId: ${cardId}`);
       let beforeBalance = 0;
-      const todayClosing = await tx.dailyClosingBalance.findUnique({
-        where: { date: dateObjForClosing },
+
+      // 1. First, check for the latest transaction for this card and date
+      const latestTx = await tx.balanceTransaction.findFirst({
+        where: {
+          paymentType: "card",
+          bankAccountId: cardId, // We reuse bankAccountId for cardId
+          date: dateObjForClosing,
+        },
+        orderBy: { createdAt: "desc" },
       });
-      
-      if (todayClosing) {
-        const cardBalances = (todayClosing.cardBalances as Array<{ cardId: string; balance: number }>) || [];
-        const cardBalance = cardBalances.find((c) => c.cardId === cardId);
-        if (cardBalance) {
-          beforeBalance = Number(cardBalance.balance) || 0;
-          logger.info(`Found closing balance for ${dateStr}, card ${cardId}: balance=${beforeBalance}`);
-        } else {
-          logger.info(`Card ${cardId} not found in closing balance for ${dateStr}, using 0`);
-        }
+
+      if (latestTx && latestTx.afterBalance !== null) {
+        beforeBalance = Number(latestTx.afterBalance);
+        logger.info(`Found latest card transaction for ${dateStr}, card ${cardId}: afterBalance=${beforeBalance}`);
       } else {
-        logger.info(`No closing balance found for ${dateStr}, checking opening balance...`);
-        // If no closing balance exists for today, get from opening balance or previous day's closing
-        const openingBalance = await tx.dailyOpeningBalance.findUnique({
+        // 2. Check today's closing balance
+        const todayClosing = await tx.dailyClosingBalance.findUnique({
           where: { date: dateObjForClosing },
         });
-        if (openingBalance) {
-          const cardBalances = (openingBalance.cardBalances as Array<{ cardId: string; balance: number }>) || [];
+
+        if (todayClosing) {
+          const cardBalances = (todayClosing.cardBalances as Array<{ cardId: string; balance: number }>) || [];
           const cardBalance = cardBalances.find((c) => c.cardId === cardId);
           if (cardBalance) {
             beforeBalance = Number(cardBalance.balance) || 0;
-            logger.info(`Using opening balance for ${dateStr}, card ${cardId}: balance=${beforeBalance}`);
+            logger.info(`Found closing balance for ${dateStr}, card ${cardId}: balance=${beforeBalance}`);
+          } else {
+            logger.info(`Card ${cardId} not found in closing balance for ${dateStr}, using 0`);
           }
         } else {
-          // Get previous day's closing balance
-          const previousDate = new Date(dateObjForClosing);
-          previousDate.setDate(previousDate.getDate() - 1);
-          const prevClosing = await tx.dailyClosingBalance.findUnique({
-            where: { date: previousDate },
+          logger.info(`No transactions or closing balance found for ${dateStr}, checking opening balance...`);
+          // 3. Check today's opening balance
+          const openingBalance = await tx.dailyOpeningBalance.findUnique({
+            where: { date: dateObjForClosing },
           });
-          if (prevClosing) {
-            const cardBalances = (prevClosing.cardBalances as Array<{ cardId: string; balance: number }>) || [];
+          if (openingBalance) {
+            const cardBalances = (openingBalance.cardBalances as Array<{ cardId: string; balance: number }>) || [];
             const cardBalance = cardBalances.find((c) => c.cardId === cardId);
             if (cardBalance) {
               beforeBalance = Number(cardBalance.balance) || 0;
-              logger.info(`Using previous day's closing balance, card ${cardId}: balance=${beforeBalance}`);
+              logger.info(`Using opening balance for ${dateStr}, card ${cardId}: balance=${beforeBalance}`);
+            }
+          } else {
+            // 4. Check previous day's closing balance
+            const previousDate = new Date(dateObjForClosing);
+            previousDate.setDate(previousDate.getDate() - 1);
+            const prevClosing = await tx.dailyClosingBalance.findUnique({
+              where: { date: previousDate },
+            });
+            if (prevClosing) {
+              const cardBalances = (prevClosing.cardBalances as Array<{ cardId: string; balance: number }>) || [];
+              const cardBalance = cardBalances.find((c) => c.cardId === cardId);
+              if (cardBalance) {
+                beforeBalance = Number(cardBalance.balance) || 0;
+                logger.info(`Using previous day's closing balance, card ${cardId}: balance=${beforeBalance}`);
+              }
             }
           }
         }
@@ -799,7 +850,7 @@ class BalanceManagementService {
         // Parse dateStr (YYYY-MM-DD) and create date at noon
         const [year, month, day] = dateStr.split("-").map(v => parseInt(v, 10));
         const dateObjForDB = new Date(year, month - 1, day, 12, 0, 0, 0);
-        
+
         await tx.dailyOpeningBalance.create({
           data: {
             date: dateObjForDB,
@@ -823,7 +874,7 @@ class BalanceManagementService {
       const dateMonth = date.getMonth();
       const dateDay = date.getDate();
       const transactionDate = new Date(dateYear, dateMonth, dateDay, 12, 0, 0, 0);
-      
+
       const transaction = await balanceTransactionService.createTransaction({
         date: transactionDate,
         type: type,
@@ -883,7 +934,7 @@ class BalanceManagementService {
     }
   ): Promise<BalanceUpdateResult> {
     let result: BalanceUpdateResult;
-    
+
     if (type === "cash") {
       result = await this.updateCashBalance(
         date,
@@ -936,7 +987,107 @@ class BalanceManagementService {
 
     return result;
   }
+
+  /**
+   * Transfer balance between different accounts/types
+   */
+  async transferBalance(
+    date: Date,
+    amount: number,
+    fromType: "cash" | "bank" | "card",
+    toType: "cash" | "bank" | "card",
+    transactionData: {
+      description?: string;
+      userId: string;
+      userName: string;
+      fromBankAccountId?: string;
+      toBankAccountId?: string;
+      fromCardId?: string;
+      toCardId?: string;
+    }
+  ): Promise<{ sourceResult: BalanceUpdateResult; destResult: BalanceUpdateResult }> {
+    // 1. Check if sufficient balance in source 
+    if (fromType === "cash") {
+      const currentCash = await this.getCurrentCashBalance(date);
+      if (currentCash < amount) throw new Error(`Insufficient cash balance. Available: ${currentCash}, Required: ${amount}`);
+    } else if (fromType === "bank") {
+      if (!transactionData.fromBankAccountId) throw new Error("Source bank account ID is required");
+      const currentBank = await this.getCurrentBankBalance(transactionData.fromBankAccountId, date);
+      if (currentBank < amount) throw new Error(`Insufficient bank balance. Available: ${currentBank}, Required: ${amount}`);
+    } else if (fromType === "card") {
+      if (!transactionData.fromCardId) throw new Error("Source card ID is required");
+      const currentCard = await this.getCurrentCardBalance(transactionData.fromCardId, date);
+      if (currentCard < amount) throw new Error(`Insufficient card balance. Available: ${currentCard}, Required: ${amount}`);
+    }
+
+    // 2. Withdraw from source
+    let sourceResult;
+    const desc = transactionData.description || `Transfer to ${toType}`;
+    if (fromType === "cash") {
+      sourceResult = await this.updateCashBalance(date, amount, "expense", {
+        description: desc,
+        source: "transfer_out",
+        userId: transactionData.userId,
+        userName: transactionData.userName,
+      });
+    } else if (fromType === "bank") {
+      sourceResult = await this.updateBankBalance(transactionData.fromBankAccountId!, date, amount, "expense", {
+        description: desc,
+        source: "transfer_out",
+        userId: transactionData.userId,
+        userName: transactionData.userName,
+      });
+    } else {
+      sourceResult = await this.updateCardBalance(transactionData.fromCardId!, date, amount, "expense", {
+        description: desc,
+        source: "transfer_out",
+        userId: transactionData.userId,
+        userName: transactionData.userName,
+      });
+    }
+
+    // 3. Deposit to destination
+    let destResult;
+    try {
+      const descIn = transactionData.description || `Transfer from ${fromType}`;
+      if (toType === "cash") {
+        destResult = await this.updateCashBalance(date, amount, "income", {
+          description: descIn,
+          source: "transfer_in",
+          userId: transactionData.userId,
+          userName: transactionData.userName,
+        });
+      } else if (toType === "bank") {
+        if (!transactionData.toBankAccountId) throw new Error("Destination bank account ID is required");
+        destResult = await this.updateBankBalance(transactionData.toBankAccountId!, date, amount, "income", {
+          description: descIn,
+          source: "transfer_in",
+          userId: transactionData.userId,
+          userName: transactionData.userName,
+        });
+      } else {
+        if (!transactionData.toCardId) throw new Error("Destination card ID is required");
+        destResult = await this.updateCardBalance(transactionData.toCardId!, date, amount, "income", {
+          description: descIn,
+          source: "transfer_in",
+          userId: transactionData.userId,
+          userName: transactionData.userName,
+        });
+      }
+    } catch (err: any) {
+      // Rollback the first transaction if the second fails
+      if (fromType === "cash") {
+        await this.updateCashBalance(date, amount, "income", { description: "Rollback transfer", source: "transfer_out_rollback", userId: transactionData.userId, userName: transactionData.userName });
+      } else if (fromType === "bank") {
+        await this.updateBankBalance(transactionData.fromBankAccountId!, date, amount, "income", { description: "Rollback transfer", source: "transfer_out_rollback", userId: transactionData.userId, userName: transactionData.userName });
+      } else {
+        await this.updateCardBalance(transactionData.fromCardId!, date, amount, "income", { description: "Rollback transfer", source: "transfer_out_rollback", userId: transactionData.userId, userName: transactionData.userName });
+      }
+      throw new Error(`Transfer failed at destination step. Source was rolled back. Error: ${err.message}`);
+    }
+
+    return { sourceResult, destResult };
+  }
 }
 
 export default new BalanceManagementService();
-

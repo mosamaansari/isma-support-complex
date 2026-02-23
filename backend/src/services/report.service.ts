@@ -26,17 +26,17 @@ function extractDateComponents(date: Date): { year: number; month: number; day: 
   // Since dates stored with -5 hours offset represent the correct Pakistan date,
   // we should use local date components (which JavaScript correctly interprets)
   // However, to be safe, we'll check both UTC and local and use the one that makes sense
-  
+
   // Try UTC first (for dates stored as UTC ISO strings)
   const utcYear = date.getUTCFullYear();
   const utcMonth = date.getUTCMonth();
   const utcDay = date.getUTCDate();
-  
+
   // Also get local components
   const localYear = date.getFullYear();
   const localMonth = date.getMonth();
   const localDay = date.getDate();
-  
+
   // If UTC and local are different, it means the date crosses a day boundary
   // In that case, we should use the date that represents the actual intended date
   // For Pakistan timezone (UTC+5), if UTC date is different, use local (which is correct for Pakistan)
@@ -44,7 +44,7 @@ function extractDateComponents(date: Date): { year: number; month: number; day: 
     // Date crosses day boundary - use local date components (Pakistan timezone)
     return { year: localYear, month: localMonth, day: localDay };
   }
-  
+
   // If they're the same, use UTC (more reliable for stored dates)
   return { year: utcYear, month: utcMonth, day: utcDay };
 }
@@ -56,9 +56,9 @@ function extractDateComponents(date: Date): { year: number; month: number; day: 
  */
 function parsePaymentDate(dateStr: string | undefined | null): Date | null {
   if (!dateStr) return null;
-  
+
   let date: Date;
-  
+
   // If it's a UTC ISO string (ends with Z), extract UTC components
   if (typeof dateStr === 'string' && dateStr.endsWith('Z')) {
     date = new Date(dateStr);
@@ -106,7 +106,7 @@ class ReportService {
     // Payment dates stored as "2026-01-19T23:22:06.835Z" should be treated as "2026-01-19", not "2026-01-20"
     const extractDateString = (dateValue: Date | string | null | undefined): string | null => {
       if (!dateValue) return null;
-      
+
       if (dateValue instanceof Date) {
         // If it's a Date object, use UTC date components
         const year = dateValue.getUTCFullYear();
@@ -149,7 +149,7 @@ class ReportService {
     // It should NOT include manual additions made today
     // Get previous day's closing balance as the opening balance
     const previousClosing = await dailyClosingBalanceService.getPreviousDayClosingBalance(date);
-    
+
     let openingBalance: any;
     if (previousClosing) {
       // Use previous day's closing as today's opening balance (baseline)
@@ -212,10 +212,10 @@ class ReportService {
         const { year, month, day } = extractDateComponents(txDate);
         const dateStr = `${year}-${month}-${day}`;
         const amount = Number(tx.amount || 0).toFixed(2);
-        
+
         // Create key with source, sourceId, amount, and date for matching
         const key = `${tx.source}-${tx.sourceId}-${amount}-${dateStr}`;
-        
+
         // Store the first matching transaction (ordered by createdAt ASC)
         if (!balanceTxMapBySourceId.has(key)) {
           balanceTxMapBySourceId.set(key, tx);
@@ -246,15 +246,15 @@ class ReportService {
 
     // Build step-by-step transaction list
     const steps: any[] = [];
-    
+
     // Starting balance
     const openingCash = Math.max(0, Number(openingBalance.cashBalance || 0)); // Ensure non-negative
     const openingBankBalances = (openingBalance.bankBalances as Array<{ bankAccountId: string; balance: number }>) || [];
-    
+
     // Calculate total opening balance (cash + sum of all banks)
     const totalBankBalance = openingBankBalances.reduce((sum, b) => sum + Math.max(0, Number(b.balance || 0)), 0);
     const totalOpeningBalance = openingCash + totalBankBalance;
-    
+
     let runningCash = openingCash;
     const runningBankBalances = new Map<string, number>();
     openingBankBalances.forEach((b) => {
@@ -297,7 +297,7 @@ class ReportService {
         logger.info(`Skipping opening_balance transaction in report: ${tx.id}, amount=${tx.amount}`);
         continue;
       }
-      
+
       // IMPORTANT: Skip purchase_payment and expense transactions to avoid double counting
       // These will be processed separately from purchases and expenses arrays to ensure correct subtraction
       if (tx.source === "purchase_payment" || tx.source === "expense") {
@@ -309,16 +309,16 @@ class ReportService {
       // Use the transaction's date field (not createdAt) as it represents the actual transaction date
       // Database stores dates in UTC, so we extract UTC date components for correct comparison
       const txDate = tx.date ? new Date(tx.date) : new Date(tx.createdAt);
-      
+
       // Extract date components (accounting for UTC storage)
       const { year: txYear, month: txMonth, day: txDay } = extractDateComponents(txDate);
       const txDateOnly = new Date(txYear, txMonth, txDay, 12, 0, 0, 0);
-      
+
       const reportYear = dateObj.getFullYear();
       const reportMonth = dateObj.getMonth();
       const reportDay = dateObj.getDate();
       const reportDateOnly = new Date(reportYear, reportMonth, reportDay, 12, 0, 0, 0);
-      
+
       // Skip transactions that don't match the report date
       if (txDateOnly.getTime() !== reportDateOnly.getTime()) {
         logger.info(`Skipping transaction ${tx.id} - date mismatch: txDate=${txYear}-${String(txMonth + 1).padStart(2, '0')}-${String(txDay).padStart(2, '0')}, reportDate=${reportYear}-${String(reportMonth + 1).padStart(2, '0')}-${String(reportDay).padStart(2, '0')}`);
@@ -332,7 +332,7 @@ class ReportService {
       // Determine transaction type and description
       let txType = "Transaction";
       let description = tx.description || "";
-      
+
       if (tx.source === "sale" || tx.source === "sale_payment") {
         txType = "Sale";
         const sale = await prisma.sale.findUnique({ where: { id: tx.sourceId || "" }, include: { customer: true } }).catch((): null => null);
@@ -367,9 +367,12 @@ class ReportService {
         if (expense) {
           description = `Expense - ${expense.category}${expense.description ? `: ${expense.description}` : ""}`;
         }
-      } else if (tx.source?.includes("opening_balance") || tx.source === "add_opening_balance") {
-        txType = "Opening Balance Addition";
-        description = tx.description || "Opening Balance Addition";
+      } else if (tx.source?.includes("opening_balance") || tx.source === "add_opening_balance" || tx.source === "transfer_in" || tx.source === "transfer_out") {
+        if (tx.source === "transfer_in") txType = "Transfer In";
+        else if (tx.source === "transfer_out") txType = "Transfer Out";
+        else txType = "Opening Balance Addition";
+
+        description = tx.description || txType;
       }
 
       // Calculate before and after balances
@@ -392,7 +395,7 @@ class ReportService {
         const current = runningBankBalances.get(tx.bankAccountId) || 0;
         if (type === "income") {
           runningBankBalances.set(tx.bankAccountId, current + amount);
-      } else {
+        } else {
           runningBankBalances.set(tx.bankAccountId, current - amount);
         }
       }
@@ -411,7 +414,7 @@ class ReportService {
       const { year, month, day } = extractDateComponents(finalTxDate);
       const finalTxDateOnly = new Date(year, month, day, 12, 0, 0, 0);
       const reportDateOnlyCheck = normalizeDateToNoon(dateObj);
-      
+
       if (finalTxDateOnly.getTime() === reportDateOnlyCheck.getTime()) {
         steps.push({
           step: stepNumber++,
@@ -518,7 +521,7 @@ class ReportService {
       },
       orderBy: { createdAt: "asc" },
     });
-    
+
     // Filter expenses by normalizing their dates to noon and comparing with startOfDay
     // Database stores dates in UTC, so we extract UTC date components for correct comparison
     const filteredExpenses = expenses.filter((expense) => {
@@ -541,7 +544,7 @@ class ReportService {
         } else {
           if (paymentDateOnly.getTime() !== startOfDay.getTime()) continue;
         }
-        
+
         const amount = Number(payment.amount || 0);
         const paymentType = payment.type || "cash";
         if (paymentType === "cash") {
@@ -552,7 +555,7 @@ class ReportService {
         }
       }
     }
-    
+
     // Process expenses to subtract from running balances
     for (const expense of filteredExpenses) {
       const amount = Number(expense.amount || 0);
@@ -564,7 +567,7 @@ class ReportService {
         runningBankBalances.set(expense.bankAccountId, current - amount);
       }
     }
-    
+
     // NOTE: Sales are already processed in the transactions loop above (as sale_payment BalanceTransactions)
     // We don't process sales here to avoid double counting
 
@@ -574,27 +577,21 @@ class ReportService {
     const openingBalanceAdditions = transactions
       .filter((tx: any) => {
         // Include transactions that are opening balance additions (not the initial opening_balance)
-        const isAddition = (tx.source === "add_opening_balance" || 
-                           (tx.source && tx.source.includes("opening_balance") && tx.source !== "opening_balance"));
-        if (!isAddition) return false;
-        
-        // IMPORTANT: Filter by date to ensure only additions for the selected date are included
-        // Database stores dates in UTC, so we extract UTC date components for correct comparison
-        const txDate = new Date(tx.date || tx.createdAt);
-        const { year: txYear, month: txMonth, day: txDay } = extractDateComponents(txDate);
-        const txDateOnly = new Date(txYear, txMonth, txDay, 12, 0, 0, 0);
-        
-        const reportYear = dateObj.getFullYear();
-        const reportMonth = dateObj.getMonth();
-        const reportDay = dateObj.getDate();
-        const reportDateOnly = new Date(reportYear, reportMonth, reportDay, 12, 0, 0, 0);
-        
-        // Only include if transaction date matches report date
-        return txDateOnly.getTime() === reportDateOnly.getTime();
+        const isAddition = (tx.source === "add_opening_balance" ||
+          (tx.source && tx.source.includes("opening_balance") && tx.source !== "opening_balance") ||
+          tx.source === "transfer_in" ||
+          tx.source === "transfer_out");
+        return isAddition;
       })
       .map((tx: any) => {
         // Use bankAccount from transaction if available, otherwise use bankMap
         const bankAccount = tx.bankAccount || (tx.bankAccountId ? bankMap.get(tx.bankAccountId) : null);
+        let txDescription = tx.description;
+        if (!txDescription) {
+          if (tx.source === "transfer_in") txDescription = "Transfer In";
+          else if (tx.source === "transfer_out") txDescription = "Transfer Out";
+          else txDescription = "Opening Balance Addition";
+        }
         return {
           id: tx.id,
           date: tx.date || tx.createdAt,
@@ -604,7 +601,7 @@ class ReportService {
           paymentType: tx.paymentType || "cash",
           bankAccountId: tx.bankAccountId,
           bankAccount: bankAccount,
-          description: tx.description || "Opening Balance Addition",
+          description: txDescription,
           userName: tx.userName,
           source: tx.source,
           beforeBalance: tx.beforeBalance ? Number(tx.beforeBalance) : null,
@@ -652,15 +649,16 @@ class ReportService {
       },
       openingBalanceAdditions, // Opening balance additions for this date
       steps, // Step-by-step transactions
+      transactions: steps, // For backward compatibility with getDateRangeReport
       summary: {
-      sales: {
+        sales: {
           count: sales.length,
           // Calculate total from payments that occurred on this date
           total: sales.reduce((sum, s) => {
             const payments = (s.payments as Array<{ type?: string; amount?: number; date?: string }> | null) || [];
             if (payments.length === 0) {
-            // Skip sales with no payments - don't include in total
-            return sum;
+              // Skip sales with no payments - don't include in total
+              return sum;
             }
             // Sum only payments that occurred on this date
             return sum + payments.reduce((paymentSum, payment) => {
@@ -673,8 +671,8 @@ class ReportService {
               return paymentSum;
             }, 0);
           }, 0),
-      },
-      purchases: {
+        },
+        purchases: {
           count: purchases.length,
           // Calculate total from payments that occurred on this date
           total: purchases.reduce((sum, p) => {
@@ -694,10 +692,20 @@ class ReportService {
               return paymentSum;
             }, 0);
           }, 0),
-      },
-      expenses: {
-        count: filteredExpenses.length,
+        },
+        expenses: {
+          count: filteredExpenses.length,
           total: filteredExpenses.reduce((sum, e) => sum + Number(e.amount || 0), 0),
+        },
+        transferIn: {
+          total: transactions.filter(tx => tx.source === "transfer_in").reduce((sum, tx) => sum + Number(tx.amount || 0), 0),
+          cash: transactions.filter(tx => tx.source === "transfer_in" && tx.paymentType === "cash").reduce((sum, tx) => sum + Number(tx.amount || 0), 0),
+          bank_transfer: transactions.filter(tx => tx.source === "transfer_in" && tx.paymentType === "bank_transfer").reduce((sum, tx) => sum + Number(tx.amount || 0), 0),
+        },
+        transferOut: {
+          total: transactions.filter(tx => tx.source === "transfer_out").reduce((sum, tx) => sum + Number(tx.amount || 0), 0),
+          cash: transactions.filter(tx => tx.source === "transfer_out" && tx.paymentType === "cash").reduce((sum, tx) => sum + Number(tx.amount || 0), 0),
+          bank_transfer: transactions.filter(tx => tx.source === "transfer_out" && tx.paymentType === "bank_transfer").reduce((sum, tx) => sum + Number(tx.amount || 0), 0),
         },
       },
       sales: {
@@ -722,7 +730,7 @@ class ReportService {
                 if (seenSalePayments.has(paymentKey)) {
                   return null;
                 }
-                
+
                 const paymentDateOnly = payment.date ? parsePaymentDate(payment.date) : null;
                 if (!paymentDateOnly) {
                   // Fallback to sale date
@@ -900,7 +908,7 @@ class ReportService {
                 if (seenPurchasePayments.has(paymentKey)) {
                   return null;
                 }
-                
+
                 const paymentDateOnly = payment.date ? parsePaymentDate(payment.date) : null;
                 if (!paymentDateOnly) {
                   // Fallback to purchase date
@@ -1022,7 +1030,7 @@ class ReportService {
   async getMonthlyReport(year: number, month: number) {
     const startDate = new Date(year, month - 1, 1);
     const endDate = new Date(year, month, 0, 23, 59, 59, 999);
-    
+
     return this.getDateRangeReport(formatLocalYMD(startDate), formatLocalYMD(endDate));
   }
 
@@ -1035,7 +1043,7 @@ class ReportService {
     // Payment dates stored as "2026-01-19T23:22:06.835Z" should be treated as "2026-01-19", not "2026-01-20"
     const extractDateString = (dateValue: Date | string | null | undefined): string | null => {
       if (!dateValue) return null;
-      
+
       if (dateValue instanceof Date) {
         // If it's a Date object, check if UTC and local dates differ (timezone conversion needed)
         // Use extractDateComponents which handles timezone conversion correctly
@@ -1083,7 +1091,7 @@ class ReportService {
     // It should NOT include manual additions made during the date range
     // Always use previous day's closing balance, not the openingBalance record (which might have additions)
     const previousClosing = await dailyClosingBalanceService.getPreviousDayClosingBalance(normalizedStartDate);
-    
+
     let openingBalance: any;
     if (previousClosing) {
       // Use previous day's closing as opening balance for start date (baseline)
@@ -1129,17 +1137,17 @@ class ReportService {
       startDate: normalizedStartDate,
       endDate: normalizedEndDate,
     });
-    
+
     // IMPORTANT: Filter transactions by date field to ensure only transactions within the date range are included
     // Use date field (not createdAt) for filtering to match the intended transaction date
     // Compare date strings directly (YYYY-MM-DD) to avoid timezone conversion issues
     const transactions = transactionsRaw.filter((tx: any) => {
       if (!tx.date) return false;
-      
+
       // Extract date string (YYYY-MM-DD) from date field to avoid timezone conversion issues
       const txDateStr = extractDateString(tx.date);
       if (!txDateStr) return false;
-      
+
       // Compare date strings directly to avoid timezone conversion issues
       // Use normalized dates for comparison (e.g., "2026-01-19")
       return txDateStr >= normalizedStartDate && txDateStr <= normalizedEndDate;
@@ -1170,10 +1178,10 @@ class ReportService {
         const { year, month, day } = extractDateComponents(txDate);
         const dateStr = `${year}-${month}-${day}`;
         const amount = Number(tx.amount || 0).toFixed(2);
-        
+
         // Create key with source, sourceId, amount, and date for matching
         const key = `${tx.source}-${tx.sourceId}-${amount}-${dateStr}`;
-        
+
         // Store the first matching transaction (ordered by createdAt ASC)
         if (!balanceTxMapBySourceId.has(key)) {
           balanceTxMapBySourceId.set(key, tx);
@@ -1204,14 +1212,14 @@ class ReportService {
 
     // Build step-by-step transaction list
     const steps: any[] = [];
-    
+
     const openingCash = Math.max(0, Number(openingBalance.cashBalance || 0)); // Ensure non-negative
     const openingBankBalances = (openingBalance.bankBalances as Array<{ bankAccountId: string; balance: number }>) || [];
-    
+
     // Calculate total opening balance (cash + sum of all banks)
     const totalBankBalance = openingBankBalances.reduce((sum, b) => sum + Math.max(0, Number(b.balance || 0)), 0);
     const totalOpeningBalance = openingCash + totalBankBalance;
-    
+
     let runningCash = openingCash;
     const runningBankBalances = new Map<string, number>();
     openingBankBalances.forEach((b) => {
@@ -1262,7 +1270,7 @@ class ReportService {
 
       let txType = "Transaction";
       let description = tx.description || "";
-      
+
       if (tx.source === "sale" || tx.source === "sale_payment") {
         txType = "Sale";
         const sale = await prisma.sale.findUnique({ where: { id: tx.sourceId || "" }, include: { customer: true } }).catch((): null => null);
@@ -1297,9 +1305,12 @@ class ReportService {
         if (expense) {
           description = `Expense - ${expense.category}${expense.description ? `: ${expense.description}` : ""}`;
         }
-      } else if (tx.source?.includes("opening_balance") || tx.source === "add_opening_balance") {
-        txType = "Opening Balance Addition";
-        description = tx.description || "Opening Balance Addition";
+      } else if (tx.source?.includes("opening_balance") || tx.source === "add_opening_balance" || tx.source === "transfer_in" || tx.source === "transfer_out") {
+        if (tx.source === "transfer_in") txType = "Transfer In";
+        else if (tx.source === "transfer_out") txType = "Transfer Out";
+        else txType = "Opening Balance Addition";
+
+        description = tx.description || txType;
       }
 
       const cashBefore = runningCash;
@@ -1379,16 +1390,16 @@ class ReportService {
     // Include payment index to handle multiple payments with same amount/date
     const addedTransactionKeys = new Set<string>();
     const paymentIndexMap = new Map<string, number>(); // Track payment index per purchase/sale
-    
+
     // Track transactions by sourceId to count payment indices
     const transactionCounts = new Map<string, number>();
-    
+
     for (const tx of transactions) {
       if (tx.source === "sale_payment" || tx.source === "purchase_payment") {
         // Use extractDateString to get consistent date format (YYYY-MM-DD)
         const dateStr = extractDateString(tx.date || tx.createdAt);
         if (!dateStr) continue; // Skip if date can't be extracted
-        
+
         const baseKey = `${tx.source}-${tx.sourceId || ""}`;
         // Count how many transactions we've seen for this purchase/sale
         const count = transactionCounts.get(baseKey) || 0;
@@ -1419,13 +1430,13 @@ class ReportService {
         // Use amount and date to match with BalanceTransaction
         const dateStr = paymentDateStr;
         const amount = Number(payment.amount || 0);
-        
+
         // Check if ANY payment with this sourceId, amount, and date was already added
         // Check all possible indices (0 to a reasonable maximum) to account for counter-based indices
         let alreadyAdded = false;
         const amountStr = amount.toFixed(2);
         const prefix = `sale_payment-${sale.id}-${amountStr}-${dateStr}-`;
-        
+
         // Check all possible indices
         for (let idx = 0; idx < Math.max(payments.length * 2, 50); idx++) {
           if (addedTransactionKeys.has(`${prefix}${idx}`)) {
@@ -1433,7 +1444,7 @@ class ReportService {
             break;
           }
         }
-        
+
         if (alreadyAdded) {
           continue; // This payment was already added from BalanceTransactions
         }
@@ -1546,13 +1557,13 @@ class ReportService {
         // Use amount and date to match with BalanceTransaction
         const dateStr = paymentDateStr;
         const amount = Number(payment.amount || 0);
-        
+
         // Check if ANY payment with this sourceId, amount, and date was already added
         // Check all possible indices (0 to a reasonable maximum) to account for counter-based indices
         let alreadyAdded = false;
         const amountStr = amount.toFixed(2);
         const prefix = `purchase_payment-${purchase.id}-${amountStr}-${dateStr}-`;
-        
+
         // Check all possible indices
         for (let idx = 0; idx < Math.max(payments.length * 2, 50); idx++) {
           if (addedTransactionKeys.has(`${prefix}${idx}`)) {
@@ -1560,7 +1571,7 @@ class ReportService {
             break;
           }
         }
-        
+
         if (alreadyAdded) {
           continue; // This payment was already added from BalanceTransactions
         }
@@ -1756,7 +1767,7 @@ class ReportService {
     const allExpenses = await prisma.expense.findMany({
       orderBy: { createdAt: "asc" },
     });
-    
+
     // Filter expenses by date string comparison to avoid timezone conversion issues
     const expenses = allExpenses.filter((expense) => {
       const expenseDateStr = extractDateString(expense.date);
@@ -1767,17 +1778,21 @@ class ReportService {
     const openingBalanceAdditions = transactions
       .filter((tx: any) => {
         // Include transactions that are opening balance additions (not the initial opening_balance)
-        const isAddition = (tx.source === "add_opening_balance" || 
-                           (tx.source && tx.source.includes("opening_balance") && tx.source !== "opening_balance"));
-        if (!isAddition) return false;
-        
-        // Check if transaction date is within the range using string comparison to avoid timezone issues
-        const txDateStr = extractDateString(tx.date);
-        return txDateStr ? txDateStr >= normalizedStartDate && txDateStr <= normalizedEndDate : false;
+        const isAddition = (tx.source === "add_opening_balance" ||
+          (tx.source && tx.source.includes("opening_balance") && tx.source !== "opening_balance") ||
+          tx.source === "transfer_in" ||
+          tx.source === "transfer_out");
+        return isAddition;
       })
       .map((tx: any) => {
         // Use bankAccount from transaction if available, otherwise use bankMap
         const bankAccount = tx.bankAccount || (tx.bankAccountId ? bankMap.get(tx.bankAccountId) : null);
+        let txDescription = tx.description;
+        if (!txDescription) {
+          if (tx.source === "transfer_in") txDescription = "Transfer In";
+          else if (tx.source === "transfer_out") txDescription = "Transfer Out";
+          else txDescription = "Opening Balance Addition";
+        }
         return {
           id: tx.id,
           date: tx.date || tx.createdAt,
@@ -1787,7 +1802,7 @@ class ReportService {
           paymentType: tx.paymentType || "cash",
           bankAccountId: tx.bankAccountId,
           bankAccount: bankAccount,
-          description: tx.description || "Opening Balance Addition",
+          description: txDescription,
           userName: tx.userName,
           source: tx.source,
           beforeBalance: tx.beforeBalance ? Number(tx.beforeBalance) : null,
@@ -1799,7 +1814,7 @@ class ReportService {
 
     // Generate daily reports first to get accurate closing balance for each date
     const dailyReports = await this.generateDailyReportsForRange(normalizedStartDate, normalizedEndDate);
-    
+
     // Update summary closing balance to use the last day's closing balance from daily reports
     // This ensures the summary closing balance matches the last day's calculated closing balance
     if (dailyReports.length > 0) {
@@ -1945,13 +1960,13 @@ class ReportService {
                 if (seenSalePayments.has(paymentKey)) {
                   return null;
                 }
-                
+
                 // Check if payment date is in range using string comparison to avoid timezone issues
                 const paymentDateStr = extractDateString(payment.date || sale.date);
                 if (!paymentDateStr || paymentDateStr < normalizedStartDate || paymentDateStr > normalizedEndDate) {
                   return null;
                 }
-                
+
                 seenSalePayments.add(paymentKey);
                 // Get createdAt from balance transactions for this payment
                 // IMPORTANT: Preserve UTC time from payment.date (don't convert to local time)
@@ -2080,13 +2095,13 @@ class ReportService {
                 if (seenPurchasePayments.has(paymentKey)) {
                   return null;
                 }
-                
+
                 // Check if payment date is in range using string comparison to avoid timezone issues
                 const paymentDateStr = extractDateString(payment.date || purchase.date);
                 if (!paymentDateStr || paymentDateStr < normalizedStartDate || paymentDateStr > normalizedEndDate) {
                   return null;
                 }
-                
+
                 seenPurchasePayments.add(paymentKey);
                 // Get createdAt from balance transactions for this payment
                 // IMPORTANT: Preserve UTC time from payment.date (don't convert to local time)
@@ -2213,7 +2228,7 @@ class ReportService {
 
     const dailyReports: any[] = [];
     const currentDate = new Date(start);
-    
+
     // Generate a daily report for each day in the range
     while (currentDate.getTime() <= end.getTime()) {
       const dateStr = formatLocalYMD(currentDate);
@@ -2224,7 +2239,7 @@ class ReportService {
         logger.error(`Error generating daily report for ${dateStr}:`, error);
         // Continue with other dates even if one fails
       }
-      
+
       // Move to next day
       currentDate.setDate(currentDate.getDate() + 1);
     }
@@ -2344,7 +2359,7 @@ class ReportService {
       const report = await this.getDailyReport(date);
       const settings = await prisma.shopSettings.findFirst();
 
-      const doc = new PDFDocument({ 
+      const doc = new PDFDocument({
         margin: 50,
         size: 'A4',
         info: {
@@ -2405,7 +2420,7 @@ class ReportService {
       // Professional Summary Table with Payment Breakdown
       const summaryTableTop = doc.y;
       const summaryRowHeight = 14;
-      
+
       // Helper to draw summary cell
       const drawSummaryCell = (x: number, y: number, width: number, height: number, fillColor?: string) => {
         if (fillColor) {
@@ -2420,16 +2435,16 @@ class ReportService {
       // Summary table columns (Item, Cash, Bank, Total - Card removed)
       const sumColX = [50, 200, 320, 440];
       const sumColWidths = [150, 120, 120, 105];
-      
+
       // Header row - dark blue background with white text for better visibility
       doc.fontSize(9).font('Helvetica-Bold');
-      
+
       // Draw all header cells first with background
       drawSummaryCell(sumColX[0], summaryTableTop, sumColWidths[0], summaryRowHeight, '#1e40af');
       drawSummaryCell(sumColX[1], summaryTableTop, sumColWidths[1], summaryRowHeight, '#1e40af');
       drawSummaryCell(sumColX[2], summaryTableTop, sumColWidths[2], summaryRowHeight, '#1e40af');
       drawSummaryCell(sumColX[3], summaryTableTop, sumColWidths[3], summaryRowHeight, '#1e40af');
-      
+
       // Now add white text on top of the cells
       doc.fillColor('#ffffff');
       doc.text("Item", sumColX[0] + 5, summaryTableTop + 4, { width: sumColWidths[0] - 10 });
@@ -2464,10 +2479,12 @@ class ReportService {
       currentRow++;
 
       // Additional Balance Added Row
-      const additionalTotal = report.openingBalanceAdditions?.reduce((sum: number, add: any) => sum + Number(add.amount || 0), 0) || 0;
-      if (additionalTotal > 0) {
-        const additionalCash = report.openingBalanceAdditions?.filter((add: any) => add.paymentType === "cash").reduce((sum: number, add: any) => sum + Number(add.amount || 0), 0) || 0;
-        const additionalBank = report.openingBalanceAdditions?.filter((add: any) => add.paymentType === "bank_transfer").reduce((sum: number, add: any) => sum + Number(add.amount || 0), 0) || 0;
+      const filteredAdditions = (report.openingBalanceAdditions || []).filter((add: any) => add.source !== "transfer_in" && add.source !== "transfer_out");
+      const additionalTotal = filteredAdditions.reduce((sum: number, add: any) => sum + (add.type === "expense" ? -Number(add.amount || 0) : Number(add.amount || 0)), 0);
+
+      if (additionalTotal > 0 || additionalTotal < 0) {
+        const additionalCash = filteredAdditions.filter((add: any) => add.paymentType === "cash").reduce((sum: number, add: any) => sum + (add.type === "expense" ? -Number(add.amount || 0) : Number(add.amount || 0)), 0);
+        const additionalBank = filteredAdditions.filter((add: any) => add.paymentType === "bank_transfer").reduce((sum: number, add: any) => sum + (add.type === "expense" ? -Number(add.amount || 0) : Number(add.amount || 0)), 0);
         drawSummaryCell(sumColX[0], summaryTableTop + (currentRow * summaryRowHeight), sumColWidths[0], summaryRowHeight);
         doc.font('Helvetica-Bold').fillColor('#1f2937');
         doc.text("Added", sumColX[0] + 5, summaryTableTop + (currentRow * summaryRowHeight) + 4, { width: sumColWidths[0] - 10 });
@@ -2508,6 +2525,50 @@ class ReportService {
       doc.text(formatCurrency(salesTotal), sumColX[3] + 5, summaryTableTop + (currentRow * summaryRowHeight) + 4, { width: sumColWidths[3] - 10, align: 'right' });
       doc.font('Helvetica').fillColor('#000000');
       currentRow++;
+
+      // Transfer In Row
+      const transferIn = report.summary?.transferIn || { total: 0, cash: 0, bank_transfer: 0 };
+      if (transferIn.total > 0) {
+        drawSummaryCell(sumColX[0], summaryTableTop + (currentRow * summaryRowHeight), sumColWidths[0], summaryRowHeight);
+        doc.font('Helvetica-Bold').fillColor('#1f2937');
+        doc.text("Transfer In", sumColX[0] + 5, summaryTableTop + (currentRow * summaryRowHeight) + 4, { width: sumColWidths[0] - 10 });
+        doc.font('Helvetica').fillColor('#000000');
+        drawSummaryCell(sumColX[1], summaryTableTop + (currentRow * summaryRowHeight), sumColWidths[1], summaryRowHeight);
+        doc.fillColor('#16a34a');
+        doc.text(formatCurrency(transferIn.cash), sumColX[1] + 5, summaryTableTop + (currentRow * summaryRowHeight) + 4, { width: sumColWidths[1] - 10, align: 'right' });
+        doc.fillColor('#000000');
+        drawSummaryCell(sumColX[2], summaryTableTop + (currentRow * summaryRowHeight), sumColWidths[2], summaryRowHeight);
+        doc.fillColor('#16a34a');
+        doc.text(formatCurrency(transferIn.bank_transfer), sumColX[2] + 5, summaryTableTop + (currentRow * summaryRowHeight) + 4, { width: sumColWidths[2] - 10, align: 'right' });
+        doc.fillColor('#000000');
+        drawSummaryCell(sumColX[3], summaryTableTop + (currentRow * summaryRowHeight), sumColWidths[3], summaryRowHeight);
+        doc.font('Helvetica-Bold').fillColor('#16a34a');
+        doc.text(formatCurrency(transferIn.total), sumColX[3] + 5, summaryTableTop + (currentRow * summaryRowHeight) + 4, { width: sumColWidths[3] - 10, align: 'right' });
+        doc.font('Helvetica').fillColor('#000000');
+        currentRow++;
+      }
+
+      // Transfer Out Row
+      const transferOut = report.summary?.transferOut || { total: 0, cash: 0, bank_transfer: 0 };
+      if (transferOut.total > 0) {
+        drawSummaryCell(sumColX[0], summaryTableTop + (currentRow * summaryRowHeight), sumColWidths[0], summaryRowHeight);
+        doc.font('Helvetica-Bold').fillColor('#1f2937');
+        doc.text("Transfer Out", sumColX[0] + 5, summaryTableTop + (currentRow * summaryRowHeight) + 4, { width: sumColWidths[0] - 10 });
+        doc.font('Helvetica').fillColor('#000000');
+        drawSummaryCell(sumColX[1], summaryTableTop + (currentRow * summaryRowHeight), sumColWidths[1], summaryRowHeight);
+        doc.fillColor('#ef4444');
+        doc.text(`-${formatCurrency(transferOut.cash)}`, sumColX[1] + 5, summaryTableTop + (currentRow * summaryRowHeight) + 4, { width: sumColWidths[1] - 10, align: 'right' });
+        doc.fillColor('#000000');
+        drawSummaryCell(sumColX[2], summaryTableTop + (currentRow * summaryRowHeight), sumColWidths[2], summaryRowHeight);
+        doc.fillColor('#ef4444');
+        doc.text(`-${formatCurrency(transferOut.bank_transfer)}`, sumColX[2] + 5, summaryTableTop + (currentRow * summaryRowHeight) + 4, { width: sumColWidths[2] - 10, align: 'right' });
+        doc.fillColor('#000000');
+        drawSummaryCell(sumColX[3], summaryTableTop + (currentRow * summaryRowHeight), sumColWidths[3], summaryRowHeight);
+        doc.font('Helvetica-Bold').fillColor('#ef4444');
+        doc.text(`-${formatCurrency(transferOut.total)}`, sumColX[3] + 5, summaryTableTop + (currentRow * summaryRowHeight) + 4, { width: sumColWidths[3] - 10, align: 'right' });
+        doc.font('Helvetica').fillColor('#000000');
+        currentRow++;
+      }
 
       // Purchases Row
       const purchasesCash = report.purchases?.cash || 0;
@@ -2584,10 +2645,10 @@ class ReportService {
 
       // Detailed Transactions Table (Using steps array with balance before/after)
       const transactionSteps = report.steps || [];
-      
+
       if (transactionSteps.length > 0) {
         if (doc.y > 680) doc.addPage();
-        
+
         // Helper function to draw cell borders
         const drawCellBorders = (x: number, y: number, width: number, height: number) => {
           // Top, Right, Bottom, Left borders
@@ -2596,7 +2657,7 @@ class ReportService {
           doc.moveTo(x + width, y + height).lineTo(x, y + height).stroke('#000000'); // Bottom
           doc.moveTo(x, y + height).lineTo(x, y).stroke('#000000'); // Left
         };
-        
+
         // Professional table header - clear and visible with dark background and white text
         doc.fontSize(8).font('Helvetica-Bold');
         const tableTop = doc.y;
@@ -2605,13 +2666,13 @@ class ReportService {
         // Expanded columns to use more space on the right
         const colX = [50, 100, 135, 220, 270, 340, 410, 480];
         const colWidths = [50, 35, 85, 50, 70, 70, 70, 70];
-        
+
         // Draw header with dark blue background for better visibility
         colX.forEach((x, idx) => {
           doc.rect(x, tableTop, colWidths[idx], rowHeight).fill('#1e40af');
           drawCellBorders(x, tableTop, colWidths[idx], rowHeight);
         });
-        
+
         // Header text - white text on dark background for maximum visibility
         // Columns: Time, Type, Description, By, Pay, Before, After, Change (Amount removed)
         doc.fillColor('#ffffff');
@@ -2624,9 +2685,9 @@ class ReportService {
         doc.text("After", colX[6] + 3, tableTop + 4, { width: colWidths[6] - 6, align: 'right' });
         doc.text("Change", colX[7] + 3, tableTop + 4, { width: colWidths[7] - 6, align: 'right' });
         doc.fillColor('#000000');
-        
+
         doc.y = tableTop + rowHeight;
-        
+
         // Table rows - professional spacing
         doc.font('Helvetica').fontSize(7);
         transactionSteps.forEach((step: any, index: number) => {
@@ -2662,51 +2723,51 @@ class ReportService {
             timeStr = `${hours}:${minutes}`;
           }
           const typeColor = step.type === "Sale" ? '#16a34a' : step.type === "Purchase" ? '#ea580c' : step.type === "Expense" ? '#dc2626' : step.type === "Opening Balance" ? '#3b82f6' : '#9333ea';
-          
+
           const currentY = doc.y;
-          
+
           // Alternate row background for better readability
           if (index % 2 === 0) {
             colX.forEach((x, idx) => {
               doc.rect(x, currentY, colWidths[idx], rowHeight).fill('#f9fafb');
             });
           }
-          
+
           // Draw cell borders for this row
           colX.forEach((x, idx) => {
             drawCellBorders(x, currentY, colWidths[idx], rowHeight);
           });
-          
+
           // Time
           doc.fillColor('#1f2937');
           doc.text(timeStr, colX[0] + 3, currentY + 4, { width: colWidths[0] - 6 });
-          
+
           // Type (compact)
           doc.fillColor(typeColor);
           const typeShort = step.type === "Opening Balance Addition" ? "Add" : step.type === "Opening Balance" ? "Open" : step.type.substring(0, 5);
           doc.text(typeShort, colX[1] + 3, currentY + 4, { width: colWidths[1] - 6 });
           doc.fillColor('#000000');
-          
+
           // Description (truncated to fit)
           let description = step.description || "";
           if (description.length > 18) description = description.substring(0, 15) + "...";
           doc.fillColor('#1f2937');
           doc.text(description, colX[2] + 3, currentY + 4, { width: colWidths[2] - 6 });
           doc.fillColor('#000000');
-          
+
           // User name (who did it)
           const userName = step.userName || "System";
           doc.fillColor('#4b5563');
           doc.text(userName.length > 7 ? userName.substring(0, 5) + ".." : userName, colX[3] + 3, currentY + 4, { width: colWidths[3] - 6 });
           doc.fillColor('#000000');
-          
+
           // Payment type
           const paymentType = step.paymentType || "cash";
           const paymentText = paymentType === "bank_transfer" ? "Bank" : paymentType === "cash" ? "Cash" : "Card";
           doc.fillColor('#4b5563');
           doc.text(paymentText, colX[4] + 3, currentY + 4, { width: colWidths[4] - 6 });
           doc.fillColor('#000000');
-          
+
           // Balance Before - Show according to payment type (Cash or Bank)
           let balanceBefore = 0;
           if (paymentType === "cash") {
@@ -2727,7 +2788,7 @@ class ReportService {
           doc.fillColor('#6b7280');
           doc.text(balanceBefore.toFixed(0), colX[5] + 3, currentY + 4, { width: colWidths[5] - 6, align: 'right' });
           doc.fillColor('#000000');
-          
+
           // Balance After - Show according to payment type (Cash or Bank)
           let balanceAfter = 0;
           if (paymentType === "cash") {
@@ -2748,7 +2809,7 @@ class ReportService {
           doc.fillColor('#1f2937');
           doc.text(balanceAfter.toFixed(0), colX[6] + 3, currentY + 4, { width: colWidths[6] - 6, align: 'right' });
           doc.fillColor('#000000');
-          
+
           // Change
           const change = balanceAfter - balanceBefore;
           const changeColor = change >= 0 ? '#16a34a' : '#dc2626';
@@ -2756,10 +2817,10 @@ class ReportService {
           const changeText = `${change >= 0 ? '+' : ''}${Math.abs(change).toFixed(0)}`;
           doc.text(changeText, colX[7] + 3, currentY + 4, { width: colWidths[7] - 6, align: 'right' });
           doc.fillColor('#000000');
-          
+
           doc.y = currentY + rowHeight;
         });
-        
+
         // Table footer border - extended to match wider table
         const tableEndX = colX[colX.length - 1] + colWidths[colWidths.length - 1];
         doc.moveTo(50, doc.y).lineTo(tableEndX, doc.y).stroke('#000000');

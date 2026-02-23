@@ -170,6 +170,17 @@ export const createPurchaseSchema = Joi.object({
     .messages({
       "any.only": "Tax type must be either 'percent' or 'value'",
     }),
+  deliveryCharges: Joi.number()
+    .optional()
+    .min(0)
+    .max(10000000)
+    .default(0)
+    .allow(null)
+    .messages({
+      "number.base": "Delivery charges must be a number",
+      "number.min": "Delivery charges cannot be negative",
+      "number.max": "Delivery charges amount is too large",
+    }),
   total: Joi.number()
     .min(0)
     .required()
@@ -334,6 +345,29 @@ export const updatePurchaseSchema = Joi.object({
     .messages({
       "any.only": "Discount type must be either 'percent' or 'value'",
     }),
+  additionalDiscount: Joi.number()
+    .optional()
+    .min(0)
+    .when("additionalDiscountType", {
+      is: "percent",
+      then: Joi.number().max(100).messages({
+        "number.max": "Additional discount percentage cannot exceed 100%",
+      }),
+      otherwise: Joi.number().max(10000000).messages({
+        "number.max": "Additional discount amount is too large",
+      }),
+    })
+    .allow(null)
+    .messages({
+      "number.base": "Additional discount must be a number",
+      "number.min": "Additional discount cannot be negative",
+    }),
+  additionalDiscountType: Joi.string()
+    .optional()
+    .valid("percent", "value")
+    .messages({
+      "any.only": "Additional discount type must be either 'percent' or 'value'",
+    }),
   tax: Joi.number()
     .optional()
     .min(0)
@@ -358,6 +392,27 @@ export const updatePurchaseSchema = Joi.object({
     .default("percent")
     .messages({
       "any.only": "Tax type must be either 'percent' or 'value'",
+    }),
+  deliveryCharges: Joi.number()
+    .optional()
+    .min(0)
+    .max(10000000)
+    .default(0)
+    .allow(null)
+    .messages({
+      "number.base": "Delivery charges must be a number",
+      "number.min": "Delivery charges cannot be negative",
+      "number.max": "Delivery charges amount is too large",
+    }),
+  additionalDeliveryCharges: Joi.number()
+    .optional()
+    .min(0)
+    .max(10000000)
+    .allow(null)
+    .messages({
+      "number.base": "Additional delivery charges must be a number",
+      "number.min": "Additional delivery charges cannot be negative",
+      "number.max": "Additional delivery charges amount is too large",
     }),
   total: Joi.number().optional().min(0),
   payments: Joi.array()

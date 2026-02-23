@@ -67,16 +67,18 @@ export default function PurchaseView() {
   const totalPaid = payments.reduce((sum, p) => sum + (p?.amount || 0), 0);
 
   // Calculate actual discount and tax amounts
-  const discountType = (purchase as any).discountType || "percent";
+  const discountType = (purchase as any).discountType || "value";
   const taxType = (purchase as any).taxType || "percent";
 
   const actualDiscountAmount = discountType === "value"
-    ? (purchase as any).discount
-    : (purchase.subtotal * ((purchase as any).discount || 0)) / 100;
+    ? Number((purchase as any).discount || 0)
+    : (purchase.subtotal * (Number((purchase as any).discount) || 0)) / 100;
 
   const actualTaxAmount = taxType === "value"
-    ? purchase.tax
-    : ((purchase.subtotal - actualDiscountAmount) * purchase.tax) / 100;
+    ? Number(purchase.tax || 0)
+    : ((purchase.subtotal - actualDiscountAmount) * Number(purchase.tax || 0)) / 100;
+
+  const deliveryCharges = Number((purchase as any).deliveryCharges || 0);
 
   return (
     <>
@@ -195,20 +197,20 @@ export default function PurchaseView() {
                   <span>Subtotal:</span>
                   <span>Rs. {purchase.subtotal.toFixed(2)}</span>
                 </div>
-                {actualDiscountAmount > 0 && (
-                  <div className="flex justify-between text-gray-600 dark:text-gray-400">
-                    <span>Discount{discountType === "value" ? " (Rs)" : ` (${(purchase as any).discount}%)`}:</span>
-                    <span className="text-red-600 dark:text-red-400">
-                      - Rs. {actualDiscountAmount.toFixed(2)}
-                    </span>
-                  </div>
-                )}
-                {actualTaxAmount > 0 && (
-                  <div className="flex justify-between text-gray-600 dark:text-gray-400">
-                    <span>Tax{taxType === "value" ? " (Rs)" : ` (${purchase.tax}%)`}:</span>
-                    <span>+ Rs. {actualTaxAmount.toFixed(2)}</span>
-                  </div>
-                )}
+                <div className="flex justify-between text-gray-600 dark:text-gray-400">
+                  <span>Discount{discountType === "value" ? " (Rs)" : ` (${Number((purchase as any).discount || 0)}%)`}:</span>
+                  <span className="text-red-600 dark:text-red-400">
+                    - Rs. {actualDiscountAmount.toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex justify-between text-gray-600 dark:text-gray-400">
+                  <span>Tax{taxType === "value" ? " (Rs)" : ` (${Number(purchase.tax || 0)}%)`}:</span>
+                  <span>+ Rs. {actualTaxAmount.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-gray-600 dark:text-gray-400">
+                  <span>Delivery Charges:</span>
+                  <span>+ Rs. {deliveryCharges.toFixed(2)}</span>
+                </div>
                 <div className="flex justify-between text-lg font-semibold text-gray-800 dark:text-white pt-2 border-t border-gray-200 dark:border-gray-700">
                   <span>Total:</span>
                   <span>Rs. {purchase.total.toFixed(2)}</span>
@@ -300,18 +302,18 @@ export default function PurchaseView() {
               <span>Subtotal:</span>
               <span>Rs. {purchase.subtotal.toFixed(2)}</span>
             </div>
-            {actualDiscountAmount > 0 && (
-              <div className="totals-row">
-                <span>Discount:</span>
-                <span>- Rs. {actualDiscountAmount.toFixed(2)}</span>
-              </div>
-            )}
-            {actualTaxAmount > 0 && (
-              <div className="totals-row">
-                <span>Tax:</span>
-                <span>+ Rs. {actualTaxAmount.toFixed(2)}</span>
-              </div>
-            )}
+            <div className="totals-row">
+              <span>Discount:</span>
+              <span>- Rs. {actualDiscountAmount.toFixed(2)}</span>
+            </div>
+            <div className="totals-row">
+              <span>Tax:</span>
+              <span>+ Rs. {actualTaxAmount.toFixed(2)}</span>
+            </div>
+            <div className="totals-row">
+              <span>Delivery:</span>
+              <span>+ Rs. {deliveryCharges.toFixed(2)}</span>
+            </div>
             <div className="totals-row total-row">
               <span>Grand Total:</span>
               <span>Rs. {purchase.total.toFixed(2)}</span>

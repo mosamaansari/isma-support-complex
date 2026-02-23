@@ -186,6 +186,7 @@ class PurchaseService {
       discountType?: "percent" | "value";
       tax?: number;
       taxType?: "percent" | "value";
+      deliveryCharges?: number;
       total: number;
       payments: Array<{
         type: "cash" | "card" | "bank_transfer";
@@ -431,6 +432,7 @@ class PurchaseService {
         discountType: data.discountType || "percent",
         tax: data.tax || 0,
         taxType: data.taxType || "percent",
+        deliveryCharges: data.deliveryCharges || 0,
         total: data.total,
         payments: paymentsWithDate as any,
         remainingBalance: remainingBalance,
@@ -624,6 +626,7 @@ class PurchaseService {
       subtotal: Number(purchase.subtotal),
       discount: Number(purchase.discount),
       tax: Number(purchase.tax),
+      deliveryCharges: Number((purchase as any).deliveryCharges || 0),
       total: Number(purchase.total),
       remainingBalance: Number(purchase.remainingBalance),
       discountType: purchase.discountType || "percent",
@@ -668,8 +671,12 @@ class PurchaseService {
       subtotal?: number;
       discount?: number;
       discountType?: "percent" | "value";
+      additionalDiscount?: number;
+      additionalDiscountType?: "percent" | "value";
       tax?: number;
       taxType?: "percent" | "value";
+      deliveryCharges?: number;
+      additionalDeliveryCharges?: number;
       total?: number;
       payments?: Array<{
         type: "cash" | "card" | "bank_transfer";
@@ -706,6 +713,18 @@ class PurchaseService {
 
       if (daysDiff > 7) {
         throw new Error(`Cannot edit completed purchases older than 7 days. This purchase is ${daysDiff} days old.`);
+      }
+    }
+
+    // Prevent editing tax for ALL purchases (not just pending)
+    if (data.tax !== undefined || data.taxType !== undefined) {
+      const oldTax = Number(purchase.tax || 0);
+      const newTax = data.tax !== undefined ? Number(data.tax) : oldTax;
+      const oldTaxType = purchase.taxType || "percent";
+      const newTaxType = data.taxType || oldTaxType;
+
+      if (oldTax !== newTax || oldTaxType !== newTaxType) {
+        throw new Error("Cannot edit tax for purchases. Tax is fixed after creation.");
       }
     }
 
@@ -755,17 +774,8 @@ class PurchaseService {
         }
       }
 
-      // Prevent editing tax
-      if (data.tax !== undefined || data.taxType !== undefined) {
-        const oldTax = Number(purchase.tax || 0);
-        const newTax = data.tax !== undefined ? Number(data.tax) : oldTax;
-        const oldTaxType = purchase.taxType || "percent";
-        const newTaxType = data.taxType || oldTaxType;
-
-        if (oldTax !== newTax || oldTaxType !== newTaxType) {
-          throw new Error("Cannot edit tax for pending purchases.");
-        }
-      }
+      // Allow editing additional discount and delivery charges (same as sales)
+      // No restrictions on discount, discountType, deliveryCharges for pending purchases
     }
 
     const updateData: any = {};
@@ -976,15 +986,98 @@ class PurchaseService {
       updateData.items = {
         create: purchaseItems,
       };
+
+      // Recalculate subtotal from new items when items are updated
+      const calculatedSubtotal = purchaseItems.reduce((sum, item) => sum + Math.round(Number(item.total || 0)), 0);
+      updateData.subtotal = Math.round(calculatedSubtotal);
     }
 
-    // Update totals
-    if (data.subtotal !== undefined) updateData.subtotal = data.subtotal;
-    if (data.discount !== undefined) updateData.discount = data.discount;
-    if (data.discountType !== undefined) updateData.discountType = data.discountType;
-    if (data.tax !== undefined) updateData.tax = data.tax;
-    if (data.taxType !== undefined) updateData.taxType = data.taxType;
-    if (data.total !== undefined) updateData.total = data.total;
+    // Calculate total with discount and tax
+    // Use the updated subtotal if items were changed, otherwise use database subtotal
+    const subtotal = updateData.subtotal !== undefined ? updateData.subtotal : Math.round(Number(purchase.subtotal?.toString() || 0));
+    let discount = data.discount !== undefined ? Number(data.discount || 0) : Number(purchase.discount?.toString() || 0);
+    let discountType = data.discountType || purchase.discountType || "percent";
+
+    // If additional discount is provided, sum it with existing discount
+    if (data.additionalDiscount !== undefined) {
+      const oldDiscountValue = Number(purchase.discount?.toString() || 0);
+      const oldType = purchase.discountType || "percent";
+      const addDiscountValue = Number(data.additionalDiscount);
+      const addType = data.additionalDiscountType || "percent";
+
+      if (oldDiscountValue === 0) {
+        // If there was no discount, just take the new one's value and type
+        discount = addDiscountValue;
+        discountType = addType;
+      } else if (oldType === addType) {
+        // Same type, just sum the values
+        discount = oldDiscountValue + addDiscountValue;
+        discountType = oldType;
+      } else {
+        // MISMATCH: Preserve original type by converting the new discount
+        if (oldType === "value") {
+          // Old is Rupees, New is Percentage -> Convert New % to Rupees
+          const addValue = (subtotal * addDiscountValue) / 100;
+          discount = oldDiscountValue + addValue;
+          discountType = "value";
+        } else {
+          // Old is Percentage, New is Rupees -> Convert New Rupees to Percentage
+          // Note: Subtotal must be > 0 to calculate percentage
+          const addPercent = subtotal > 0 ? (addDiscountValue / subtotal) * 100 : 0;
+          discount = oldDiscountValue + addPercent;
+          discountType = "percent";
+        }
+      }
+    }
+
+    // Handle delivery charges - sum old charges with additional charges
+    let deliveryCharges = data.deliveryCharges !== undefined ? Number(data.deliveryCharges || 0) : Number((purchase as any).deliveryCharges?.toString() || 0);
+
+    if (data.additionalDeliveryCharges !== undefined) {
+      const oldDeliveryValue = Number((purchase as any).deliveryCharges?.toString() || 0);
+      deliveryCharges = oldDeliveryValue + Number(data.additionalDeliveryCharges);
+    }
+
+    // Get tax for calculations
+    const tax = data.tax !== undefined ? Number(data.tax || 0) : Number(purchase.tax?.toString() || 0);
+    const taxType = data.taxType || purchase.taxType || "percent";
+
+    // Calculate discount amount for total calculation
+    let discountAmount = 0;
+    if (discount > 0) {
+      if (discountType === "value") {
+        discountAmount = limitDecimalPlaces(discount);
+      } else {
+        // Use higher precision during intermediate calculation, then round
+        discountAmount = limitDecimalPlaces((subtotal * discount) / 100);
+      }
+    }
+
+    // Calculate tax amount
+    let taxAmount = 0;
+    if (tax > 0) {
+      const afterDiscount = subtotal - discountAmount;
+      if (taxType === "value") {
+        taxAmount = limitDecimalPlaces(tax);
+      } else {
+        taxAmount = limitDecimalPlaces((afterDiscount * tax) / 100);
+      }
+    }
+
+    const calculatedTotal = Math.round(subtotal - discountAmount + taxAmount + limitDecimalPlaces(deliveryCharges));
+
+    if (calculatedTotal < 0) {
+      throw new Error("Total amount cannot be negative. Please check your discounts.");
+    }
+
+    // Update totals with calculated values
+    updateData.subtotal = Math.round(subtotal);
+    updateData.discount = limitDecimalPlaces(discount); // Store rounded value for DB consistency
+    updateData.discountType = discountType;
+    updateData.tax = tax;
+    updateData.taxType = taxType;
+    updateData.deliveryCharges = limitDecimalPlaces(deliveryCharges);
+    updateData.total = calculatedTotal;
 
     // Track old payments to detect new ones
     const oldPayments = (purchase.payments as Array<{
@@ -995,17 +1088,43 @@ class PurchaseService {
       date?: string | Date;
     }>) || [];
 
-    if (data.payments) {
-      // For pending purchases, restrictions already validated above
-      // For completed purchases, allow full editing
-      updateData.payments = data.payments as any;
-      // Recalculate remaining balance
-      const totalPaid = data.payments.reduce((sum, payment) => sum + (payment.amount || 0), 0);
-      const purchaseTotal = data.total !== undefined ? Number(data.total) : Number(purchase.total);
-      if (totalPaid > purchaseTotal) {
-        throw new Error("Total paid amount cannot exceed total amount");
+    let updatedPayments = data.payments || oldPayments;
+
+    // Safety check 1: Prevent accidental deletion of payments by length mismatch
+    if (data.payments && data.payments.length < oldPayments.length) {
+      updatedPayments = oldPayments;
+    }
+
+    // Safety check 2: Prevent accidental zeroing of total paid amount
+    // If the new payment list results in 0 paid (e.g. empty list or 0 amounts),
+    // but we previously had payments, revert to old payments.
+    // This protects against frontend sending empty arrays when only updating other fields.
+    const potentialNewTotalPaid = updatedPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    const oldTotalPaid = oldPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+
+    if (potentialNewTotalPaid === 0 && oldTotalPaid > 0) {
+      updatedPayments = oldPayments;
+    }
+
+    const totalPaid = Math.round(updatedPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0));
+
+    // CRITICAL: Ensure remaining balance is accurate based on new total and current/new payments
+    updateData.remainingBalance = Math.round(calculatedTotal - totalPaid);
+    
+    // Only update payments field if we have valid updated payments
+    // If we reverted to old payments, strictly ensuring we don't write empty data
+    if (data.payments || updatedPayments === oldPayments) {
+      updateData.payments = updatedPayments as any;
+      if (totalPaid > calculatedTotal) {
+        throw new Error("Total paid amount cannot exceed total amount. Please ensure payments do not exceed the remaining balance.");
       }
-      updateData.remainingBalance = purchaseTotal - totalPaid;
+    }
+
+    // Update status based on recalculated remaining balance
+    if (updateData.remainingBalance <= 0) {
+      updateData.status = "completed";
+    } else {
+      updateData.status = "pending";
     }
     // Don't allow date updates - keep original purchase date
     // Date field is not updated when editing purchases

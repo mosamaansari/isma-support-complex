@@ -222,6 +222,7 @@ model Purchase {
   discount            Decimal              @default(0) @db.Decimal(10, 2)
   discountType        String?              @default("percent")
   taxType             String?              @default("percent")
+  deliveryCharges     Decimal              @default(0) @db.Decimal(10, 2)
   balanceTransactions BalanceTransaction[] @relation("PurchaseBalanceTransactions")
   items               PurchaseItem[]
   supplier            Supplier?            @relation(fields: [supplierId], references: [id])

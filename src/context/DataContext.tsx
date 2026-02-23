@@ -814,8 +814,12 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           discount: item.discount || 0,
         })),
         subtotal: purchaseData.subtotal,
+        // include global discount and delivery if provided
+        discount: (purchaseData as any).discount !== undefined ? (purchaseData as any).discount : 0,
+        discountType: (purchaseData as any).discountType !== undefined ? (purchaseData as any).discountType : (purchaseData as any).discountType || 'percent',
         tax: purchaseData.tax || 0,
         taxType: (purchaseData as any).taxType,
+        deliveryCharges: (purchaseData as any).deliveryCharges !== undefined ? (purchaseData as any).deliveryCharges : 0,
         total: purchaseData.total,
         payments: purchaseData.payments,
         date: purchaseData.date,
@@ -851,11 +855,17 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }));
       }
       if (purchaseData.subtotal !== undefined) apiData.subtotal = purchaseData.subtotal;
+      // Support both direct discount fields and additional* fields coming from the UI
       if ((purchaseData as any).discount !== undefined) apiData.discount = (purchaseData as any).discount;
       if ((purchaseData as any).discountType !== undefined) apiData.discountType = (purchaseData as any).discountType;
+      if ((purchaseData as any).additionalDiscount !== undefined) apiData.additionalDiscount = (purchaseData as any).additionalDiscount;
+      if ((purchaseData as any).additionalDiscountType !== undefined) apiData.additionalDiscountType = (purchaseData as any).additionalDiscountType;
       if (purchaseData.tax !== undefined) apiData.tax = purchaseData.tax;
       if ((purchaseData as any).taxType !== undefined) apiData.taxType = (purchaseData as any).taxType;
       if (purchaseData.total !== undefined) apiData.total = purchaseData.total;
+      // Map deliveryCharges / additionalDeliveryCharges
+      if ((purchaseData as any).deliveryCharges !== undefined) apiData.deliveryCharges = (purchaseData as any).deliveryCharges;
+      if ((purchaseData as any).additionalDeliveryCharges !== undefined) apiData.additionalDeliveryCharges = (purchaseData as any).additionalDeliveryCharges;
       if (purchaseData.payments !== undefined) apiData.payments = purchaseData.payments;
       // Don't send date when updating - keep original purchase date
       // if (purchaseData.date !== undefined) apiData.date = purchaseData.date;

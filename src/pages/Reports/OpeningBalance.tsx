@@ -13,6 +13,7 @@ import DatePicker from "../../components/form/DatePicker";
 import Label from "../../components/form/Label";
 import { formatCompleteAmount } from "../../utils/priceHelpers";
 import { hasResourcePermission } from "../../utils/permissions";
+import TransferBalanceModal from "../../components/modals/TransferBalanceModal";
 
 
 export default function OpeningBalance() {
@@ -25,6 +26,7 @@ export default function OpeningBalance() {
   const [loading, setLoading] = useState(false);
   const [, setExistingBalance] = useState<any>(null);
   const [showAddCashModal, setShowAddCashModal] = useState(false);
+  const [showTransferModal, setShowTransferModal] = useState(false);
   const [transactionType, setTransactionType] = useState<"cash" | "bank" | undefined>(undefined);
   const [selectedBankId, setSelectedBankId] = useState<string | undefined>();
   const [selectedBankName, setSelectedBankName] = useState<string | undefined>();
@@ -170,17 +172,28 @@ export default function OpeningBalance() {
                     />
                   </div>
                   {hasResourcePermission(currentUser.role, 'opening_balance:create', currentUser.permissions) && (
-                    <Button
-                      onClick={() => {
-                        setShowAddCashModal(true);
-                        setTransactionType(undefined);
-                        setSelectedBankId(undefined);
-                        setSelectedBankName(undefined);
-                      }}
-                      size="sm"
-                    >
-                      Add Opening Balance
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={() => {
+                          setShowTransferModal(true);
+                        }}
+                        size="sm"
+                        variant="outline"
+                      >
+                        Transfer Balance
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          setShowAddCashModal(true);
+                          setTransactionType(undefined);
+                          setSelectedBankId(undefined);
+                          setSelectedBankName(undefined);
+                        }}
+                        size="sm"
+                      >
+                        Add Opening Balance
+                      </Button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -438,6 +451,22 @@ export default function OpeningBalance() {
             type={transactionType}
             bankAccountId={selectedBankId}
             bankName={selectedBankName}
+          />
+
+          {/* Transfer Balance Modal */}
+          <TransferBalanceModal
+            isOpen={showTransferModal}
+            date={date}
+            onClose={() => setShowTransferModal(false)}
+            onSuccess={() => {
+              loadOpeningBalance();
+              if (showHistory) {
+                setShowHistory(false);
+                setTimeout(() => {
+                  handleCardClick(historyType, historyBankId, historyBankName);
+                }, 100);
+              }
+            }}
           />
         </>
       )}

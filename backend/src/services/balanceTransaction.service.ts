@@ -20,13 +20,13 @@ class BalanceTransactionService {
       // Parse date strings (YYYY-MM-DD) properly using local timezone (Pakistan)
       const startParts = filters.startDate.split("-");
       const endParts = filters.endDate.split("-");
-      
+
       if (startParts.length === 3 && endParts.length === 3) {
         // Create dates in local timezone (Pakistan) to match how dates are stored
         const startYear = parseInt(startParts[0]);
         const startMonth = parseInt(startParts[1]) - 1; // Month is 0-indexed
         const startDay = parseInt(startParts[2]);
-        
+
         const endYear = parseInt(endParts[0]);
         const endMonth = parseInt(endParts[1]) - 1; // Month is 0-indexed
         const endDay = parseInt(endParts[2]);
@@ -55,7 +55,7 @@ class BalanceTransactionService {
               lte: end,
             },
             source: {
-              in: ["sale", "sale_payment", "purchase", "purchase_payment", "expense", "sale_refund", "purchase_refund", "add_opening_balance"],
+              in: ["sale", "sale_payment", "purchase", "purchase_payment", "expense", "sale_refund", "purchase_refund", "add_opening_balance", "transfer_in", "transfer_out"],
             },
           },
         ];
@@ -108,13 +108,13 @@ class BalanceTransactionService {
       // Parse date strings (YYYY-MM-DD) properly using local timezone (Pakistan)
       const startParts = startDate.split("-");
       const endParts = endDate.split("-");
-      
+
       if (startParts.length === 3 && endParts.length === 3) {
         // Create dates in local timezone (Pakistan) to match how dates are stored
         const startYear = parseInt(startParts[0]);
         const startMonth = parseInt(startParts[1]) - 1; // Month is 0-indexed
         const startDay = parseInt(startParts[2]);
-        
+
         const endYear = parseInt(endParts[0]);
         const endMonth = parseInt(endParts[1]) - 1; // Month is 0-indexed
         const endDay = parseInt(endParts[2]);
@@ -231,13 +231,13 @@ class BalanceTransactionService {
       // Parse date strings (YYYY-MM-DD) properly using local timezone (Pakistan)
       const startParts = startDate.split("-");
       const endParts = endDate.split("-");
-      
+
       if (startParts.length === 3 && endParts.length === 3) {
         // Create dates in local timezone (Pakistan) to match how dates are stored
         const startYear = parseInt(startParts[0]);
         const startMonth = parseInt(startParts[1]) - 1; // Month is 0-indexed
         const startDay = parseInt(startParts[2]);
-        
+
         const endYear = parseInt(endParts[0]);
         const endMonth = parseInt(endParts[1]) - 1; // Month is 0-indexed
         const endDay = parseInt(endParts[2]);
@@ -414,7 +414,7 @@ class BalanceTransactionService {
         // Skip transactions without date (shouldn't happen, but safety check)
         continue;
       }
-      
+
       const txDate = new Date(transaction.date);
       const year = txDate.getFullYear();
       const month = String(txDate.getMonth() + 1).padStart(2, '0');

@@ -202,28 +202,27 @@ export default function Reports() {
   // Get opening balance additions from date range report
   let openingBalanceAdditions = dateRangeReport?.openingBalanceAdditions || [];
 
-  // Filter opening balance additions by date range to ensure only selected dates are shown
-  if (openingBalanceAdditions.length > 0) {
-    openingBalanceAdditions = openingBalanceAdditions.filter((add: any) => {
-      const addDate = add.time || add.date || add.createdAt;
-      if (!addDate) return false;
-
-      const addDateObj = new Date(addDate);
-      const addYear = addDateObj.getFullYear();
-      const addMonth = addDateObj.getMonth();
-      const addDay = addDateObj.getDate();
-      const addLocalDate = new Date(addYear, addMonth, addDay);
-
-      return addLocalDate.getTime() >= startDateObj.getTime() &&
-        addLocalDate.getTime() <= endDateObj.getTime();
-    });
-  }
-
   // Calculate total additional balance (opening balance additions)
   const totalAdditionalBalance = openingBalanceAdditions.reduce(
     (sum: number, add: any) => sum + Number(add.amount || 0),
     0
   );
+
+  // Separate calculations for segregated breakdown summary
+  const manualAdditionsList = (openingBalanceAdditions || []).filter((add: any) => add.source !== "transfer_in" && add.source !== "transfer_out");
+  const manualAdditionsCashVal = manualAdditionsList.filter((add: any) => (add.paymentType || "").toLowerCase() === "cash" || !add.paymentType || (add.paymentType || "").toLowerCase() !== "bank_transfer").reduce((sum: number, add: any) => sum + (add.type === "expense" ? -Number(add.amount || 0) : Number(add.amount || 0)), 0);
+  const manualAdditionsBankVal = manualAdditionsList.filter((add: any) => (add.paymentType || "").toLowerCase() === "bank_transfer" || (add.paymentType || "").includes("bank")).reduce((sum: number, add: any) => sum + (add.type === "expense" ? -Number(add.amount || 0) : Number(add.amount || 0)), 0);
+  const totalManualAdditionsSum = manualAdditionsCashVal + manualAdditionsBankVal;
+
+  const transfersInOnly = (openingBalanceAdditions || []).filter((add: any) => add.source === "transfer_in");
+  const transferInCashVal = transfersInOnly.filter((add: any) => (add.paymentType || "").toLowerCase() === "cash" || !add.paymentType || (add.paymentType || "").toLowerCase() !== "bank_transfer").reduce((sum: number, add: any) => sum + Number(add.amount || 0), 0);
+  const transferInBankVal = transfersInOnly.filter((add: any) => (add.paymentType || "").toLowerCase() === "bank_transfer" || (add.paymentType || "").includes("bank")).reduce((sum: number, add: any) => sum + Number(add.amount || 0), 0);
+  const totalTransfersInSum = transferInCashVal + transferInBankVal;
+
+  const transfersOutOnly = (openingBalanceAdditions || []).filter((add: any) => add.source === "transfer_out");
+  const transferOutCashVal = transfersOutOnly.filter((add: any) => (add.paymentType || "").toLowerCase() === "cash" || !add.paymentType || (add.paymentType || "").toLowerCase() !== "bank_transfer").reduce((sum: number, add: any) => sum + Number(add.amount || 0), 0);
+  const transferOutBankVal = transfersOutOnly.filter((add: any) => (add.paymentType || "").toLowerCase() === "bank_transfer" || (add.paymentType || "").includes("bank")).reduce((sum: number, add: any) => sum + Number(add.amount || 0), 0);
+  const totalTransfersOutSum = transferOutCashVal + transferOutBankVal;
 
   if (isUsingBackendData && dateRangeReport) {
     // For single day reports, use the first daily report from the date range
@@ -1650,11 +1649,24 @@ export default function Reports() {
                                   <td className="p-2 font-semibold text-gray-800 dark:text-white text-xs sm:text-sm">
                                     Opening Balance Additions
                                     {reportToUse.openingBalanceAdditions &&
-                                      reportToUse.openingBalanceAdditions.length >
-                                      0 && (
+                                      reportToUse.openingBalanceAdditions.filter(
+                                        (add: any) =>
+                                          add.source !== "transfer_in" &&
+                                          add.source !== "transfer_out"
+                                      ).length > 0 && (
                                         <span className="ml-2 text-xs font-normal text-gray-500">
-                                          ({reportToUse.openingBalanceAdditions.length}{" "}
-                                          {reportToUse.openingBalanceAdditions.length === 1
+                                          ({
+                                            reportToUse.openingBalanceAdditions.filter(
+                                              (add: any) =>
+                                                add.source !== "transfer_in" &&
+                                                add.source !== "transfer_out"
+                                            ).length
+                                          }{" "}
+                                          {reportToUse.openingBalanceAdditions.filter(
+                                            (add: any) =>
+                                              add.source !== "transfer_in" &&
+                                              add.source !== "transfer_out"
+                                          ).length === 1
                                             ? "addition"
                                             : "additions"})
                                         </span>
@@ -1663,6 +1675,11 @@ export default function Reports() {
                                   <td className="p-2 text-right font-semibold text-purple-600 dark:text-purple-400 price-responsive whitespace-nowrap">
                                     {formatCompleteAmount(
                                       (reportToUse.openingBalanceAdditions || [])
+                                        .filter(
+                                          (add: any) =>
+                                            add.source !== "transfer_in" &&
+                                            add.source !== "transfer_out"
+                                        )
                                         .filter(
                                           (add: any) =>
                                             (add.paymentType || "").toLowerCase() === "cash" ||
@@ -1684,6 +1701,11 @@ export default function Reports() {
                                       (reportToUse.openingBalanceAdditions || [])
                                         .filter(
                                           (add: any) =>
+                                            add.source !== "transfer_in" &&
+                                            add.source !== "transfer_out"
+                                        )
+                                        .filter(
+                                          (add: any) =>
                                             (add.paymentType || "").toLowerCase() === "bank_transfer" ||
                                             (add.paymentType || "").includes("bank")
                                         )
@@ -1699,14 +1721,20 @@ export default function Reports() {
                                   </td>
                                   <td className="p-2 text-right font-semibold text-purple-600 dark:text-purple-400 price-responsive whitespace-nowrap">
                                     {formatCompleteAmount(
-                                      (reportToUse.openingBalanceAdditions || []).reduce(
-                                        (sum: number, add: any) =>
-                                          sum +
-                                          (add.type === "expense"
-                                            ? -Number(add.amount || 0)
-                                            : Number(add.amount || 0)),
-                                        0
-                                      )
+                                      (reportToUse.openingBalanceAdditions || [])
+                                        .filter(
+                                          (add: any) =>
+                                            add.source !== "transfer_in" &&
+                                            add.source !== "transfer_out"
+                                        )
+                                        .reduce(
+                                          (sum: number, add: any) =>
+                                            sum +
+                                            (add.type === "expense"
+                                              ? -Number(add.amount || 0)
+                                              : Number(add.amount || 0)),
+                                          0
+                                        )
                                     )}
                                   </td>
                                 </tr>
@@ -1770,6 +1798,41 @@ export default function Reports() {
                                     )}
                                   </td>
                                 </tr>
+                                {(reportToUse.summary?.transferIn?.total > 0) && (
+                                  <tr className="border-b border-gray-100 dark:border-gray-700 bg-blue-50 dark:bg-blue-900/10">
+                                    <td className="p-2 font-semibold text-gray-800 dark:text-white text-xs sm:text-sm">
+                                      Transfer In
+                                    </td>
+                                    <td className="p-2 text-right font-semibold text-blue-600 dark:text-blue-400 price-responsive whitespace-nowrap">
+                                      {formatCompleteAmount(reportToUse.summary.transferIn.cash || 0)}
+                                    </td>
+                                    <td className="p-2 text-right font-semibold text-blue-600 dark:text-blue-400 price-responsive whitespace-nowrap">
+                                      {formatCompleteAmount(reportToUse.summary.transferIn.bank_transfer || 0)}
+                                    </td>
+                                    <td className="p-2 text-right font-semibold text-blue-600 dark:text-blue-400 price-responsive whitespace-nowrap">
+                                      {formatCompleteAmount(reportToUse.summary.transferIn.total || 0)}
+                                    </td>
+                                  </tr>
+                                )}
+                                {(reportToUse.summary?.transferOut?.total > 0) && (
+                                  <tr className="border-b border-gray-100 dark:border-gray-700 bg-red-50 dark:bg-red-900/10">
+                                    <td className="p-2 font-semibold text-gray-800 dark:text-white text-xs sm:text-sm">
+                                      Transfer Out
+                                    </td>
+                                    <td className="p-2 text-right font-semibold text-red-600 dark:text-red-400 price-responsive whitespace-nowrap">
+                                      -
+                                      {formatCompleteAmount(reportToUse.summary.transferOut.cash || 0)}
+                                    </td>
+                                    <td className="p-2 text-right font-semibold text-red-600 dark:text-red-400 price-responsive whitespace-nowrap">
+                                      -
+                                      {formatCompleteAmount(reportToUse.summary.transferOut.bank_transfer || 0)}
+                                    </td>
+                                    <td className="p-2 text-right font-semibold text-red-600 dark:text-red-400 price-responsive whitespace-nowrap">
+                                      -
+                                      {formatCompleteAmount(reportToUse.summary.transferOut.total || 0)}
+                                    </td>
+                                  </tr>
+                                )}
                                 <tr className="bg-gray-50 dark:bg-gray-900/20">
                                   <td className="p-2 font-bold text-gray-800 dark:text-white text-xs sm:text-sm">
                                     Closing Balance
@@ -1877,54 +1940,78 @@ export default function Reports() {
                             {add.userName || "N/A"}
                           </td>
                           <td className="p-2 text-right font-semibold text-purple-600 dark:text-purple-400 whitespace-nowrap price-responsive">
+                            {add.type === "expense" ? "-" : ""}
                             {formatCompleteAmount(Number(add.amount || 0))}
                           </td>
                         </tr>
                       );
                     })}
-                    {/* Summary Row with Cash and Bank Breakdown */}
-                    <tr className="border-t-2 border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900">
-                      <td
-                        colSpan={5}
-                        className="p-2 font-bold text-gray-800 dark:text-white"
-                      >
-                        Total Opening Balance Additions
-                      </td>
+                    {/* Restructured Summary Section */}
+
+                    {/* Manual Additions Header */}
+                    <tr className="border-t-2 border-gray-300 dark:border-gray-600 bg-purple-50/50 dark:bg-purple-900/20">
+                      <td colSpan={5} className="p-2 font-bold text-gray-800 dark:text-white">
+Total Opening Balance Additions                      </td>
                       <td className="p-2 text-right font-bold text-purple-600 dark:text-purple-400">
-                        {formatCompleteAmount(totalAdditionalBalance)}
+                        {formatCompleteAmount(totalManualAdditionsSum)}
                       </td>
                     </tr>
-                    {/* Breakdown Row */}
-                    <tr className="border-b border-gray-200 dark:border-gray-700 bg-purple-50 dark:bg-purple-900/20">
-                      <td colSpan={5} className="p-2 pl-4 text-sm text-gray-700 dark:text-gray-300">
-                        Breakdown:
-                      </td>
-                      <td className="p-2 text-right text-sm">
-                        <div className="space-y-1">
-                          <div className="text-blue-600 dark:text-blue-400">
-                            Cash: {formatCompleteAmount(
-                              openingBalanceAdditions
-                                .filter((add: any) =>
-                                  (add.paymentType || "").toLowerCase() === "cash" ||
-                                  !add.paymentType ||
-                                  (add.paymentType || "").toLowerCase() !== "bank_transfer"
-                                )
-                                .reduce((sum: number, add: any) => sum + Number(add.amount || 0), 0)
-                            )}
-                          </div>
-                          <div className="text-green-600 dark:text-green-400">
-                            Bank: {formatCompleteAmount(
-                              openingBalanceAdditions
-                                .filter((add: any) =>
-                                  (add.paymentType || "").toLowerCase() === "bank_transfer" ||
-                                  (add.paymentType || "").includes("bank")
-                                )
-                                .reduce((sum: number, add: any) => sum + Number(add.amount || 0), 0)
-                            )}
-                          </div>
-                        </div>
-                      </td>
+                    {/* Manual Additions Breakdown */}
+                    <tr className="text-xs text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800/40">
+                      <td colSpan={5} className="p-1 pl-8 italic">Cash (Manual)</td>
+                      <td className="p-1 text-right text-blue-600 dark:text-blue-400 pr-2">{formatCompleteAmount(manualAdditionsCashVal)}</td>
                     </tr>
+                    <tr className="text-xs text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800/40">
+                      <td colSpan={5} className="p-1 pl-8 italic border-b border-gray-100 dark:border-gray-700/50">Bank/Other (Manual)</td>
+                      <td className="p-1 text-right text-green-600 dark:text-green-400 pr-2 border-b border-gray-100 dark:border-gray-700/50">{formatCompleteAmount(manualAdditionsBankVal)}</td>
+                    </tr>
+
+                    {/* Transfers In Section */}
+                    {(totalTransfersInSum > 0) && (
+                      <>
+                        <tr className="bg-blue-50/40 dark:bg-blue-900/20">
+                          <td colSpan={5} className="p-2 font-bold text-blue-800 dark:text-blue-300">
+                            Total Transfers In
+                          </td>
+                          <td className="p-2 text-right font-bold text-blue-600 dark:text-blue-400">
+                            {formatCompleteAmount(totalTransfersInSum)}
+                          </td>
+                        </tr>
+                        <tr className="text-xs text-blue-500 dark:text-blue-400/70 bg-white dark:bg-gray-800/40">
+                          <td colSpan={5} className="p-1 pl-8 italic">Cash (Transfer In)</td>
+                          <td className="p-1 text-right pr-2">{formatCompleteAmount(transferInCashVal)}</td>
+                        </tr>
+                        <tr className="text-xs text-blue-500 dark:text-blue-400/70 bg-white dark:bg-gray-800/40">
+                          <td colSpan={5} className="p-1 pl-8 italic border-b border-gray-100 dark:border-gray-700/50">Bank (Transfer In)</td>
+                          <td className="p-1 text-right pr-2 border-b border-gray-100 dark:border-gray-700/50">{formatCompleteAmount(transferInBankVal)}</td>
+                        </tr>
+                      </>
+                    )}
+
+                    {/* Transfers Out Section */}
+                    {(totalTransfersOutSum > 0) && (
+                      <>
+                        <tr className="bg-red-50/40 dark:bg-red-900/20">
+                          <td colSpan={5} className="p-2 font-bold text-red-800 dark:text-red-300">
+                            Total Transfers Out
+                          </td>
+                          <td className="p-2 text-right font-bold text-red-600 dark:text-red-400">
+                            -{formatCompleteAmount(totalTransfersOutSum)}
+                          </td>
+                        </tr>
+                        <tr className="text-xs text-red-500 dark:text-red-400/70 bg-white dark:bg-gray-800/40">
+                          <td colSpan={5} className="p-1 pl-8 italic">Cash (Transfer Out)</td>
+                          <td className="p-1 text-right pr-2">-{formatCompleteAmount(transferOutCashVal)}</td>
+                        </tr>
+                        <tr className="text-xs text-red-500 dark:text-red-400/70 bg-white dark:bg-gray-800/40">
+                          <td colSpan={5} className="p-1 pl-8 italic border-b border-gray-100 dark:border-gray-700/50">Bank (Transfer Out)</td>
+                          <td className="p-1 text-right pr-2 border-b border-gray-100 dark:border-gray-700/50">-{formatCompleteAmount(transferOutBankVal)}</td>
+                        </tr>
+                      </>
+                    )}
+
+                    {/* Grand Net Total Row */}
+                   
                   </tbody>
                 </table>
               </div>

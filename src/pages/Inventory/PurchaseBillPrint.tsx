@@ -112,16 +112,18 @@ export default function PurchaseBillPrint() {
 
   const totalPaid = (purchase.payments || []).reduce((sum: number, p: any) => sum + (p?.amount || 0), 0);
   const remainingBalance = Math.max(0, purchase.total - totalPaid);
-  const discountType = (purchase as any).discountType || "percent";
+  const discountType = (purchase as any).discountType || "value";
   const taxType = (purchase as any).taxType || "percent";
 
   const actualDiscountAmount = discountType === "value"
-    ? (purchase as any).discount || 0
-    : (purchase.subtotal * ((purchase as any).discount || 0)) / 100;
+    ? Number((purchase as any).discount || 0)
+    : (purchase.subtotal * (Number((purchase as any).discount) || 0)) / 100;
 
   const actualTaxAmount = taxType === "value"
-    ? purchase.tax
-    : ((purchase.subtotal - actualDiscountAmount) * purchase.tax) / 100;
+    ? Number(purchase.tax || 0)
+    : ((purchase.subtotal - actualDiscountAmount) * Number(purchase.tax || 0)) / 100;
+
+  const deliveryCharges = Number((purchase as any).deliveryCharges || 0);
 
   const purchaseDate = parseDateString(purchase.date || purchase.createdAt);
 
@@ -169,7 +171,7 @@ export default function PurchaseBillPrint() {
             }
             .receipt {
               background: #fff;
-              padding: 1mm 5mm;
+              padding: 1mm 6mm;
               width: 100%;
               box-sizing: border-box;
               overflow: visible !important;
@@ -250,28 +252,27 @@ export default function PurchaseBillPrint() {
             .text-center {
               text-align: center;
             }
-            .totals {
+            .totals-table {
+              width: 100%;
+              border-collapse: collapse;
               margin: 4px 0;
-              font-size: 12px;
+            }
+            .totals-table td {
+              padding: 3px 2px;
               font-weight: 700;
+              font-size: 11px;
               color: #000000;
             }
-            .totals-row {
-              display: flex;
-              justify-content: space-between;
-              margin: 3px 0;
-              color: #000000;
+            .totals-table .text-right {
+              text-align: right;
+              padding-right: 4px;
             }
-            .totals-row span:last-child {
-              padding-right: 2mm; /* Give more space to values on the right */
-            }
-            .total-row {
+            .total-row td {
               font-size: 12px;
               font-weight: 700;
               border-top: 1px dashed #000000;
               border-bottom: 1px dashed #000000;
-              padding: 4px 0;
-              margin: 4px 0;
+              padding: 4px 2px;
               color: #000000;
             }
             .bank-info {
@@ -336,41 +337,43 @@ export default function PurchaseBillPrint() {
             </table>
 
             <div class="separator">********************************</div>
+            
+            <table class="totals-table">
+              <tr>
+                <td>Subtotal:</td>
+                <td class="text-right">${formatPrintAmount(purchase.subtotal)}</td>
+              </tr>
+              <tr>
+                <td>Discount:</td>
+                <td class="text-right">-${formatPrintAmount(actualDiscountAmount)}</td>
+              </tr>
+              <tr>
+                <td>Tax:</td>
+                <td class="text-right">+${formatPrintAmount(actualTaxAmount)}</td>
+              </tr>
+              <tr>
+                <td>Delivery:</td>
+                <td class="text-right">+${formatPrintAmount(deliveryCharges)}</td>
+              </tr>
+              <tr class="total-row">
+                <td>Total:</td>
+                <td class="text-right">${formatPrintAmount(purchase.total)}</td>
+              </tr>
+              <tr>
+                <td>Paid:</td>
+                <td class="text-right">${formatPrintAmount(totalPaid)}</td>
+              </tr>
+              <tr>
+                <td>Remaining:</td>
+                <td class="text-right">${formatPrintAmount(remainingBalance)}</td>
+              </tr>
+              <tr>
+                <td>Status:</td>
+                <td class="text-right" style="text-transform: uppercase;">${purchase.status || "completed"}</td>
+              </tr>
+            </table>
 
-            <div class="totals">
-              <div class="totals-row">
-                <span>Subtotal:</span>
-                <span>${formatPrintAmount(purchase.subtotal)}</span>
-              </div>
-              ${actualDiscountAmount > 0 ? `
-              <div class="totals-row">
-                <span>Discount:</span>
-                <span>-${formatPrintAmount(actualDiscountAmount)}</span>
-              </div>
-              ` : ""}
-              ${actualTaxAmount > 0 ? `
-              <div class="totals-row">
-                <span>Tax:</span>
-                <span>+${formatPrintAmount(actualTaxAmount)}</span>
-              </div>
-              ` : ""}
-              <div class="totals-row total-row">
-                <span>Total:</span>
-                <span>${formatPrintAmount(purchase.total)}</span>
-              </div>
-              <div class="totals-row">
-                <span>Paid:</span>
-                <span>${formatPrintAmount(totalPaid)}</span>
-              </div>
-              <div class="totals-row">
-                <span>Remaining:</span>
-                <span>${formatPrintAmount(remainingBalance)}</span>
-              </div>
-              <div class="totals-row">
-                <span>Status:</span>
-                <span style="text-transform: uppercase;">${purchase.status || "completed"}</span>
-              </div>
-            </div>
+            <div class="separator">********************************</div>
 
             ${defaultBank ? `
               <div class="separator">********************************</div>
@@ -526,18 +529,18 @@ export default function PurchaseBillPrint() {
                 <span>Subtotal:</span>
                 <span className="font-medium">Rs. {purchase.subtotal.toFixed(2)}</span>
               </div>
-              {actualDiscountAmount > 0 && (
-                <div className="flex justify-between text-gray-600">
-                  <span>Discount:</span>
-                  <span className="font-medium">- Rs. {actualDiscountAmount.toFixed(2)}</span>
-                </div>
-              )}
-              {actualTaxAmount > 0 && (
-                <div className="flex justify-between text-gray-600">
-                  <span>Tax:</span>
-                  <span className="font-medium">+ Rs. {actualTaxAmount.toFixed(2)}</span>
-                </div>
-              )}
+              <div className="flex justify-between text-gray-600">
+                <span>Discount:</span>
+                <span className="font-medium">- Rs. {actualDiscountAmount.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-gray-600">
+                <span>Tax:</span>
+                <span className="font-medium">+ Rs. {actualTaxAmount.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-gray-600">
+                <span>Delivery Charges:</span>
+                <span className="font-medium">+ Rs. {deliveryCharges.toFixed(2)}</span>
+              </div>
               <div className="flex justify-between border-t border-gray-200 pt-3 font-bold text-gray-900 text-xl">
                 <span>Total:</span>
                 <span>Rs. {purchase.total.toFixed(2)}</span>

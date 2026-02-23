@@ -109,11 +109,9 @@ class OpeningBalanceController {
 
   async triggerCronJob(req: AuthRequest, res: Response) {
     try {
-     
       const cronService = (await import("../services/cron.service")).default;
       await cronService.manualTriggerAutoCreate();
-
-   
+      
       res.json({
         message: "Cron job triggered successfully",
         timestamp: new Date().toISOString(),
@@ -149,13 +147,13 @@ class OpeningBalanceController {
       );
 
       logger.info(`Opening balance addition: ${type} ${amount} added on ${date} by ${userName}`);
-      
+
       // Note: Closing balance is already updated directly in balanceManagementService.addToOpeningBalance
       // No need to recalculate here - the direct add method handles it
-      
+
       // Return the updated opening balance for the date
       const openingBalance = await openingBalanceService.getOpeningBalance(date);
-      
+
       res.json({
         message: "Opening balance added successfully",
         result: result,
@@ -171,8 +169,53 @@ class OpeningBalanceController {
         res.status(500).json({ error: error.message || "Internal server error" });
       }
     }
+  } // Added missing closing brace for addToOpeningBalance method
+
+  async transferBalance(req: AuthRequest, res: Response) {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const { date, amount, fromType, toType, fromBankAccountId, toBankAccountId, description } = req.body;
+
+      // Get user name
+      let userName = req.user.name || req.user.username || "Unknown User";
+
+      const result = await balanceManagementService.transferBalance(
+        new Date(date),
+        Number(amount),
+        fromType,
+        toType,
+        {
+          description: description || `Transfer from ${fromType} to ${toType}`,
+          userId: req.user.id,
+          userName: userName,
+          fromBankAccountId: fromType === "bank" ? fromBankAccountId : undefined,
+          toBankAccountId: toType === "bank" ? toBankAccountId : undefined,
+        }
+      );
+
+      logger.info(`Balance transfer: ${amount} from ${fromType} to ${toType} on ${date} by ${userName}`);
+
+      const openingBalance = await openingBalanceService.getOpeningBalance(date);
+
+      res.json({
+        message: "Balance transferred successfully",
+        result: result,
+        openingBalance: openingBalance,
+      });
+    } catch (error: any) {
+      logger.error("Transfer balance error:", error);
+      if (error.message.includes("required")) {
+        res.status(400).json({ error: error.message });
+      } else if (error.message.includes("Insufficient")) {
+        res.status(400).json({ error: error.message });
+      } else {
+        res.status(500).json({ error: error.message || "Internal server error" });
+      }
+    }
   }
 }
 
 export default new OpeningBalanceController();
-
