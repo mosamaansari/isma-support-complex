@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router";
 import { useData } from "../../context/DataContext";
 import PageMeta from "../../components/common/PageMeta";
@@ -7,75 +7,30 @@ import { ChevronLeftIcon, DownloadIcon } from "../../icons";
 import api from "../../services/api";
 import { Purchase, PurchasePayment } from "../../types";
 
-// Printing helper: show whole numbers only (no decimals) on printed bills
-const formatPrintAmount = (value: number | string | null | undefined): string => {
-  const num = Number(value);
-  if (!Number.isFinite(num)) {
-    return "0";
-  }
-  return Math.round(num).toString();
-};
-
-// Parse date string directly to extract components without UTC conversion
-const parseDateString = (dateStr: string | Date | undefined): { dateStr: string; timeStr: string; dateTimeStr: string } => {
-  if (!dateStr) {
-    const now = new Date();
-    return {
-      dateStr: now.toLocaleDateString(),
-      timeStr: now.toLocaleTimeString(),
-      dateTimeStr: now.toLocaleString()
-    };
-  }
-
-  if (typeof dateStr === 'string') {
-    // Extract date and time from ISO string directly
-    // Format: "2026-01-24T04:36:52.331Z" or "2026-01-24T04:36:52.331"
-    const dateTimeMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/);
-    if (dateTimeMatch) {
-      const year = dateTimeMatch[1];
-      const month = dateTimeMatch[2];
-      const day = dateTimeMatch[3];
-      const hours = dateTimeMatch[4];
-      const minutes = dateTimeMatch[5];
-      const seconds = dateTimeMatch[6];
-
-      // Format date: MM/DD/YYYY
-      const dateStr = `${month}/${day}/${year}`;
-
-      // Format time in 12-hour format
-      const hoursNum = parseInt(hours, 10);
-      const isPM = hoursNum >= 12;
-      const displayHours = hoursNum === 0 ? 12 : hoursNum > 12 ? hoursNum - 12 : hoursNum;
-      const hoursStr = String(displayHours).padStart(2, "0");
-      const ampm = isPM ? "PM" : "AM";
-      const timeStr = `${hoursStr}:${minutes}:${seconds} ${ampm}`;
-
-      return {
-        dateStr,
-        timeStr,
-        dateTimeStr: `${dateStr} ${timeStr}`
-      };
-    }
-  }
-
-  // Fallback: use Date object
-  const date = typeof dateStr === 'string' ? new Date(dateStr) : dateStr;
-  return {
-    dateStr: date.toLocaleDateString(),
-    timeStr: date.toLocaleTimeString(),
-    dateTimeStr: date.toLocaleString()
-  };
-};
-
 export default function PurchasePaymentPrint() {
   const { purchaseId: rawPurchaseId, paymentIndex } = useParams<{ purchaseId?: string; paymentIndex?: string }>();
   const purchaseId = rawPurchaseId || "";
-  const { settings } = useData();
+  const { settings, bankAccounts, refreshBankAccounts } = useData();
   const navigate = useNavigate();
   const [purchase, setPurchase] = useState<Purchase | null>(null);
   const [payment, setPayment] = useState<PurchasePayment | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const bankAccountsLoadedRef = useRef(false);
+  const hasPrintedRef = useRef(false);
+
+  // Load bank accounts only once on mount
+  useEffect(() => {
+    if (!bankAccountsLoadedRef.current && bankAccounts.length === 0) {
+      bankAccountsLoadedRef.current = true;
+      refreshBankAccounts().catch((err) => {
+        console.error("Failed to load bank accounts for payment print:", err);
+      });
+    } else if (bankAccounts.length > 0) {
+      bankAccountsLoadedRef.current = true;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -92,7 +47,6 @@ export default function PurchasePaymentPrint() {
         if (fetchedPurchase) {
           setPurchase(fetchedPurchase);
 
-          // Get specific payment if paymentIndex is provided
           if (paymentIndex !== undefined && fetchedPurchase.payments) {
             const index = parseInt(paymentIndex);
             if (index >= 0 && index < fetchedPurchase.payments.length) {
@@ -113,11 +67,55 @@ export default function PurchasePaymentPrint() {
     fetchData();
   }, [purchaseId, paymentIndex, navigate]);
 
-  useEffect(() => {
-    if (purchase && payment) {
-      window.print();
+  const parseDateString = (dateStr: string | Date | undefined): { dateStr: string; timeStr: string; dateTimeStr: string } => {
+    try {
+      if (!dateStr) {
+        const now = new Date();
+        return {
+          dateStr: now.toLocaleDateString(),
+          timeStr: now.toLocaleTimeString(),
+          dateTimeStr: now.toLocaleString()
+        };
+      }
+
+      if (typeof dateStr === 'string') {
+        const dateTimeMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/);
+        if (dateTimeMatch) {
+          const year = dateTimeMatch[1];
+          const month = dateTimeMatch[2];
+          const day = dateTimeMatch[3];
+          const hours = dateTimeMatch[4];
+          const minutes = dateTimeMatch[5];
+          const seconds = dateTimeMatch[6];
+
+          const dStr = `${month}/${day}/${year}`;
+          const hoursNum = parseInt(hours, 10);
+          const isPM = hoursNum >= 12;
+          const displayHours = hoursNum === 0 ? 12 : hoursNum > 12 ? hoursNum - 12 : hoursNum;
+          const hoursStr = String(displayHours).padStart(2, "0");
+          const ampm = isPM ? "PM" : "AM";
+          const tStr = `${hoursStr}:${minutes}:${seconds} ${ampm}`;
+
+          return {
+            dateStr: dStr,
+            timeStr: tStr,
+            dateTimeStr: `${dStr} ${tStr}`
+          };
+        }
+      }
+
+      const date = typeof dateStr === 'string' ? new Date(dateStr) : dateStr;
+      if (isNaN(date.getTime())) throw new Error("Invalid date");
+
+      return {
+        dateStr: date.toLocaleDateString(),
+        timeStr: date.toLocaleTimeString(),
+        dateTimeStr: date.toLocaleString()
+      };
+    } catch (e) {
+      return { dateStr: "N/A", timeStr: "N/A", dateTimeStr: "N/A" };
     }
-  }, [purchase, payment]);
+  };
 
   if (loading) {
     return (
@@ -138,10 +136,241 @@ export default function PurchasePaymentPrint() {
     );
   }
 
+  const defaultBank = bankAccounts.find((b: any) => b.isDefault) || bankAccounts[0];
   const paymentDateInfo = parseDateString(payment.date || purchase.date);
-  const totalPaid = (purchase.payments || []).reduce((sum: number, p: PurchasePayment) => sum + (p?.amount || 0), 0);
+  const validPayments = (purchase.payments || []).filter((p: PurchasePayment) =>
+    p?.amount !== undefined &&
+    p?.amount !== null &&
+    !isNaN(Number(p.amount)) &&
+    Number(p.amount) > 0
+  );
+  const totalPaid = validPayments.reduce((sum: number, p: PurchasePayment) => sum + (p?.amount || 0), 0);
   const paymentNumber = paymentIndex ? parseInt(paymentIndex) + 1 : 1;
   const totalPayments = (purchase.payments || []).length;
+  const paymentBank =
+    ((payment as any).bankAccountId && bankAccounts.find((b: any) => b.id === (payment as any).bankAccountId)) ||
+    defaultBank;
+
+  const handlePrintReceipt = () => {
+    if (!purchase || !payment) return;
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) return;
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Payment Receipt - Purchase ${purchaseId.slice(-8)}</title>
+          <style>
+            @media print {
+              @page { 
+                margin: 0;
+                size: 80mm auto;
+              }
+              body { 
+                margin: 0; 
+                padding: 0; 
+              }
+                       *{
+              overflow: visible !important;
+              }
+              .no-print { display: none !important; }
+            }
+            body {
+              font-family: 'Courier New', monospace;
+              font-size: 12px;
+              padding: 2mm;
+              margin: 0;
+              color: #000000;
+              background: #fff;
+              width: 80mm;
+              max-width: 80mm;
+              box-sizing: border-box;
+            }
+            .receipt {
+              background: #fff;
+              padding: 2mm;
+            }
+            .shop-header {
+              text-align: center;
+              margin-bottom: 4px;
+              border-bottom: 1px dashed #000000;
+              padding-bottom: 4px;
+            }
+            .shop-name {
+              font-weight: bold;
+              font-size: 14px;
+              margin-bottom: 4px;
+              text-transform: uppercase;
+            }
+            .shop-details {
+              font-size: 14px;
+              font-weight: 900;
+              line-height: 1.4;
+              color: #000000;
+            }
+            .separator {
+              text-align: center;
+              margin: 4px 0;
+              font-size: 10px;
+              color: #000000;
+            }
+            .section-title {
+              text-align: center;
+              font-weight: 700;
+              font-size: 12px;
+              margin: 4px 0;
+              text-transform: uppercase;
+              color: #000000;
+            }
+            .customer-info {
+              margin: 4px 0;
+              font-size: 12px;
+              font-weight: 700;
+              line-height: 1.5;
+              color: #000000;
+            }
+            .customer-info div {
+              margin: 2px 0;
+            }
+            .totals {
+              margin: 4px 0;
+              font-size: 12px;
+              font-weight: 700;
+              color: #000000;
+            }
+            .totals-row {
+              display: flex;
+              justify-content: space-between;
+              margin: 3px 0;
+              color: #000000;
+            }
+            .total-row {
+              font-size: 12px;
+              font-weight: 700;
+              border-top: 1px dashed #000000;
+              border-bottom: 1px dashed #000000;
+              padding: 4px 0;
+              margin: 4px 0;
+              color: #000000;
+            }
+            .bank-info {
+              margin: 4px 0;
+              font-size: 12px;
+              font-weight: 700;
+              line-height: 1.4;
+              color: #000000;
+            }
+            .bank-info div {
+              margin: 2px 0;
+              color: #000000;
+            }
+            .footer {
+              text-align: center;
+              margin-top: 8px;
+              font-size: 10px;
+              color: #000000;
+            }
+            .thank-you {
+              font-weight: bold;
+              font-size: 12px;
+              margin: 4px 0;
+              color: #000000;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="receipt">
+            <div class="shop-header">
+              <div class="shop-name">${settings.shopName}</div>
+              <div class="shop-details">
+                Address: ${settings.address}<br>
+                Telp. ${settings.contactNumber}
+              </div>
+            </div>
+            <div class="separator">********************************</div>
+            <div class="section-title">PURCHASE PAYMENT</div>
+            <div class="separator">********************************</div>
+
+            <div class="customer-info">
+              <div><strong>Supplier:</strong> ${purchase.supplierName}</div>
+              ${purchase.supplierPhone ? `<div><strong>Phone:</strong> ${purchase.supplierPhone}</div>` : ""}
+            </div>
+
+            <div class="separator">********************************</div>
+
+            <div class="totals">
+              <div class="totals-row">
+                <span>Purchase #:</span>
+                <span>${purchaseId.slice(-8).toUpperCase()}</span>
+              </div>
+              <div class="totals-row">
+                <span>Payment #:</span>
+                <span>${paymentNumber} / ${totalPayments}</span>
+              </div>
+              <div class="totals-row">
+                <span>Date:</span>
+                <span>${paymentDateInfo.dateTimeStr}</span>
+              </div>
+              <div class="totals-row">
+                <span>Type:</span>
+                <span>${(payment.type || "unknown").replace("_", " ")}</span>
+              </div>
+              <div class="totals-row total-row">
+                <span>Amount Paid:</span>
+                <span>${(payment.amount || 0).toFixed(2)}</span>
+              </div>
+              <div class="totals-row">
+                <span>Purchase Total:</span>
+                <span>${purchase.total.toFixed(2)}</span>
+              </div>
+              <div class="totals-row">
+                <span>Total Paid (All):</span>
+                <span>${totalPaid.toFixed(2)}</span>
+              </div>
+              <div class="totals-row">
+                <span>Remaining:</span>
+                <span>${(purchase.remainingBalance || 0).toFixed(2)}</span>
+              </div>
+            </div>
+
+            ${paymentBank ? `
+              <div class="separator">********************************</div>
+              <div class="bank-info">
+                <div><strong>Bank:</strong> ${paymentBank?.bankName || "---"}</div>
+                <div><strong>Account Name:</strong> ${paymentBank ? ((paymentBank as any).accountName || (paymentBank as any).accountHolder || "---") : "---"}</div>
+                <div><strong>Account No.:</strong> ${paymentBank?.accountNumber || "---"}</div>
+                ${paymentBank?.branchName ? `<div><strong>Branch:</strong> ${paymentBank.branchName}</div>` : ""}
+                ${paymentBank?.ifscCode ? `<div><strong>IBAN/IFSC:</strong> ${paymentBank.ifscCode}</div>` : ""}
+              </div>
+            ` : ""}
+
+            <div class="separator">********************************</div>
+
+            <div class="footer">
+              <div class="thank-you">THANK YOU!</div>
+              <div>Date: ${paymentDateInfo.dateTimeStr}</div>
+            </div>
+          </div>
+          <script>
+            window.onload = function() {
+              window.print();
+              window.onafterprint = function() {
+                window.close();
+              };
+            };
+          <\/script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
+  // Auto-print on load (once)
+  if (!hasPrintedRef.current && purchase && payment) {
+    hasPrintedRef.current = true;
+    setTimeout(() => handlePrintReceipt(), 500);
+  }
 
   return (
     <>
@@ -149,8 +378,8 @@ export default function PurchasePaymentPrint() {
         title={`Payment Receipt - Purchase ${purchaseId} | Isma Sports Complex`}
         description="Payment receipt"
       />
-      <div className="print-container max-w-4xl mx-auto p-8 bg-white">
-        {/* Print Controls - Hidden when printing */}
+      <div className="max-w-4xl mx-auto p-8 bg-white">
+        {/* Print Controls */}
         <div className="no-print mb-6 flex items-center justify-between">
           <Button
             onClick={() => navigate("/inventory/purchases")}
@@ -162,7 +391,7 @@ export default function PurchasePaymentPrint() {
             Back to Purchases
           </Button>
           <Button
-            onClick={() => window.print()}
+            onClick={handlePrintReceipt}
             size="sm"
             className="flex items-center gap-2"
           >
@@ -171,16 +400,11 @@ export default function PurchasePaymentPrint() {
           </Button>
         </div>
 
-        {/* Payment Receipt */}
+        {/* Screen View */}
         <div className="border-2 border-gray-300 rounded-lg p-8">
-          {/* Header */}
           <div className="text-center mb-8 border-b-2 border-gray-300 pb-4">
             {settings.logo && (
-              <img
-                src={settings.logo}
-                alt="Logo"
-                className="h-16 mx-auto mb-4"
-              />
+              <img src={settings.logo} alt="Logo" className="h-16 mx-auto mb-4" />
             )}
             <h1 className="text-3xl font-bold text-gray-800">{settings.shopName}</h1>
             <p className="text-gray-600 mt-2">{settings.address}</p>
@@ -190,7 +414,6 @@ export default function PurchasePaymentPrint() {
             <h2 className="text-2xl font-semibold text-gray-800 mt-4">PAYMENT RECEIPT</h2>
           </div>
 
-          {/* Payment Details */}
           <div className="mb-6">
             <div className="grid grid-cols-2 gap-4 mb-4">
               <div>
@@ -202,7 +425,6 @@ export default function PurchasePaymentPrint() {
                 <p className="font-semibold">{paymentDateInfo.dateStr}</p>
               </div>
             </div>
-
             <div className="grid grid-cols-2 gap-4 mb-4">
               <div>
                 <p className="text-sm text-gray-600">Purchase ID:</p>
@@ -213,7 +435,6 @@ export default function PurchasePaymentPrint() {
                 <p className="font-semibold">{paymentDateInfo.timeStr}</p>
               </div>
             </div>
-
             <div className="mb-4">
               <p className="text-sm text-gray-600">Supplier Name:</p>
               <p className="font-semibold">{purchase.supplierName}</p>
@@ -223,18 +444,25 @@ export default function PurchasePaymentPrint() {
             </div>
           </div>
 
-          {/* Payment Information */}
           <div className="border-t-2 border-gray-300 pt-4 mb-6">
             <h3 className="text-lg font-semibold mb-4">Payment Details</h3>
             <div className="space-y-3">
               <div className="flex justify-between">
                 <span className="text-gray-700">Payment Type:</span>
-                <span className="font-semibold uppercase">{payment.type}</span>
+                <span className="font-semibold uppercase">{(payment.type || "unknown").replace('_', ' ')}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-700">Amount Paid:</span>
                 <span className="font-semibold text-lg">Rs. {(payment.amount || 0).toFixed(2)}</span>
               </div>
+              {paymentBank && (
+                <div className="flex justify-between">
+                  <span className="text-gray-700">Bank Account:</span>
+                  <span className="font-semibold">
+                    {paymentBank.bankName || "Bank"} - {paymentBank.accountNumber || ""}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-gray-700">Purchase Total:</span>
                 <span className="font-semibold">Rs. {purchase.total.toFixed(2)}</span>
@@ -252,19 +480,6 @@ export default function PurchasePaymentPrint() {
             </div>
           </div>
 
-          {/* Payment Summary */}
-          <div className="border-t-2 border-gray-300 pt-4 mb-6">
-            <p className="text-sm text-gray-600 mb-2">
-              Payment {paymentNumber} of {totalPayments} payment(s) for Purchase #{purchaseId.slice(-8)}
-            </p>
-            {totalPayments > 1 && (
-              <p className="text-xs text-gray-500">
-                This is one of multiple payments. Please refer to combined receipt for complete payment history.
-              </p>
-            )}
-          </div>
-
-          {/* Footer */}
           <div className="border-t-2 border-gray-300 pt-4 text-center">
             <p className="text-sm text-gray-600">Thank you for your payment!</p>
             <p className="text-xs text-gray-500 mt-2">
@@ -273,182 +488,6 @@ export default function PurchasePaymentPrint() {
           </div>
         </div>
       </div>
-
-      {/* Thermal-style print view (shown only when printing) */}
-      <div
-        className="print-receipt"
-        style={{ display: "none" }}
-      >
-        <div className="shop-header">
-          <div className="shop-name">{settings.shopName}</div>
-          <div className="shop-details">
-            Address: {settings.address}<br />
-            Telp. {settings.contactNumber}
-          </div>
-        </div>
-        <div className="separator">********************************</div>
-        <div className="section-title">PAYMENT RECEIPT</div>
-        <div className="separator">********************************</div>
-
-        <div className="customer-info">
-          <div><strong>Supplier:</strong> {purchase.supplierName}</div>
-          {purchase.supplierPhone && (
-            <div><strong>Phone:</strong> {purchase.supplierPhone}</div>
-          )}
-        </div>
-
-        <div className="separator">********************************</div>
-
-        <div className="totals">
-          <div className="totals-row">
-            <span>Purchase #:</span>
-            <span>{purchaseId.slice(-8).toUpperCase()}</span>
-          </div>
-          <div className="totals-row">
-            <span>Receipt #:</span>
-            <span>PAY-{paymentNumber.toString().padStart(3, '0')}</span>
-          </div>
-          <div className="totals-row">
-            <span>Date:</span>
-            <span>{paymentDateInfo.dateStr}</span>
-          </div>
-          <div className="totals-row">
-            <span>Time:</span>
-            <span>{paymentDateInfo.timeStr}</span>
-          </div>
-          <div className="totals-row">
-            <span>Payment Type:</span>
-            <span className="uppercase">{payment.type}</span>
-          </div>
-          <div className="totals-row total-row">
-            <span>Amount Paid:</span>
-            <span>{formatPrintAmount(payment.amount)}</span>
-          </div>
-        </div>
-
-        <div className="separator">********************************</div>
-
-        <div className="totals" style={{ fontSize: "10px" }}>
-          <div className="totals-row">
-            <span>Purchase Total:</span>
-            <span>{formatPrintAmount(purchase.total)}</span>
-          </div>
-          <div className="totals-row">
-            <span>Total Paid (All):</span>
-            <span>{formatPrintAmount(totalPaid)}</span>
-          </div>
-          <div className="totals-row">
-            <span>Remaining:</span>
-            <span>{formatPrintAmount(purchase.remainingBalance)}</span>
-          </div>
-        </div>
-
-        <div className="separator">********************************</div>
-        <div className="footer">
-          <div className="thank-you">THANK YOU!</div>
-          <div>Purchase ID: {purchaseId}</div>
-          <div>Date: {new Date().toLocaleString()}</div>
-        </div>
-      </div>
-
-      <style>{`
-        @media print {
-          .no-print {
-            display: none !important;
-          }
-          .print-container {
-            display: none !important;
-          }
-          body * {
-            visibility: hidden;
-          }
-          .print-receipt, .print-receipt * {
-            visibility: visible;
-          }
-          .print-receipt {
-            display: block !important;
-            position: absolute;
-            left: 50%;
-            transform: translateX(-50%);
-            top: 0;
-            width: 80mm;
-            max-width: 80mm;
-            margin: 0;
-            font-size: 12px;
-            color: #000;
-            background: #fff;
-          }
-          .print-receipt .shop-header {
-            text-align: center;
-            margin-bottom: 8px;
-            border-bottom: 1px dashed #000;
-            padding-bottom: 8px;
-          }
-          .print-receipt .shop-name {
-            font-weight: bold;
-            font-size: 14px;
-            margin-bottom: 4px;
-            text-transform: uppercase;
-          }
-          .print-receipt .shop-details {
-            font-size: 10px;
-            line-height: 1.4;
-          }
-          .print-receipt .separator {
-            text-align: center;
-            margin: 6px 0;
-            font-size: 10px;
-          }
-          .print-receipt .section-title {
-            text-align: center;
-            font-weight: bold;
-            font-size: 12px;
-            margin: 8px 0;
-            text-transform: uppercase;
-          }
-          .print-receipt .customer-info {
-            margin: 8px 0;
-            font-size: 11px;
-            line-height: 1.5;
-          }
-          .print-receipt .customer-info div {
-            margin: 2px 0;
-          }
-          .print-receipt .totals {
-            margin: 8px 0;
-            font-size: 11px;
-          }
-          .print-receipt .totals-row {
-            display: flex;
-            justify-content: space-between;
-            margin: 3px 0;
-          }
-          .print-receipt .total-row {
-            font-weight: bold;
-            font-size: 12px;
-            border-top: 1px dashed #000;
-            border-bottom: 1px dashed #000;
-            padding: 4px 0;
-            margin: 6px 0;
-          }
-          .print-receipt .footer {
-            text-align: center;
-            margin-top: 12px;
-            font-size: 10px;
-          }
-          .print-receipt .thank-you {
-            font-weight: bold;
-            font-size: 12px;
-            margin: 8px 0;
-          }
-        }
-      `}</style>
     </>
   );
 }
-
-
-
-
-
-

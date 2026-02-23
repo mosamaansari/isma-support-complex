@@ -100,7 +100,7 @@ export default function PurchaseView() {
                 Print Slip
               </button>
             </Link>
-    
+
             {currentUser && hasResourcePermission(currentUser.role, 'purchases:update', currentUser.permissions) && (
               purchase.status === "pending" ? (
                 <Link to={`/inventory/purchase/edit/${purchase.id}`}>
@@ -337,6 +337,10 @@ export default function PurchaseView() {
 
         <style>{`
           @media print {
+            @page {
+              margin: 0;
+              size: 80mm auto;
+            }
             .no-print {
               display: none !important;
             }
@@ -354,16 +358,16 @@ export default function PurchaseView() {
             .print-receipt {
               display: block !important;
               position: absolute;
-              left: 50%;
-              transform: translateX(-50%);
+              left: 0;
               top: 0;
               width: 80mm;
               max-width: 80mm;
               margin: 0;
-              padding: 4mm;
+              padding: 3mm;
               font-size: 12px;
               color: #000;
               background: #fff;
+              box-sizing: border-box;
             }
             .print-receipt .shop-header {
               text-align: center;

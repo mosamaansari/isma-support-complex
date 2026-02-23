@@ -196,18 +196,22 @@ export default function BillPrint() {
                 margin: 0;
                 size: 80mm auto;
               }
-              body { margin: 0; padding: 5mm; }
+              body { 
+                margin: 0; 
+                padding: 0; 
+              }
               .no-print { display: none !important; }
             }
             body {
               font-family: 'Courier New', monospace;
               font-size: 12px;
-              padding: 5mm;
+              padding: 2mm;
               margin: 0;
               color: #000000;
               background: #fff;
+              width: 80mm;
               max-width: 80mm;
-              margin: 0 auto;
+              box-sizing: border-box;
             }
             .receipt {
               background: #fff;
@@ -992,6 +996,10 @@ export default function BillPrint() {
 
       <style>{`
         @media print {
+          @page {
+            margin: 0;
+            size: 80mm auto;
+          }
           body * {
             visibility: hidden;
           }
@@ -1005,16 +1013,17 @@ export default function BillPrint() {
             display: block !important;
             visibility: visible !important;
             position: absolute;
-            left: 50%;
-            transform: translateX(-50%);
+            left: 0;
             top: 0;
             width: 80mm;
             max-width: 80mm;
             margin: 0;
+            padding: 3mm;
             font-size: 12px;
             color: #000000;
             font-weight: 700;
             background: #fff;
+            box-sizing: border-box;
           }
           .print-receipt .shop-header {
             text-align: center;

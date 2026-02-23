@@ -747,16 +747,17 @@ export default function SalesList() {
                       </tr>
                     ) : (
                       [...(selectedSale.payments || [])]
+                        .map((payment, originalIndex) => ({ payment, originalIndex }))
                         .sort((a, b) => {
                           // Sort by date (oldest first)
-                          const dateA = a.date ? new Date(a.date).getTime() : 0;
-                          const dateB = b.date ? new Date(b.date).getTime() : 0;
+                          const dateA = a.payment.date ? new Date(a.payment.date).getTime() : 0;
+                          const dateB = b.payment.date ? new Date(b.payment.date).getTime() : 0;
                           return dateA - dateB;
                         })
-                        .map((payment: SalePayment & { date?: string }, index: number) => {
+                        .map(({ payment, originalIndex }, displayIndex) => {
                           return (
-                            <tr key={index} className="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                              <td className="p-3 text-gray-700 dark:text-gray-300 font-medium">{index + 1}</td>
+                            <tr key={displayIndex} className="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                              <td className="p-3 text-gray-700 dark:text-gray-300 font-medium">{displayIndex + 1}</td>
                               <td className="p-3 text-gray-700 dark:text-gray-300">
                                 <span className="font-medium">
                                   {(() => {
@@ -828,7 +829,7 @@ export default function SalesList() {
                               <td className="p-3">
                                 <div className="flex items-center justify-center gap-2">
                                   <button
-                                    onClick={() => handlePrintPayment(selectedSale.billNumber, index)}
+                                    onClick={() => handlePrintPayment(selectedSale.billNumber, originalIndex)}
                                     className="p-1.5 text-blue-600 hover:bg-blue-50 rounded dark:hover:bg-blue-900/20 border border-blue-200 dark:border-blue-800"
                                     title="Print Payment Receipt"
                                   >

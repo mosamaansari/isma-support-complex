@@ -11,9 +11,9 @@ class SettingsService {
         data: {
           shopName: "Isma Sports Complex",
           logo: "/images/logo/logo.png",
-          contactNumber: "+92 300 1234567",
+          contactNumber: "0330-0786104, 0336-6580440",
           email: "info@ismasports.com",
-          address: "Karachi, Pakistan",
+          address: "Main Sports Market Deputy bagh Street #2 , Sialkot",
           bankAccountNumber: "",
           bankName: "",
           ifscCode: "",

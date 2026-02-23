@@ -15,6 +15,7 @@ export default function SalesPaymentsCombinedPrint() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const bankAccountsLoadedRef = useRef(false);
+  const hasPrintedRef = useRef(false);
   const defaultBank = bankAccounts.find((b: any) => b.isDefault) || bankAccounts[0];
 
   // Load bank accounts only once on mount to prevent duplicate API calls
@@ -39,7 +40,7 @@ export default function SalesPaymentsCombinedPrint() {
 
       setLoading(true);
       setError(null);
-      
+
       try {
         const fetchedSale = await api.getSaleByBillNumber(billNumber);
         if (fetchedSale) {
@@ -57,12 +58,6 @@ export default function SalesPaymentsCombinedPrint() {
 
     fetchData();
   }, [billNumber, navigate]);
-
-  useEffect(() => {
-    if (sale && sale.payments && sale.payments.length > 0) {
-      window.print();
-    }
-  }, [sale]);
 
   if (loading) {
     return (
@@ -84,15 +79,13 @@ export default function SalesPaymentsCombinedPrint() {
   }
 
   const payments = sale.payments || [];
-  // Filter out payments with invalid amounts (0, null, undefined, NaN) before calculating totalPaid
-  const validPayments = payments.filter((p: SalePayment) => 
-    p?.amount !== undefined && 
-    p?.amount !== null && 
-    !isNaN(Number(p.amount)) && 
+  const validPayments = payments.filter((p: SalePayment) =>
+    p?.amount !== undefined &&
+    p?.amount !== null &&
+    !isNaN(Number(p.amount)) &&
     Number(p.amount) > 0
   );
   const totalPaid = validPayments.reduce((sum: number, p: SalePayment) => sum + (p?.amount || 0), 0);
-  // Recalculate remaining balance based on actual totalPaid (not the stored value which might be incorrect)
   const remainingBalance = Math.max(0, sale.total - totalPaid);
 
   if (payments.length === 0) {
@@ -106,15 +99,285 @@ export default function SalesPaymentsCombinedPrint() {
     );
   }
 
+  const handlePrintReceipt = () => {
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) return;
+
+    const paymentsRows = payments.map((payment: SalePayment & { date?: string }, index: number) => {
+      let paymentDate: Date;
+      if (payment.date) {
+        paymentDate = typeof payment.date === 'string' ? new Date(payment.date) : payment.date;
+      } else {
+        paymentDate = new Date(sale.date || sale.createdAt);
+      }
+      return `
+        <tr>
+          <td>${index + 1}</td>
+          <td>
+            ${paymentDate.toLocaleDateString()} ${paymentDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            <br>
+            <span style="font-size: 10px;">${payment.type.replace("_", " ")}</span>
+          </td>
+          <td class="text-right">${(payment.amount || 0).toFixed(2)}</td>
+        </tr>
+      `;
+    }).join("");
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Combined Payments - ${sale.billNumber}</title>
+          <style>
+            @media print {
+              @page { 
+                margin: 0;
+                size: 80mm auto;
+              }
+              body { 
+                margin: 0; 
+                padding: 0; 
+              }
+                    *{
+              overflow: visible !important;
+              }
+              .no-print { display: none !important; }
+            }
+            body {
+              font-family: 'Courier New', monospace;
+              font-size: 12px;
+              padding: 2mm;
+              margin: 0;
+              color: #000000;
+              background: #fff;
+              width: 80mm;
+              max-width: 80mm;
+              box-sizing: border-box;
+            }
+            .receipt {
+              background: #fff;
+              padding: 2mm;
+            }
+            .shop-header {
+              text-align: center;
+              margin-bottom: 4px;
+              border-bottom: 1px dashed #000000;
+              padding-bottom: 4px;
+            }
+            .shop-name {
+              font-weight: bold;
+              font-size: 14px;
+              margin-bottom: 4px;
+              text-transform: uppercase;
+            }
+            .shop-details {
+              font-size: 14px;
+              font-weight: 900;
+              line-height: 1.4;
+              color: #000000;
+            }
+            .separator {
+              text-align: center;
+              margin: 4px 0;
+              font-size: 10px;
+              color: #000000;
+            }
+            .section-title {
+              text-align: center;
+              font-weight: 700;
+              font-size: 12px;
+              margin: 4px 0;
+              text-transform: uppercase;
+              color: #000000;
+            }
+            .customer-info {
+              margin: 4px 0;
+              font-size: 12px;
+              font-weight: 700;
+              line-height: 1.5;
+              color: #000000;
+            }
+            .customer-info div {
+              margin: 2px 0;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin: 8px 0;
+              font-size: 11px;
+            }
+            table th {
+              text-align: left;
+              padding: 4px 2px;
+              font-weight: bold;
+              border-bottom: 1px dashed #000000;
+              color: #000000;
+            }
+            table td {
+              padding: 3px 2px;
+              border-bottom: 1px dashed #666;
+              color: #000000;
+              font-size: 12px;
+              font-weight: 700;
+            }
+            .text-right {
+              text-align: right;
+            }
+            .text-center {
+              text-align: center;
+            }
+            .totals {
+              margin: 4px 0;
+              font-size: 12px;
+              font-weight: 700;
+              color: #000000;
+            }
+            .totals-row {
+              display: flex;
+              justify-content: space-between;
+              margin: 3px 0;
+              color: #000000;
+            }
+            .total-row {
+              font-size: 12px;
+              font-weight: 700;
+              border-top: 1px dashed #000000;
+              border-bottom: 1px dashed #000000;
+              padding: 4px 0;
+              margin: 4px 0;
+              color: #000000;
+            }
+            .bank-info {
+              margin: 4px 0;
+              font-size: 12px;
+              font-weight: 700;
+              line-height: 1.4;
+              color: #000000;
+            }
+            .bank-info div {
+              margin: 2px 0;
+              color: #000000;
+            }
+            .footer {
+              text-align: center;
+              margin-top: 8px;
+              font-size: 10px;
+              color: #000000;
+            }
+            .thank-you {
+              font-weight: bold;
+              font-size: 12px;
+              margin: 4px 0;
+              color: #000000;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="receipt">
+            <div class="shop-header">
+              <div class="shop-name">${settings.shopName}</div>
+              <div class="shop-details">
+                Address: ${settings.address}<br>
+                Telp. ${settings.contactNumber}
+              </div>
+            </div>
+            <div class="separator">********************************</div>
+            <div class="section-title">COMBINED PAYMENTS</div>
+            <div class="separator">********************************</div>
+
+            <div class="customer-info">
+              <div><strong>Customer:</strong> ${sale.customerName || "Walk-in"}</div>
+              ${sale.customerPhone ? `<div><strong>Phone:</strong> ${sale.customerPhone}</div>` : ""}
+            </div>
+
+            <div class="separator">********************************</div>
+
+            <div class="totals">
+              <div class="totals-row">
+                <span>Bill #:</span>
+                <span>${sale.billNumber}</span>
+              </div>
+              <div class="totals-row">
+                <span>Bill Date:</span>
+                <span>${new Date(sale.date || sale.createdAt).toLocaleDateString()}</span>
+              </div>
+              <div class="totals-row">
+                <span>Bill Total:</span>
+                <span>${sale.total.toFixed(2)}</span>
+              </div>
+              <div class="totals-row">
+                <span>Remaining:</span>
+                <span>${remainingBalance.toFixed(2)}</span>
+              </div>
+              <div class="totals-row total-row">
+                <span>Total Paid:</span>
+                <span>${totalPaid.toFixed(2)}</span>
+              </div>
+            </div>
+
+            <div class="separator">********************************</div>
+            <div><strong>Payments:</strong></div>
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Date</th>
+                  <th class="text-right">Amt</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${paymentsRows}
+              </tbody>
+            </table>
+
+            ${defaultBank ? `
+              <div class="separator">********************************</div>
+              <div class="bank-info">
+                <div><strong>Company Bank:</strong></div>
+                <div>${defaultBank.bankName || "---"}</div>
+                <div>${(defaultBank as any).accountName || (defaultBank as any).accountHolder || ""} ${defaultBank.accountNumber ? " - " + defaultBank.accountNumber : ""}</div>
+                ${defaultBank.branchName ? `<div>${defaultBank.branchName}</div>` : ""}
+                ${defaultBank.ifscCode ? `<div>IBAN/IFSC: ${defaultBank.ifscCode}</div>` : ""}
+              </div>
+            ` : ""}
+
+            <div class="separator">********************************</div>
+
+            <div class="footer">
+              <div class="thank-you">THANK YOU!</div>
+              <div>Bill #: ${sale.billNumber}</div>
+              <div>Date: ${new Date().toLocaleString()}</div>
+            </div>
+          </div>
+          <script>
+            window.onload = function() {
+              window.print();
+              window.onafterprint = function() {
+                window.close();
+              };
+            };
+          <\/script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
+  // Auto-print on load (once)
+  if (!hasPrintedRef.current && sale && payments.length > 0) {
+    hasPrintedRef.current = true;
+    setTimeout(() => handlePrintReceipt(), 500);
+  }
+
   return (
     <>
       <PageMeta
         title={`All Payments - ${sale.billNumber} | Isma Sports Complex`}
         description="Combined payment receipt"
       />
-      <div className="print-container max-w-4xl mx-auto p-8 bg-white">
-        {/* Print Controls - Hidden when printing */}
-        <div className="no-print mb-6 flex items-center justify-between">
+      <div className="max-w-4xl mx-auto p-8 bg-white">
+        {/* Print Controls */}
+        <div className="mb-6 flex items-center justify-between">
           <Button
             onClick={() => navigate("/sales")}
             variant="outline"
@@ -125,7 +388,7 @@ export default function SalesPaymentsCombinedPrint() {
             Back to Sales
           </Button>
           <Button
-            onClick={() => window.print()}
+            onClick={handlePrintReceipt}
             size="sm"
             className="flex items-center gap-2"
           >
@@ -134,16 +397,11 @@ export default function SalesPaymentsCombinedPrint() {
           </Button>
         </div>
 
-        {/* Combined Payment Receipt */}
+        {/* Screen View - Combined Payment Receipt */}
         <div className="border-2 border-gray-300 rounded-lg p-8">
-          {/* Header */}
           <div className="text-center mb-8 border-b-2 border-gray-300 pb-4">
             {settings.logo && (
-              <img
-                src={settings.logo}
-                alt="Logo"
-                className="h-16 mx-auto mb-4"
-              />
+              <img src={settings.logo} alt="Logo" className="h-16 mx-auto mb-4" />
             )}
             <h1 className="text-3xl font-bold text-gray-800">{settings.shopName}</h1>
             <p className="text-gray-600 mt-2">{settings.address}</p>
@@ -153,7 +411,6 @@ export default function SalesPaymentsCombinedPrint() {
             <h2 className="text-2xl font-semibold text-gray-800 mt-4">COMBINED PAYMENT RECEIPT</h2>
           </div>
 
-          {/* Bill Details */}
           <div className="mb-6">
             <div className="grid grid-cols-2 gap-4 mb-4">
               <div>
@@ -162,9 +419,9 @@ export default function SalesPaymentsCombinedPrint() {
               </div>
               <div className="text-right">
                 <p className="text-sm text-gray-600">Bill Date:</p>
-                <p className="font-semibold">{new Date(sale.createdAt || sale.date || new Date()).toLocaleString('en-US', { 
-                  year: 'numeric', 
-                  month: 'short', 
+                <p className="font-semibold">{new Date(sale.createdAt || sale.date || new Date()).toLocaleString('en-US', {
+                  year: 'numeric',
+                  month: 'short',
                   day: 'numeric',
                   hour: '2-digit',
                   minute: '2-digit'
@@ -196,12 +453,10 @@ export default function SalesPaymentsCombinedPrint() {
             </div>
           </div>
 
-          {/* All Payments */}
           <div className="border-t-2 border-gray-300 pt-4 mb-6">
             <h3 className="text-lg font-semibold mb-4">All Payments ({payments.length})</h3>
             <div className="space-y-4">
               {payments.map((payment: SalePayment & { date?: string }, index: number) => {
-                // Handle date - it might be ISO string or Date object
                 let paymentDate: Date;
                 if (payment.date) {
                   paymentDate = typeof payment.date === 'string' ? new Date(payment.date) : payment.date;
@@ -232,7 +487,6 @@ export default function SalesPaymentsCombinedPrint() {
             </div>
           </div>
 
-          {/* Summary */}
           <div className="border-t-2 border-gray-300 pt-4">
             <div className="space-y-2">
               <div className="flex justify-between text-lg">
@@ -252,7 +506,6 @@ export default function SalesPaymentsCombinedPrint() {
             </div>
           </div>
 
-          {/* Footer */}
           <div className="border-t-2 border-gray-300 pt-4 mt-6 text-center">
             <p className="text-sm text-gray-600">Thank you for your payments!</p>
             <p className="text-xs text-gray-500 mt-2">
@@ -261,234 +514,6 @@ export default function SalesPaymentsCombinedPrint() {
           </div>
         </div>
       </div>
-
-      {/* Thermal-style print view (shown only when printing) */}
-      <div
-        className="print-receipt"
-        style={{ display: "none" }}
-      >
-        <div className="shop-header">
-          <div className="shop-name">{settings.shopName}</div>
-          <div className="shop-details">
-            Address: {settings.address}<br />
-            Telp. {settings.contactNumber}
-          </div>
-        </div>
-        <div className="separator">********************************</div>
-        <div className="section-title">COMBINED PAYMENTS</div>
-        <div className="separator">********************************</div>
-
-        <div className="customer-info">
-          <div><strong>Customer:</strong> {sale.customerName || "Walk-in"}</div>
-          {sale.customerPhone && (
-            <div><strong>Phone:</strong> {sale.customerPhone}</div>
-          )}
-        </div>
-
-        <div className="separator">********************************</div>
-
-        <div className="totals">
-          <div className="totals-row">
-            <span>Bill #:</span>
-            <span>{sale.billNumber}</span>
-          </div>
-          <div className="totals-row">
-            <span>Bill Date:</span>
-            <span>{new Date(sale.date || sale.createdAt).toLocaleDateString()}</span>
-          </div>
-          <div className="totals-row">
-            <span>Bill Total:</span>
-            <span>{sale.total.toFixed(2)}</span>
-          </div>
-          <div className="totals-row">
-            <span>Remaining:</span>
-            <span>{remainingBalance.toFixed(2)}</span>
-          </div>
-          <div className="totals-row total-row">
-            <span>Total Paid:</span>
-            <span>{totalPaid.toFixed(2)}</span>
-          </div>
-        </div>
-
-        <div className="separator">********************************</div>
-        <div><strong>Payments:</strong></div>
-        <table>
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Date</th>
-              <th className="text-right">Amt</th>
-            </tr>
-          </thead>
-          <tbody>
-            {payments.map((payment: SalePayment & { date?: string }, index: number) => {
-              let paymentDate: Date;
-              if (payment.date) {
-                paymentDate = typeof payment.date === 'string' ? new Date(payment.date) : payment.date;
-              } else {
-                paymentDate = new Date(sale.date || sale.createdAt);
-              }
-              return (
-                <tr key={index}>
-                  <td>{index + 1}</td>
-                  <td>
-                    {paymentDate.toLocaleDateString()} {paymentDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                    <br />
-                    <span style={{ fontSize: "10px" }}>{payment.type.replace("_", " ")}</span>
-                  </td>
-                  <td className="text-right">{(payment.amount || 0).toFixed(2)}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-
-        {defaultBank && (
-          <>
-            <div className="separator">********************************</div>
-            <div className="bank-info">
-              <div><strong>Company Bank:</strong></div>
-              <div>{defaultBank.bankName || "---"}</div>
-              <div>{defaultBank.accountName || defaultBank.accountHolder || ""} {defaultBank.accountNumber ? " - " + defaultBank.accountNumber : ""}</div>
-              {defaultBank.branchName && <div>{defaultBank.branchName}</div>}
-              {defaultBank.ifscCode && <div>IBAN/IFSC: {defaultBank.ifscCode}</div>}
-            </div>
-          </>
-        )}
-
-        <div className="separator">********************************</div>
-        <div className="footer">
-          <div className="thank-you">THANK YOU!</div>
-          <div>Bill #: {sale.billNumber}</div>
-          <div>Date: {new Date().toLocaleString()}</div>
-        </div>
-      </div>
-
-      <style>{`
-        @media print {
-          .no-print {
-            display: none !important;
-          }
-          .print-container {
-            display: none !important;
-          }
-          body * {
-            visibility: hidden;
-          }
-          .print-receipt, .print-receipt * {
-            visibility: visible;
-          }
-          .print-receipt {
-            display: block !important;
-            position: absolute;
-            left: 50%;
-            transform: translateX(-50%);
-            top: 0;
-            width: 80mm;
-            max-width: 80mm;
-            margin: 0;
-            font-size: 12px;
-            color: #000;
-            background: #fff;
-          }
-          .print-receipt .shop-header {
-            text-align: center;
-            margin-bottom: 8px;
-            border-bottom: 1px dashed #000;
-            padding-bottom: 8px;
-          }
-          .print-receipt .shop-name {
-            font-weight: bold;
-            font-size: 14px;
-            margin-bottom: 4px;
-            text-transform: uppercase;
-          }
-          .print-receipt .shop-details {
-            font-size: 10px;
-            line-height: 1.4;
-          }
-          .print-receipt .separator {
-            text-align: center;
-            margin: 6px 0;
-            font-size: 10px;
-          }
-          .print-receipt .section-title {
-            text-align: center;
-            font-weight: bold;
-            font-size: 12px;
-            margin: 8px 0;
-            text-transform: uppercase;
-          }
-          .print-receipt .customer-info {
-            margin: 8px 0;
-            font-size: 11px;
-            line-height: 1.5;
-          }
-          .print-receipt .customer-info div {
-            margin: 2px 0;
-          }
-          .print-receipt table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 8px 0;
-            font-size: 11px;
-          }
-          .print-receipt table th {
-            text-align: left;
-            padding: 4px 2px;
-            font-weight: bold;
-            border-bottom: 1px dashed #000;
-          }
-          .print-receipt table td {
-            padding: 3px 2px;
-            border-bottom: 1px dashed #ccc;
-          }
-          .print-receipt .text-right {
-            text-align: right;
-          }
-          .print-receipt .totals {
-            margin: 8px 0;
-            font-size: 11px;
-          }
-          .print-receipt .totals-row {
-            display: flex;
-            justify-content: space-between;
-            margin: 3px 0;
-          }
-          .print-receipt .total-row {
-            font-weight: bold;
-            font-size: 12px;
-            border-top: 1px dashed #000;
-            border-bottom: 1px dashed #000;
-            padding: 4px 0;
-            margin: 6px 0;
-          }
-          .print-receipt .bank-info {
-            margin: 8px 0;
-            font-size: 10px;
-            line-height: 1.4;
-          }
-          .print-receipt .bank-info div {
-            margin: 2px 0;
-          }
-          .print-receipt .footer {
-            text-align: center;
-            margin-top: 12px;
-            font-size: 10px;
-          }
-          .print-receipt .thank-you {
-            font-weight: bold;
-            font-size: 12px;
-            margin: 8px 0;
-          }
-        }
-      `}</style>
     </>
   );
 }
-
-
-
-
-
-
