@@ -202,11 +202,14 @@ export default function Reports() {
   // Get opening balance additions from date range report
   let openingBalanceAdditions = dateRangeReport?.openingBalanceAdditions || [];
 
-  // Calculate total additional balance (opening balance additions)
-  const totalAdditionalBalance = openingBalanceAdditions.reduce(
-    (sum: number, add: any) => sum + Number(add.amount || 0),
-    0
-  );
+  // Calculate total additional balance (manual opening balance additions only)
+  // Excludes internal transfers as per user request
+  const totalAdditionalBalance = (openingBalanceAdditions || [])
+    .filter((add: any) => add.source !== "transfer_in" && add.source !== "transfer_out")
+    .reduce(
+      (sum: number, add: any) => sum + (add.type === "expense" ? -Number(add.amount || 0) : Number(add.amount || 0)),
+      0
+    );
 
   // Separate calculations for segregated breakdown summary
   const manualAdditionsList = (openingBalanceAdditions || []).filter((add: any) => add.source !== "transfer_in" && add.source !== "transfer_out");
@@ -1951,7 +1954,7 @@ export default function Reports() {
                     {/* Manual Additions Header */}
                     <tr className="border-t-2 border-gray-300 dark:border-gray-600 bg-purple-50/50 dark:bg-purple-900/20">
                       <td colSpan={5} className="p-2 font-bold text-gray-800 dark:text-white">
-Total Opening Balance Additions                      </td>
+                        Total Opening Balance Additions                      </td>
                       <td className="p-2 text-right font-bold text-purple-600 dark:text-purple-400">
                         {formatCompleteAmount(totalManualAdditionsSum)}
                       </td>
@@ -2011,7 +2014,7 @@ Total Opening Balance Additions                      </td>
                     )}
 
                     {/* Grand Net Total Row */}
-                   
+
                   </tbody>
                 </table>
               </div>
