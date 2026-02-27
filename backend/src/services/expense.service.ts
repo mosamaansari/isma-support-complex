@@ -13,19 +13,43 @@ class ExpenseService {
   }) {
     const where: any = {};
 
+    const { parseLocalYMD } = await import("../utils/date");
+
     if (filters.startDate && filters.endDate) {
+      const start = parseLocalYMD(filters.startDate);
+      const end = parseLocalYMD(filters.endDate);
+      end.setHours(23, 59, 59, 999);
+
       where.date = {
-        gte: new Date(filters.startDate),
-        lte: new Date(filters.endDate),
+        gte: start,
+        lte: end,
+      };
+    } else if (filters.startDate) {
+      const start = parseLocalYMD(filters.startDate);
+      const end = parseLocalYMD(filters.startDate);
+      end.setHours(23, 59, 59, 999);
+      where.date = {
+        gte: start,
+        lte: end,
+      };
+    } else if (filters.endDate) {
+      const end = parseLocalYMD(filters.endDate);
+      end.setHours(23, 59, 59, 999);
+      where.date = {
+        lte: end,
       };
     }
 
-    if (filters.category) {
+    if (filters.category && filters.category !== 'all') {
       where.category = filters.category;
     }
 
     if (filters.search) {
-      where.description = { contains: filters.search, mode: "insensitive" };
+      where.OR = [
+        { description: { contains: filters.search, mode: "insensitive" } },
+        { category: { contains: filters.search, mode: "insensitive" } },
+        { userName: { contains: filters.search, mode: "insensitive" } },
+      ];
     }
 
     const page = filters.page || 1;

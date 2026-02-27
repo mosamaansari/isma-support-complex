@@ -1,5 +1,6 @@
 import axios, { AxiosInstance, AxiosError } from "axios";
 import { normalizeProduct, normalizeSale, normalizeExpense, normalizePurchase } from "../utils/apiHelpers";
+import { Product, Expense, User } from "../types";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
@@ -144,11 +145,23 @@ class ApiClient {
     return response.data;
   }
 
-  // Products endpoints
-  async getProducts(params?: { search?: string; category?: string; lowStock?: boolean; page?: number; pageSize?: number }) {
-    const key = `getProducts-${JSON.stringify(params)}`;
-    return this.deduplicateRequest(key, async () => {
-      const response = await this.client.get("/products", { params });
+  private productsAbortController: AbortController | null = null;
+  private expensesAbortController: AbortController | null = null;
+  private usersAbortController: AbortController | null = null;
+
+  async getProducts(params?: { search?: string; category?: string; lowStock?: boolean; page?: number; pageSize?: number }): Promise<{ data: Product[]; pagination: any }> {
+    // Abort previous product request if it's still pending
+    if (this.productsAbortController) {
+      this.productsAbortController.abort();
+    }
+    this.productsAbortController = new AbortController();
+
+    try {
+      const response = await this.client.get("/products", {
+        params,
+        signal: this.productsAbortController.signal
+      });
+
       if (response.data && response.data.data && response.data.pagination) {
         return {
           data: Array.isArray(response.data.data)
@@ -157,6 +170,7 @@ class ApiClient {
           pagination: response.data.pagination,
         };
       }
+
       // Fallback for old format
       return {
         data: Array.isArray(response.data)
@@ -169,7 +183,13 @@ class ApiClient {
           totalPages: 1,
         },
       };
-    });
+    } catch (error: any) {
+      if (axios.isCancel(error)) {
+        // re-throw to be caught in the component
+        throw error;
+      }
+      throw error;
+    }
   }
 
   async getProduct(id: string) {
@@ -296,10 +316,19 @@ class ApiClient {
     search?: string;
     page?: number;
     pageSize?: number;
-  }) {
-    const key = `getExpenses-${JSON.stringify(params)}`;
-    return this.deduplicateRequest(key, async () => {
-      const response = await this.client.get("/expenses", { params });
+  }): Promise<{ data: Expense[]; pagination: any }> {
+    // Abort previous expense request if it's still pending
+    if (this.expensesAbortController) {
+      this.expensesAbortController.abort();
+    }
+    this.expensesAbortController = new AbortController();
+
+    try {
+      const response = await this.client.get("/expenses", {
+        params,
+        signal: this.expensesAbortController.signal
+      });
+
       if (response.data && response.data.data && response.data.pagination) {
         return {
           data: Array.isArray(response.data.data)
@@ -311,6 +340,7 @@ class ApiClient {
           },
         };
       }
+
       // Fallback for old format
       return {
         data: Array.isArray(response.data)
@@ -322,9 +352,13 @@ class ApiClient {
           total: response.data.length || 0,
           totalPages: 1,
         },
-        summary: null,
       };
-    });
+    } catch (error: any) {
+      if (axios.isCancel(error)) {
+        throw error;
+      }
+      throw error;
+    }
   }
 
   async getExpense(id: string) {
@@ -539,10 +573,18 @@ class ApiClient {
   }
 
   // Users endpoints
-  async getUsers(params?: { page?: number; pageSize?: number }) {
-    const key = `getUsers-${JSON.stringify(params || {})}`;
-    return this.deduplicateRequest(key, async () => {
-      const response = await this.client.get("/users", { params });
+  async getUsers(params?: { search?: string; page?: number; pageSize?: number }): Promise<{ data: User[]; pagination: any }> {
+    // Abort previous user request if it's still pending
+    if (this.usersAbortController) {
+      this.usersAbortController.abort();
+    }
+    this.usersAbortController = new AbortController();
+
+    try {
+      const response = await this.client.get("/users", {
+        params,
+        signal: this.usersAbortController.signal
+      });
       // Response is already transformed by interceptor
       // For list endpoints, it's { data: [...], pagination: {...} }
       if (response.data && response.data.data && response.data.pagination) {
@@ -572,7 +614,12 @@ class ApiClient {
           totalPages: 1,
         },
       };
-    });
+    } catch (error: any) {
+      if (axios.isCancel(error)) {
+        throw error;
+      }
+      throw error;
+    }
   }
 
   async getUser(id: string) {

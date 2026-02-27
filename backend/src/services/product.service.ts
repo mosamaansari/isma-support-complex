@@ -28,6 +28,7 @@ class ProductService {
     if (filters.search) {
       where.OR = [
         { name: { contains: filters.search, mode: "insensitive" } },
+        { brand: { contains: filters.search, mode: "insensitive" } },
         { category: { contains: filters.search, mode: "insensitive" } },
       ];
     }
@@ -36,11 +37,50 @@ class ProductService {
       where.category = { contains: filters.category, mode: "insensitive" };
     }
 
+    // Get all products matching basic filters to calculate stats and handle low stock filter
+    // Only select fields needed for stats
+    const allMatchingProducts = await prisma.product.findMany({
+      where,
+      select: {
+        id: true,
+        shopQuantity: true,
+        warehouseQuantity: true,
+        shopMinStockLevel: true,
+        warehouseMinStockLevel: true,
+        minStockLevel: true,
+        salePrice: true
+      }
+    });
+
+    // Calculate statistics across all filtered products
+    let totalCount = allMatchingProducts.length;
+    let lowStockCount = 0;
+    let totalStockValue = 0;
+    const lowStockIds: string[] = [];
+
+    allMatchingProducts.forEach(p => {
+      const stats = isLowStockByLocation(p);
+      if (stats.isLow) {
+        lowStockCount++;
+        lowStockIds.push(p.id);
+      }
+
+      const totalQty = (p.shopQuantity || 0) + (p.warehouseQuantity || 0);
+      const price = p.salePrice ? Number(p.salePrice) : 0;
+      totalStockValue += totalQty * price;
+    });
+
+    // If low stock filter is active, refine the query
+    if (filters.lowStock === true) {
+      where.id = { in: lowStockIds };
+      totalCount = lowStockIds.length;
+    }
+
     const page = filters.page || 1;
     const pageSize = filters.pageSize || 10;
     const skip = (page - 1) * pageSize;
 
-    let products = await prisma.product.findMany({
+    const products = await prisma.product.findMany({
       where,
       include: {
         categoryRef: true,
@@ -51,19 +91,18 @@ class ProductService {
       take: pageSize,
     });
 
-    if (filters.lowStock === true) {
-      products = products.filter((p) => isLowStockByLocation(p).isLow);
-    }
-
-    const total = await prisma.product.count({ where });
-
     return {
       data: products,
       pagination: {
         page,
         pageSize,
-        total,
-        totalPages: Math.ceil(total / pageSize),
+        total: totalCount,
+        totalPages: Math.ceil(totalCount / pageSize),
+        summary: {
+          totalProducts: allMatchingProducts.length,
+          lowStockCount,
+          totalStockValue
+        }
       },
     };
   }
@@ -130,7 +169,7 @@ class ProductService {
 
     // Check for duplicate product name + brand combination
     const duplicateCheckConditions = [];
-    
+
     if (data.brand || brandId) {
       // If brand is provided, check for name + brand combination
       duplicateCheckConditions.push({
@@ -254,7 +293,7 @@ class ProductService {
         where: { id },
         select: { name: true, brand: true, brandId: true }
       });
-      
+
       if (!currentProduct) {
         throw new Error("Product not found");
       }
@@ -267,11 +306,11 @@ class ProductService {
       // Check for duplicates only if name or brand is actually changing
       const nameChanging = data.name !== undefined && data.name !== currentProduct.name;
       const brandChanging = (dataWithBrand.brand !== undefined && dataWithBrand.brand !== currentProduct.brand) ||
-                           (brandId !== undefined && brandId !== currentProduct.brandId);
+        (brandId !== undefined && brandId !== currentProduct.brandId);
 
       if (nameChanging || brandChanging) {
         const duplicateCheckConditions = [];
-        
+
         if (finalBrand || finalBrandId) {
           // If brand exists, check for name + brand combination
           duplicateCheckConditions.push({

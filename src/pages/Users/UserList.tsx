@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router";
 import PageMeta from "../../components/common/PageMeta";
 import { useData } from "../../context/DataContext";
@@ -13,24 +13,36 @@ import { PencilIcon, TrashBinIcon } from "../../icons";
 import { hasResourcePermission } from "../../utils/permissions";
 
 export default function UserList() {
-  const { users, usersPagination, deleteUser, currentUser, loading, error, refreshUsers } = useData();
+  const {
+    users,
+    usersPagination,
+    deleteUser,
+    currentUser,
+    loadingUsers,
+    error,
+    refreshUsers
+  } = useData();
   const { showError } = useAlert();
   const [searchTerm, setSearchTerm] = useState("");
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState<string | null>(null);
-  const usersLoadedRef = useRef(false);
 
-  // Refresh users on mount if empty (only once)
+  // Handle search with debounce
   useEffect(() => {
-    if (!usersLoadedRef.current) {
-      usersLoadedRef.current = true;
-      if (!loading && (!users || users.length === 0) && currentUser) {
-        refreshUsers(usersPagination?.page || 1, usersPagination?.pageSize || 10).catch(console.error);
-      }
-    }
+    // Use 0ms delay for initial load or when search is cleared to avoid showing stale data from other pages
+    const delay = searchTerm === "" ? 0 : 500;
+
+    const handler = setTimeout(() => {
+      const trimmedSearch = searchTerm.trim();
+      refreshUsers(1, usersPagination?.pageSize || 10, {
+        search: trimmedSearch
+      });
+    }, delay);
+
+    return () => clearTimeout(handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [searchTerm]);
 
   const handlePageChange = (page: number) => {
     refreshUsers(page, usersPagination?.pageSize || 10);
@@ -50,13 +62,8 @@ export default function UserList() {
     );
   }
 
-  const filteredUsers = (users || []).filter((user) => {
-    if (!user || !user.name || !user.username) return false;
-    return (
-      user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.username.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  });
+  // Use users from context directly as they are now server-side filtered
+  const displayUsers = users || [];
 
   const handleDeleteClick = (id: string) => {
     if (id === currentUser?.id) {
@@ -94,7 +101,7 @@ export default function UserList() {
     );
   }
 
-  if (loading && users.length === 0) {
+  if (loadingUsers && users.length === 0) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
@@ -104,12 +111,12 @@ export default function UserList() {
     );
   }
 
-  if (error && users.length === 0) {
+  if (error && users.length === 0 && !loadingUsers) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <p className="text-red-500 mb-4">Error: {error}</p>
-          <Button onClick={() => refreshUsers(usersPagination?.page || 1, usersPagination?.pageSize || 10)} size="sm">
+          <Button onClick={() => refreshUsers(1, usersPagination?.pageSize || 10, { search: searchTerm })} size="sm">
             Retry
           </Button>
         </div>
@@ -161,12 +168,19 @@ export default function UserList() {
         </div>
 
         <div className="mb-6">
-          <Input
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search users by name or username..."
-            className="max-w-md"
-          />
+          <div className="relative max-w-md">
+            <Input
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search users by name or username..."
+            />
+            {loadingUsers && (
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-brand-500 mr-2"></div>
+                <span className="text-xs text-brand-600 font-medium">Searching...</span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -198,7 +212,7 @@ export default function UserList() {
             </tr>
           </thead>
           <tbody>
-            {filteredUsers.length === 0 ? (
+            {displayUsers.length === 0 ? (
               <tr>
                 <td colSpan={7} className="p-8 text-center text-gray-500">
                   {users.length === 0
@@ -207,7 +221,7 @@ export default function UserList() {
                 </td>
               </tr>
             ) : (
-              filteredUsers.map((user) => (
+              displayUsers.map((user) => (
                 <tr
                   key={user.id}
                   className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50"

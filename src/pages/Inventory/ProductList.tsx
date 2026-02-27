@@ -18,9 +18,8 @@ export default function ProductList() {
     products,
     productsPagination,
     deleteProduct,
-    getLowStockProducts,
     currentUser,
-    loading,
+    loadingProducts,
     error,
     refreshProducts,
   } = useData();
@@ -30,48 +29,38 @@ export default function ProductList() {
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [productToDelete, setProductToDelete] = useState<string | null>(null);
-  const [hasTriedRefresh, setHasTriedRefresh] = useState(false);
 
-  // Refresh products on mount if empty (only once)
+  // Handle search and filters with debounce
   useEffect(() => {
-    if (products.length === 0 && !loading && currentUser && !hasTriedRefresh) {
-      setHasTriedRefresh(true);
-      // Use default values if pagination is not initialized
-      refreshProducts(productsPagination?.page || 1, productsPagination?.pageSize || 10).catch(console.error);
-    }
+    // Use 0ms delay for initial load or when search is cleared to avoid showing stale data from other pages
+    const delay = searchTerm === "" ? 0 : 500;
+
+    const handler = setTimeout(() => {
+      refreshProducts(1, productsPagination?.pageSize || 10, {
+        search: searchTerm,
+        lowStock: showLowStock
+      });
+    }, delay);
+
+    return () => clearTimeout(handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [products.length, loading, currentUser]);
+  }, [searchTerm, showLowStock]);
 
   const handlePageChange = (page: number) => {
-    refreshProducts(page, productsPagination?.pageSize || 10);
+    refreshProducts(page, productsPagination?.pageSize || 10, {
+      search: searchTerm,
+      lowStock: showLowStock
+    });
   };
 
   const handlePageSizeChange = (pageSize: number) => {
-    refreshProducts(1, pageSize);
+    refreshProducts(1, pageSize, {
+      search: searchTerm,
+      lowStock: showLowStock
+    });
   };
 
-  const lowStockProducts = getLowStockProducts();
-  const filteredProducts = (products || []).filter((product) => {
-    if (!product || !product.name) return false;
-    const matchesSearch =
-      product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (product.brand && product.brand.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (product.brand && product.brand.toLowerCase().includes(searchTerm.toLowerCase()));
-    const shopMin = (product as any).shopMinStockLevel ?? product.minStockLevel ?? 0;
-    const warehouseMin = (product as any).warehouseMinStockLevel ?? product.minStockLevel ?? 0;
-    const shopLow = shopMin > 0 && (product.shopQuantity || 0) <= shopMin;
-    const warehouseLow = warehouseMin > 0 && (product.warehouseQuantity || 0) <= warehouseMin;
-    const matchesLowStock =
-      !showLowStock || shopLow || warehouseLow;
-    return matchesSearch && matchesLowStock;
-  });
-
-  const totalStockValue = (products || []).reduce((sum, p) => {
-    if (!p) return sum;
-    const totalQuantity = (p.shopQuantity || 0) + (p.warehouseQuantity || 0);
-    const price = p.salePrice || 0;
-    return sum + totalQuantity * price;
-  }, 0);
+  const filteredProducts = products || [];
 
   const handleDeleteClick = (id: string) => {
     setProductToDelete(id);
@@ -84,7 +73,10 @@ export default function ProductList() {
     setIsDeleting(productToDelete);
     try {
       await deleteProduct(productToDelete);
-      await refreshProducts(productsPagination?.page || 1, productsPagination?.pageSize || 10);
+      await refreshProducts(productsPagination?.page || 1, productsPagination?.pageSize || 10, {
+        search: searchTerm,
+        lowStock: showLowStock
+      });
       setDeleteModalOpen(false);
       setProductToDelete(null);
       showSuccess("Product deleted successfully!");
@@ -107,7 +99,7 @@ export default function ProductList() {
     );
   }
 
-  if (loading && products.length === 0) {
+  if (loadingProducts && products.length === 0) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
@@ -122,7 +114,7 @@ export default function ProductList() {
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <p className="text-red-500 mb-4">Error: {error}</p>
-          <Button onClick={() => refreshProducts(productsPagination?.page || 1, productsPagination?.pageSize || 10)} size="sm">
+          <Button onClick={() => refreshProducts(productsPagination?.page || 1, productsPagination?.pageSize || 10, { search: searchTerm, lowStock: showLowStock })} size="sm">
             Retry
           </Button>
         </div>
@@ -142,11 +134,11 @@ export default function ProductList() {
             <h1 className="text-xl sm:text-2xl font-bold text-gray-800 dark:text-white">
               Products & Inventory
             </h1>
-            {(lowStockProducts || []).length > 0 && (
+            {(productsPagination?.summary?.lowStockCount || 0) > 0 && (
               <div className="flex items-center gap-2 mt-2 text-orange-600 dark:text-orange-400">
                 <AlertIcon className="w-4 h-4 sm:w-5 sm:h-5" />
                 <span className="text-xs sm:text-sm">
-                  {(lowStockProducts || []).length} product(s) are low in stock
+                  {productsPagination?.summary?.lowStockCount} product(s) are low in stock
                 </span>
               </div>
             )}
@@ -162,31 +154,37 @@ export default function ProductList() {
           <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
             <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Total Products</p>
             <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-800 dark:text-white">
-              {(products || []).length}
+              {productsPagination?.summary?.totalProducts || 0}
             </p>
           </div>
           <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
             <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Low Stock</p>
             <p className="text-lg sm:text-xl lg:text-2xl font-bold text-orange-600 dark:text-orange-400">
-              {(lowStockProducts || []).length}
+              {productsPagination?.summary?.lowStockCount || 0}
             </p>
           </div>
           <div className="p-3 sm:p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
             <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Total Stock Value</p>
             <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-800 dark:text-white price-responsive">
-              {totalStockValue >= 1000000
-                ? formatPriceWithCurrency(totalStockValue)
-                : `Rs. ${totalStockValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+              {formatPriceWithCurrency(productsPagination?.summary?.totalStockValue || 0)}
             </p>
           </div>
         </div>
 
         <div className="grid grid-cols-1 gap-4 mb-6 md:grid-cols-2">
-          <Input
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search products by name or brand..."
-          />
+          <div className="relative">
+            <Input
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search products by name or brand..."
+            />
+            {loadingProducts && (
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-brand-500 mr-2"></div>
+                <span className="text-xs text-brand-600 font-medium">Searching...</span>
+              </div>
+            )}
+          </div>
           <label className="flex items-center gap-2 p-2 bg-white rounded-lg shadow-sm cursor-pointer dark:bg-gray-800">
             <input
               type="checkbox"

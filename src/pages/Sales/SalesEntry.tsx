@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import axios from "axios";
 import { useNavigate, useParams } from "react-router";
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
@@ -43,13 +44,15 @@ const salesEntrySchema = yup.object().shape({
 export default function SalesEntry() {
   const { id } = useParams<{ id: string }>();
   const isEdit = !!id;
-  const { products, currentUser, addSale, updateSale, sales, loading, error, bankAccounts, refreshBankAccounts, cards, refreshCards, refreshProducts } = useData();
+  const { products, currentUser, addSale, updateSale, sales, loading, error, bankAccounts, refreshBankAccounts, cards, refreshCards } = useData();
   const { showError, showSuccess } = useAlert();
   const navigate = useNavigate();
   const [selectedProducts, setSelectedProducts] = useState<
     (SaleItem & { product: Product; rowId: string })[]
   >([]);
   const [searchTerm, setSearchTerm] = useState("");
+  const [foundProducts, setFoundProducts] = useState<Product[]>([]);
+  const [searchingProducts, setSearchingProducts] = useState(false);
   const [payments, setPayments] = useState<SalePayment[]>([]);
   const [date, setDate] = useState(getTodayDate());
   const [globalDiscount, setGlobalDiscount] = useState<number | null>(null);
@@ -93,13 +96,8 @@ export default function SalesEntry() {
   const customerCity = watch("customerCity");
 
   useEffect(() => {
-    // Set initial date value in form
+    // Initial form setup
     setValue("date", getTodayDate());
-
-    // Load products only when on this page
-    if (products.length === 0 && !loading) {
-      refreshProducts(1, 100).catch(console.error); // Load more products for selection
-    }
     // Load bank accounts only once on mount to prevent duplicate API calls
     if (!bankAccountsLoadedRef.current && bankAccounts.length === 0) {
       bankAccountsLoadedRef.current = true;
@@ -113,6 +111,31 @@ export default function SalesEntry() {
     // Payments are optional, don't add default payment
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Handle server-side product search with local state
+  useEffect(() => {
+    const delay = searchTerm === "" ? 0 : 500;
+
+    const handler = setTimeout(async () => {
+      setSearchingProducts(true);
+      try {
+        const result = await api.getProducts({
+          page: 1,
+          pageSize: 100, // 100 products per search as requested
+          search: searchTerm
+        });
+        setFoundProducts(result.data || []);
+      } catch (err: any) {
+        if (axios.isCancel(err)) return;
+        console.error("Error searching products:", err);
+        setFoundProducts([]);
+      } finally {
+        setSearchingProducts(false);
+      }
+    }, delay);
+
+    return () => clearTimeout(handler);
+  }, [searchTerm]);
 
   // Auto-open collapsible sections when products are added
   useEffect(() => {
@@ -250,15 +273,8 @@ export default function SalesEntry() {
     );
   }
 
-  // Filter products based on search term - compute directly instead of using useEffect
-  const filteredProducts = searchTerm
-    ? (products || []).filter((p) =>
-      p && p.name && (
-        p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (p.brand && p.brand.toLowerCase().includes(searchTerm.toLowerCase()))
-      )
-    )
-    : (products || []);
+  // Products are now filtered server-side into local state
+  const filteredProducts = foundProducts;
 
   const addPayment = () => {
     setPayments([
@@ -1021,7 +1037,10 @@ export default function SalesEntry() {
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Search products by name or brand..."
           />
-          {filteredProducts.length > 0 && (
+          {searchingProducts && (
+            <p className="mt-2 text-sm text-gray-500">Fetching products...</p>
+          )}
+          {!searchingProducts && filteredProducts.length > 0 && (
             <div className="mt-2 border border-gray-200 rounded-lg dark:border-gray-700 max-h-60 overflow-y-auto">
               {filteredProducts.map((product) => (
                 <div
@@ -1045,6 +1064,9 @@ export default function SalesEntry() {
                 </div>
               ))}
             </div>
+          )}
+          {!searchingProducts && searchTerm && filteredProducts.length === 0 && (
+            <p className="mt-2 text-sm text-gray-500">No products found for "{searchTerm}"</p>
           )}
         </div>
 

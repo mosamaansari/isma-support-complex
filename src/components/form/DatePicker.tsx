@@ -37,10 +37,9 @@ export default function DatePicker({
     return `${year}-${month}-${day}`;
   };
 
-  const todayDate = getTodayDateStr();
   const [isOpen, setIsOpen] = useState(false);
-  const [displayDate, setDisplayDate] = useState(value || todayDate);
-  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [displayDate, setDisplayDate] = useState(value || "");
+  const [currentMonth, setCurrentMonth] = useState(value ? new Date(value + "T00:00:00") : new Date());
   const calendarRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const hiddenInputRef = useRef<HTMLInputElement>(null);
@@ -64,11 +63,13 @@ export default function DatePicker({
 
   // Sync display date with value prop
   useEffect(() => {
-    if (value && value !== displayDate) {
-      setDisplayDate(value);
-      const newDate = new Date(value + "T00:00:00");
-      if (!isNaN(newDate.getTime())) {
-        setCurrentMonth(newDate);
+    if (value !== displayDate) {
+      setDisplayDate(value || "");
+      if (value) {
+        const newDate = new Date(value + "T00:00:00");
+        if (!isNaN(newDate.getTime())) {
+          setCurrentMonth(newDate);
+        }
       }
     }
   }, [value]);

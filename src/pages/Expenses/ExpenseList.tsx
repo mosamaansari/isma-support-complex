@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router";
 import PageMeta from "../../components/common/PageMeta";
 import { useData } from "../../context/DataContext";
@@ -11,37 +11,53 @@ import PageSizeSelector from "../../components/ui/PageSizeSelector";
 import { PencilIcon, TrashBinIcon, PlusIcon } from "../../icons";
 import { Modal } from "../../components/ui/modal";
 import { FaMoneyBillWave, FaUniversity, FaCalculator, FaListOl } from "react-icons/fa";
-import { formatDateToString } from "../../utils/dateHelpers";
 import { formatPriceWithCurrencyComplete } from "../../utils/priceHelpers";
 import { hasResourcePermission } from "../../utils/permissions";
 
 export default function ExpenseList() {
-  const { expenses, expensesPagination, deleteExpense, currentUser, loading, error, refreshExpenses, expenseCategories, refreshExpenseCategories } = useData();
+  const {
+    expenses,
+    expensesPagination,
+    deleteExpense,
+    currentUser,
+    loadingExpenses,
+    error,
+    refreshExpenses,
+    expenseCategories,
+    refreshExpenseCategories
+  } = useData();
   const { showSuccess, showError } = useAlert();
   const [searchTerm, setSearchTerm] = useState("");
   const [filterCategory, setFilterCategory] = useState<string | "all">("all");
   const [filterDate, setFilterDate] = useState("");
   // Remove expenseSummary state as we now use backend data directly
-  const expensesLoadedRef = useRef(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [expenseToDelete, setExpenseToDelete] = useState<string | null>(null);
 
-  // Load expenses on mount if empty
+  // Handle search and filters with debounce
   useEffect(() => {
-    if (!expensesLoadedRef.current) {
-      expensesLoadedRef.current = true;
-      if (!loading && (!expenses || expenses.length === 0)) {
-        refreshExpenses(expensesPagination?.page || 1, expensesPagination?.pageSize || 10).catch(err => {
-          console.error("ExpenseList - Error refreshing expenses:", err);
-        });
-      }
-    }
-    // Load expense categories if empty
+    // Use 0ms delay for initial load or when search is cleared to avoid showing stale data from other pages
+    const delay = searchTerm === "" && filterCategory === "all" && filterDate === "" ? 0 : 500;
+
+    const handler = setTimeout(() => {
+      refreshExpenses(1, expensesPagination?.pageSize || 10, {
+        search: searchTerm,
+        category: filterCategory,
+        startDate: filterDate || undefined,
+        endDate: filterDate || undefined,
+      });
+    }, delay);
+
+    return () => clearTimeout(handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm, filterCategory, filterDate]);
+
+  // Load expense categories if empty
+  useEffect(() => {
     if (expenseCategories.length === 0) {
       refreshExpenseCategories().catch(console.error);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [expenseCategories.length, refreshExpenseCategories]);
 
   // Summary is now loaded from backend pagination data directly
 
@@ -51,6 +67,12 @@ export default function ExpenseList() {
 
   const handlePageSizeChange = (pageSize: number) => {
     refreshExpenses(1, pageSize);
+  };
+
+  const handleClearFilters = () => {
+    setSearchTerm("");
+    setFilterCategory("all");
+    setFilterDate("");
   };
 
   if (!currentUser) {
@@ -64,7 +86,7 @@ export default function ExpenseList() {
   }
 
   // Show error only if there's an error and no expenses at all
-  if (error && (!expenses || expenses.length === 0) && !loading) {
+  if (error && (!expenses || expenses.length === 0) && !loadingExpenses) {
     return (
       <>
         <PageMeta title="Expenses | Isma Sports Complex" description="Manage expenses" />
@@ -80,19 +102,8 @@ export default function ExpenseList() {
     );
   }
 
-  const filteredExpenses = (expenses || []).filter((expense) => {
-    if (!expense) return false;
-    const matchesSearch =
-      !searchTerm ||
-      (expense.description && expense.description.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (expense.category && expense.category.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      expense.userName.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = filterCategory === "all" || expense.category === filterCategory;
-    // Compare date part only (YYYY-MM-DD)
-    const expenseDateStr = expense.date ? formatDateToString(new Date(expense.date)) : '';
-    const matchesDate = !filterDate || expenseDateStr === filterDate;
-    return matchesSearch && matchesCategory && matchesDate;
-  });
+  // Use expenses from context directly as they are now server-side filtered
+  const displayExpenses = expenses || [];
 
   /* Hook moved to top level */
 
@@ -153,7 +164,7 @@ export default function ExpenseList() {
         </div>
 
         {/* Loading overlay - only show when loading and no data */}
-        {loading && (!expenses || expenses.length === 0) ? (
+        {loadingExpenses && (!expenses || expenses.length === 0) ? (
           <div className="flex items-center justify-center py-12">
             <div className="text-center">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
@@ -218,41 +229,65 @@ export default function ExpenseList() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 mb-6 md:grid-cols-3">
-              <Input
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search expenses..."
-              />
-              <select
-                value={filterCategory}
-                onChange={(e) =>
-                  setFilterCategory(e.target.value)
-                }
-                className="px-4 py-2 border border-gray-300 rounded-lg dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+            <div className="grid grid-cols-1 gap-4 mb-6 sm:grid-cols-2 lg:grid-cols-4 items-end">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Search</label>
+                <div className="relative">
+                  <Input
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Search expenses..."
+                  />
+                  {loadingExpenses && (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500 mr-2"></div>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Category</label>
+                <select
+                  value={filterCategory}
+                  onChange={(e) =>
+                    setFilterCategory(e.target.value)
+                  }
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+                >
+                  <option value="all">All Categories</option>
+                  {expenseCategories.map((cat) => (
+                    <option key={cat.id} value={cat.name}>
+                      {cat.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Date</label>
+                <DatePicker
+                  value={filterDate}
+                  onChange={(e) => {
+                    const dateValue = e.target.value;
+                    setFilterDate(dateValue || "");
+                  }}
+                  placeholder="Filter by date"
+                />
+              </div>
+              <Button
+                variant="outline"
+                className="h-11 w-full"
+                onClick={handleClearFilters}
+                disabled={!searchTerm && filterCategory === "all" && !filterDate}
               >
-                <option value="all">All Categories</option>
-                {expenseCategories.map((cat) => (
-                  <option key={cat.id} value={cat.name}>
-                    {cat.name}
-                  </option>
-                ))}
-              </select>
-              <DatePicker
-                value={filterDate}
-                onChange={(e) => {
-                  const dateValue = e.target.value;
-                  setFilterDate(dateValue || "");
-                }}
-                placeholder="Filter by date"
-              />
+                Clear Filters
+              </Button>
             </div>
           </>
         )}
       </div>
 
       {/* Content section - always show table, even when loading or empty */}
-      {!loading ? (
+      {!loadingExpenses || expenses.length > 0 ? (
         <>
           <div className="table-container bg-white rounded-lg shadow-sm dark:bg-gray-800">
             <table className="responsive-table">
@@ -279,14 +314,14 @@ export default function ExpenseList() {
                 </tr>
               </thead>
               <tbody>
-                {filteredExpenses.length === 0 ? (
+                {displayExpenses.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="p-4 sm:p-6 md:p-8 text-center text-gray-500 text-sm sm:text-base">
                       No expenses found
                     </td>
                   </tr>
                 ) : (
-                  filteredExpenses.map((expense) => (
+                  displayExpenses.map((expense) => (
                     <tr
                       key={expense.id}
                       className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50"

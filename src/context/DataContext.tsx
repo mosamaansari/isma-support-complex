@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from "react";
+import axios from "axios";
 import {
   User,
   Product,
@@ -25,6 +26,11 @@ interface DataContextType {
   usersPagination: { page: number; pageSize: number; total: number; totalPages: number };
   currentUser: User | null;
   loading: boolean;
+  loadingProducts: boolean;
+  loadingSales: boolean;
+  loadingPurchases: boolean;
+  loadingExpenses: boolean;
+  loadingUsers: boolean;
   error: string | null;
   refreshCurrentUser: () => Promise<void>;
   login: (username: string, password: string) => Promise<boolean>;
@@ -33,17 +39,27 @@ interface DataContextType {
   addUser: (user: Omit<User, "id" | "createdAt">) => Promise<void>;
   updateUser: (id: string, user: Partial<User>) => Promise<void>;
   deleteUser: (id: string) => Promise<void>;
-  refreshUsers: (page?: number, pageSize?: number) => Promise<void>;
+  refreshUsers: (page?: number, pageSize?: number, filters?: { search?: string }) => Promise<void>;
 
   // Products
   products: Product[];
-  productsPagination: { page: number; pageSize: number; total: number; totalPages: number };
+  productsPagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+    summary?: {
+      totalProducts: number;
+      lowStockCount: number;
+      totalStockValue: number;
+    }
+  };
   addProduct: (product: Omit<Product, "id" | "createdAt" | "updatedAt">) => Promise<void>;
   updateProduct: (id: string, product: Partial<Product>) => Promise<void>;
   deleteProduct: (id: string) => Promise<void>;
   getProduct: (id: string) => Product | undefined;
   getLowStockProducts: () => Product[];
-  refreshProducts: (page?: number, pageSize?: number) => Promise<void>;
+  refreshProducts: (page?: number, pageSize?: number, filters?: { search?: string; category?: string; lowStock?: boolean }) => Promise<void>;
 
   // Sales
   sales: Sale[];
@@ -63,7 +79,7 @@ interface DataContextType {
   updateExpense: (id: string, expense: Partial<Expense>) => Promise<void>;
   deleteExpense: (id: string) => Promise<void>;
   getExpensesByDateRange: (startDate: string, endDate: string) => Expense[];
-  refreshExpenses: (page?: number, pageSize?: number, filters?: { search?: string; category?: string }) => Promise<void>;
+  refreshExpenses: (page?: number, pageSize?: number, filters?: { search?: string; category?: string; startDate?: string; endDate?: string }) => Promise<void>;
 
   // Purchases
   purchases: Purchase[];
@@ -165,6 +181,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [loadingBankAccounts, setLoadingBankAccounts] = useState(false);
   const [loadingCards, setLoadingCards] = useState(false);
   const [loadingProducts, setLoadingProducts] = useState(false);
+  const [loadingSales, setLoadingSales] = useState(false);
+  const [loadingPurchases, setLoadingPurchases] = useState(false);
+  const [loadingExpenses, setLoadingExpenses] = useState(false);
+  const [loadingUsers, setLoadingUsers] = useState(false);
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
 
   // Pagination states
@@ -360,14 +380,19 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  const refreshUsers = async (page?: number, pageSize?: number) => {
+  const refreshUsers = useCallback(async (page?: number, pageSize?: number, filters?: { search?: string }) => {
     try {
       setError(null);
+      setLoadingUsers(true);
       // Use provided values or fallback to pagination state or defaults
       const currentPage = page !== undefined ? page : (usersPagination?.page || 1);
       const currentPageSize = pageSize !== undefined ? pageSize : (usersPagination?.pageSize || 10);
-      console.log("refreshUsers called with:", { page: currentPage, pageSize: currentPageSize });
-      const result = await api.getUsers({ page: currentPage, pageSize: currentPageSize });
+      console.log("refreshUsers called with:", { page: currentPage, pageSize: currentPageSize, filters });
+      const result = await api.getUsers({
+        page: currentPage,
+        pageSize: currentPageSize,
+        ...filters
+      });
       console.log("refreshUsers result:", result);
       // Handle both old format (array) and new format ({ data: [...], pagination: {...} })
       if (Array.isArray(result)) {
@@ -381,11 +406,12 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setUsers([]);
       }
     } catch (err: any) {
-      // console.error("refreshUsers error:", err);
+      if (axios.isCancel(err)) return;
       setError(extractErrorMessage(err) || "Failed to load users");
-      throw err;
+    } finally {
+      setLoadingUsers(false);
     }
-  };
+  }, [usersPagination?.page, usersPagination?.pageSize]);
 
   const addUser = async (userData: Omit<User, "id" | "createdAt">) => {
     try {
@@ -426,23 +452,28 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   // Product functions
-  const refreshProducts = async (page?: number, pageSize?: number) => {
-    if (loadingProducts) return; // Prevent duplicate requests
+  const refreshProducts = async (page?: number, pageSize?: number, filters?: { search?: string; category?: string; lowStock?: boolean }) => {
     try {
       setError(null);
       setLoadingProducts(true);
-      // Use provided values or fallback to pagination state or defaults
-      const currentPage = page !== undefined ? page : (productsPagination?.page || 1);
-      const currentPageSize = pageSize !== undefined ? pageSize : (productsPagination?.pageSize || 10);
-      // console.log("refreshProducts called with:", { page: currentPage, pageSize: currentPageSize });
-      const result = await api.getProducts({ page: currentPage, pageSize: currentPageSize });
-      // console.log("refreshProducts result:", result);
-      // API returns { data: [...], pagination: {...} }
+
+      // Use provided values or fallback to defaults
+      const currentPage = page !== undefined ? page : 1;
+      const currentPageSize = pageSize !== undefined ? pageSize : 10;
+
+      const result = await api.getProducts({
+        page: currentPage,
+        pageSize: currentPageSize,
+        ...filters
+      });
+
       setProducts(Array.isArray(result.data) ? result.data : []);
       if (result.pagination) {
         setProductsPagination(result.pagination);
       }
     } catch (err: any) {
+      if (axios.isCancel(err)) return;
+
       // Silently handle permission errors - don't block the page
       const errorMessage = extractErrorMessage(err);
       if (errorMessage?.includes('permission') || err.response?.status === 403) {
@@ -509,6 +540,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const refreshSales = useCallback(async (page?: number, pageSize?: number, filters?: { search?: string; status?: string }) => {
     try {
       setError(null);
+      setLoadingSales(true);
       // Use provided values or fallback to pagination state or defaults
       const currentPage = page !== undefined ? page : (salesPagination?.page || 1);
       const currentPageSize = pageSize !== undefined ? pageSize : (salesPagination?.pageSize || 10);
@@ -525,12 +557,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (result.pagination) {
         setSalesPagination(result.pagination);
       }
-    } catch (err: any) {
-      console.error("refreshSales error:", err);
-      setError(extractErrorMessage(err) || "Failed to load sales");
-      throw err;
+    } finally {
+      setLoadingSales(false);
     }
-  }, []); // Remove dependencies to keep function stable and avoid unnecessary filter resets
+  }, [salesPagination?.page, salesPagination?.pageSize]);
 
   const addSale = async (saleData: Omit<Sale, "id" | "createdAt">) => {
     try {
@@ -682,9 +712,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   // Expense functions
-  const refreshExpenses = useCallback(async (page?: number, pageSize?: number, filters?: { search?: string; category?: string }) => {
+  const refreshExpenses = useCallback(async (page?: number, pageSize?: number, filters?: { search?: string; category?: string; startDate?: string; endDate?: string }) => {
     try {
       setError(null);
+      setLoadingExpenses(true);
       // Use provided values or fallback to pagination state or defaults
       const currentPage = page !== undefined ? page : (expensesPagination?.page || 1);
       const currentPageSize = pageSize !== undefined ? pageSize : (expensesPagination?.pageSize || 10);
@@ -694,6 +725,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         pageSize: currentPageSize,
         ...(filters?.search && { search: filters.search }),
         ...(filters?.category && filters.category !== "all" && { category: filters.category }),
+        ...(filters?.startDate && { startDate: filters.startDate }),
+        ...(filters?.endDate && { endDate: filters.endDate }),
       });
       console.log("refreshExpenses result:", result);
       // API returns { data: [...], pagination: {...} }
@@ -702,9 +735,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setExpensesPagination(result.pagination);
       }
     } catch (err: any) {
+      if (axios.isCancel(err)) return;
       console.error("refreshExpenses error:", err);
       setError(extractErrorMessage(err) || "Failed to load expenses");
-      throw err;
+    } finally {
+      setLoadingExpenses(false);
     }
   }, [expensesPagination?.page, expensesPagination?.pageSize]);
 
@@ -771,6 +806,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const refreshPurchases = useCallback(async (page?: number, pageSize?: number, filters?: { search?: string; status?: string }) => {
     try {
       setError(null);
+      setLoadingPurchases(true);
       // Use provided values or fallback to pagination state or defaults
       const currentPage = page !== undefined ? page : (purchasesPagination?.page || 1);
       const currentPageSize = pageSize !== undefined ? pageSize : (purchasesPagination?.pageSize || 10);
@@ -788,10 +824,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (result.pagination) {
         setPurchasesPagination(result.pagination);
       }
-    } catch (err: any) {
-      console.error("refreshPurchases error:", err);
-      setError(extractErrorMessage(err) || "Failed to load purchases");
-      throw err;
+    } finally {
+      setLoadingPurchases(false);
     }
   }, [purchasesPagination?.page, purchasesPagination?.pageSize]);
 
@@ -1303,6 +1337,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     usersPagination,
     currentUser,
     loading,
+    loadingProducts,
+    loadingSales,
+    loadingPurchases,
+    loadingExpenses,
+    loadingUsers,
     error,
     refreshCurrentUser,
     login,

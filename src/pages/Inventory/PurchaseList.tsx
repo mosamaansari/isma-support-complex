@@ -68,15 +68,13 @@ export default function PurchaseList() {
     const loadInitial = async () => {
       if (!purchasesLoadedRef.current) {
         purchasesLoadedRef.current = true;
-        if (!purchases || purchases.length === 0) {
-          setLoadingPurchases(true);
-          try {
-            await refreshPurchases(purchasesPagination?.page || 1, purchasesPagination?.pageSize || 10);
-          } catch (err) {
-            console.error("PurchaseList - Error refreshing purchases:", err);
-          } finally {
-            setLoadingPurchases(false);
-          }
+        setLoadingPurchases(true);
+        try {
+          await refreshPurchases(1, purchasesPagination?.pageSize || 10);
+        } catch (err) {
+          console.error("PurchaseList - Error refreshing purchases:", err);
+        } finally {
+          setLoadingPurchases(false);
         }
       }
     };

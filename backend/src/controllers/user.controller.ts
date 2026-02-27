@@ -6,8 +6,9 @@ import { AuthRequest } from "../middleware/auth";
 class UserController {
   async getUsers(req: AuthRequest, res: Response) {
     try {
-      const { page, pageSize } = req.query;
+      const { search, page, pageSize } = req.query;
       const filters = {
+        search: search ? String(search).trim() : undefined,
         page: page ? parseInt(page as string) : undefined,
         pageSize: pageSize ? parseInt(pageSize as string) : undefined,
       };

@@ -4,13 +4,25 @@ import logger from "../utils/logger";
 import emailService from "./email.service";
 
 class UserService {
-  async getUsers(filters?: { page?: number; pageSize?: number }) {
+  async getUsers(filters?: { search?: string; page?: number; pageSize?: number }) {
     const page = filters?.page || 1;
     const pageSize = filters?.pageSize || 10;
     const skip = (page - 1) * pageSize;
 
+    const where: any = {};
+    if (filters?.search) {
+      const search = filters.search.trim();
+      where.OR = [
+        { name: { contains: search, mode: "insensitive" } },
+        { username: { contains: search, mode: "insensitive" } },
+        { email: { contains: search, mode: "insensitive" } },
+        { role: { contains: search, mode: "insensitive" } },
+      ];
+    }
+
     const [users, total] = await Promise.all([
       prisma.user.findMany({
+        where,
         select: {
           id: true,
           username: true,
@@ -25,7 +37,7 @@ class UserService {
         skip,
         take: pageSize,
       }),
-      prisma.user.count(),
+      prisma.user.count({ where }),
     ]);
 
     return {
